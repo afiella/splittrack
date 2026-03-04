@@ -105,25 +105,28 @@ export default function App() {
   const [payments, setPayments] = useState([]);
   const [notification, setNotification] = useState(null);
   const [modal, setModal] = useState(null); // "addExpense" | "logPayment" | "confirmPayment"
+  const [authError, setAuthError] = useState(null);
 
   useEffect(() => {
-    let unsub = () => {};
+    // Subscribe immediately so auth state updates even if redirect parsing fails.
+    const unsub = onAuthStateChanged(auth, (u) => setFirebaseUser(u));
 
     (async () => {
       try {
         await setPersistence(auth, browserLocalPersistence);
       } catch (e) {
-        // If persistence fails (some browsers), we still try auth.
         console.warn("Auth persistence not set:", e);
       }
 
       try {
         await getRedirectResult(auth);
+        setAuthError(null);
       } catch (e) {
         console.error("Redirect sign-in error:", e);
+        setAuthError(
+          "Google sign-in was blocked by this browser. Try opening in Safari/Chrome (not an in-app browser) and turn off Private Browsing."
+        );
       }
-
-      unsub = onAuthStateChanged(auth, (u) => setFirebaseUser(u));
     })();
 
     return () => unsub();
@@ -272,7 +275,7 @@ export default function App() {
   }
 }
 
-  if (!firebaseUser) return <LoginScreen />;
+  if (!firebaseUser) return <LoginScreen authError={authError} />;
 
   return (
     <div style={styles.app}>
@@ -349,7 +352,7 @@ export default function App() {
 }
 
 // ── LOGIN SCREEN ──────────────────────────────────────────────────────
-function LoginScreen() {
+function LoginScreen({ authError }) {
   async function handleGoogleSignIn() {
     const provider = new GoogleAuthProvider();
     // Force account chooser so Cam can pick his Google, not the last used one.
@@ -373,6 +376,22 @@ function LoginScreen() {
             <span style={styles.loginBtnSub}>Secure</span>
           </button>
         </div>
+        {authError && (
+          <div
+            style={{
+              background: "#FFF0F0",
+              border: "1px solid #E8A0B0",
+              color: "#7A1C3E",
+              borderRadius: 12,
+              padding: "10px 12px",
+              fontSize: 12,
+              marginBottom: 12,
+              textAlign: "left",
+            }}
+          >
+            {authError}
+          </div>
+        )}
         <p style={styles.loginNote}>
           After signing in, access level is based on your email.
         </p>
