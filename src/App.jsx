@@ -267,6 +267,7 @@ export default function App() {
           expenses={expenses}
           payments={payments}
           syncingPayments={syncingPayments}
+          urgentCount={urgentCount}
           onAddExpense={() => setModal("addExpense")}
           onLogPayment={() => setModal("logPayment")}
           onConfirm={handleConfirm}
@@ -339,7 +340,7 @@ function LoginScreen() {
 }
 
 // ── DASHBOARD ─────────────────────────────────────────────────────────
-function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, payments, syncingPayments, onAddExpense, onLogPayment, onConfirm, onDeleteExpense, onNavigate, onLogout }) {
+function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, payments, syncingPayments, urgentCount, onAddExpense, onLogPayment, onConfirm, onDeleteExpense, onNavigate, onLogout }) {
   const pending = payments.filter(p => !p.confirmed);
   const recentExpenses = expenses.slice(0, 4);
 
@@ -372,6 +373,25 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
           </div>
         </div>
       </div>
+      {/* Urgent banner */}
+{urgentCount > 0 && (
+  <div
+    style={styles.urgentBanner}
+    onClick={() => onNavigate("urgent")}
+    role="button"
+  >
+    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+      <span style={{ fontSize: 22 }}>🔥</span>
+      <div>
+        <p style={styles.urgentBannerTitle}>
+          {urgentCount} payment{urgentCount === 1 ? "" : "s"} due soon
+        </p>
+        <p style={styles.urgentBannerSub}>Tap to see what needs attention</p>
+      </div>
+    </div>
+    <span style={{ color: "#E05C6E", fontSize: 22, fontWeight: 700 }}>›</span>
+  </div>
+)}
 
       {/* Pending Confirmations (Emma only) */}
       {user === "emma" && pending.length > 0 && (
@@ -911,6 +931,9 @@ const styles = {
   balanceStatLabel: { fontSize: 11, opacity: 0.6 },
   balanceStatVal: { fontSize: 18, fontWeight: 700 },
   balanceDivider: { width: 1, background: "rgba(255,255,255,0.2)", margin: "0 20px" },
+  urgentBanner: { margin: "0 16px 16px", background: "linear-gradient(135deg, #FFF0F0, #FFF5EC)", borderRadius: 16, padding: "16px 18px", border: "1.5px solid #E8A0B0", display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer", boxShadow: "0 4px 16px rgba(224,92,110,0.12)" },
+  urgentBannerTitle: { fontSize: 14, fontWeight: 800, color: "#E05C6E", margin: 0 },
+  urgentBannerSub: { fontSize: 11, color: "#C06070", margin: "2px 0 0" },
 
   // Sections
   section: { padding: "0 16px", marginBottom: 8 },
