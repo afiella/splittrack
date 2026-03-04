@@ -53,3 +53,8 @@ export async function deletePayment(id) {
   await deleteDoc(doc(db, "payments", id));
 }
 
+async function updateExpense(id, updates) {
+  await updateDoc(doc(db, "expenses", id), updates);
+}
+
+export { updateExpense };
