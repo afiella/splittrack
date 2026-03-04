@@ -352,6 +352,8 @@ export default function App() {
 function LoginScreen() {
   async function handleGoogleSignIn() {
     const provider = new GoogleAuthProvider();
+    // Force account chooser so Cam can pick his Google, not the last used one.
+    provider.setCustomParameters({ prompt: "select_account" });
     await signInWithRedirect(auth, provider);
   }
 
