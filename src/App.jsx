@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut } from "firebase/auth";
-import { listenExpenses, listenPayments, addExpense, addPayment, confirmPayment as confirmPaymentInDb, deleteExpense as deleteExpenseInDb, deletePayment as deletePaymentInDb } from "./data";
+import { listenExpenses, listenPayments, addExpense, addPayment, confirmPayment as confirmPaymentInDb, deleteExpense as deleteExpenseInDb, deletePayment as deletePaymentInDb, updateExpense as updateExpenseInDb } from "./data";
 import { auth } from "./firebase";
 // ── MOCK DATA ─────────────────────────────────────────────────────────
 const INITIAL_EXPENSES = [
@@ -209,7 +209,26 @@ export default function App() {
     }
   }
 
+async function handleMarkPaid(id) {
+  if (user !== "emma") return;
 
+  const ok = window.confirm("Mark this expense as paid?");
+  if (!ok) return;
+
+  // Optimistic UI
+  const prevItem = expenses.find((e) => e.id === id) || null;
+  setExpenses((prev) => prev.map((e) => (e.id === id ? { ...e, status: "paid" } : e)));
+
+  try {
+    await updateExpenseInDb(id, { status: "paid" });
+    notify("Marked as paid.");
+  } catch (err) {
+    console.error("Failed to mark paid:", err);
+    // Roll back
+    if (prevItem) setExpenses((prev) => prev.map((e) => (e.id === id ? prevItem : e)));
+    notify("Couldn’t mark as paid. Check Firestore rules.", "error");
+  }
+}
 
 
   async function handleDeleteExpense(id) {
@@ -296,11 +315,13 @@ export default function App() {
         />
       )}
       {screen === "urgent" && (
-        <UrgentScreen
-          expenses={urgentExpenses}
-          onBack={() => setScreen("dashboard")}
-        />
-      )}
+  <UrgentScreen
+    expenses={urgentExpenses}
+    user={user}
+    onBack={() => setScreen("dashboard")}
+    onMarkPaid={handleMarkPaid}
+  />
+)}
 
       {/* Bottom Nav */}
       <BottomNav screen={screen} onNavigate={setScreen} urgentCount={urgentCount} />
@@ -467,7 +488,7 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
 }
 
 // ── URGENT SCREEN ────────────────────────────────────────────────────
-function UrgentScreen({ expenses, onBack }) {
+function UrgentScreen({ expenses, user, onBack, onMarkPaid }) {
   const sorted = [...expenses].sort(
     (a, b) => (getDaysUntilDue(a.dueDate) ?? 999) - (getDaysUntilDue(b.dueDate) ?? 999)
   );
@@ -559,6 +580,11 @@ function UrgentScreen({ expenses, onBack }) {
                       <p style={{ fontSize: 12, color: "#E8A0B0", fontWeight: 700, margin: "2px 0 0" }}>
                         Cam owes: ${camAmt.toFixed(2)}
                       </p>
+                    )}
+                    {user === "emma" && (
+                      <button style={styles.markPaidBtn} onClick={() => onMarkPaid(e.id)}>
+                        Mark paid
+                      </button>
                     )}
                   </div>
                 </div>
@@ -987,6 +1013,7 @@ const styles = {
   pendingBadge: { background: "#FBF5E0", color: "#C8A020", borderRadius: 6, padding: "1px 6px", fontSize: 10, marginLeft: 4 },
   confirmedBadge: { background: "#EEF5EC", color: "#1E8449", borderRadius: 6, padding: "1px 6px", fontSize: 10, marginLeft: 4 },
   miniConfirm: { fontSize: 11, background: "#7BBFB0", color: "#fff", border: "none", borderRadius: 8, padding: "4px 10px", cursor: "pointer", marginTop: 4, fontWeight: 600 },
+  markPaidBtn: { marginTop: 10, background: "#2D1B5E", color: "#fff", border: "none", borderRadius: 10, padding: "8px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer" },
 
   // Modal
   modalOverlay: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 100, display: "flex", alignItems: "flex-end", justifyContent: "center" },
