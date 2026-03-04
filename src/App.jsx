@@ -540,9 +540,14 @@ function ExpenseRow({ expense: e, detailed, user, onDelete }) {
 // ── ADD EXPENSE MODAL ─────────────────────────────────────────────────
 function AddExpenseModal({ onSave, onClose, user }) {
   const [form, setForm] = useState({
-    description: "", amount: "", split: "split", date: new Date().toISOString().split("T")[0],
-    account: "Navy Platinum", category: "Groceries"
-  });
+  description: "",
+  amount: "",
+  split: "split",
+  date: new Date().toISOString().split("T")[0],
+  dueDate: "",
+  account: "Navy Platinum",
+  category: "Groceries"
+});
   const set = (k, v) => setForm(f => ({...f, [k]: v}));
 
   return (
@@ -578,6 +583,16 @@ function AddExpenseModal({ onSave, onClose, user }) {
           <label style={styles.label}>Date</label>
           <input style={styles.input} type="date" value={form.date} onChange={e => set("date", e.target.value)} />
 
+          <label style={styles.label}>
+            Due Date <span style={{ color: "#BBB", fontWeight: 400, textTransform: "none", fontSize: 11 }}>(optional)</span>
+          </label>
+          <input
+            style={styles.input}
+            type="date"
+            value={form.dueDate}
+            onChange={(e) => set("dueDate", e.target.value)}
+          />
+
           <label style={styles.label}>Category</label>
           <select style={styles.input} value={form.category} onChange={e => set("category", e.target.value)}>
             {CATEGORIES.map(c => <option key={c}>{c}</option>)}
@@ -590,7 +605,9 @@ function AddExpenseModal({ onSave, onClose, user }) {
 
           <button style={styles.saveBtn} onClick={() => {
             if (!form.description || !form.amount) return;
-            onSave({...form, amount: parseFloat(form.amount)});
+            const data = { ...form, amount: parseFloat(form.amount) };
+            if (!data.dueDate) delete data.dueDate;
+            onSave(data);
           }}>Save Expense</button>
         </div>
       </div>
