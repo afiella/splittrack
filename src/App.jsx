@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { onAuthStateChanged, GoogleAuthProvider, signInWithRedirect, signInWithPopup, getRedirectResult, signOut, setPersistence, browserLocalPersistence } from "firebase/auth";
+import { onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut, setPersistence, browserLocalPersistence } from "firebase/auth";
 import { listenExpenses, listenPayments, addExpense, addPayment, confirmPayment as confirmPaymentInDb, deleteExpense as deleteExpenseInDb, deletePayment as deletePaymentInDb, updateExpense as updateExpenseInDb } from "./data";
 import { auth } from "./firebase";
 // ── MOCK DATA ─────────────────────────────────────────────────────────
@@ -105,24 +105,13 @@ export default function App() {
   const [payments, setPayments] = useState([]);
   const [notification, setNotification] = useState(null);
   const [modal, setModal] = useState(null); // "addExpense" | "logPayment" | "confirmPayment"
-  const [authError, setAuthError] = useState(null);
-
   useEffect(() => {
-    // Subscribe immediately so auth state updates even if redirect parsing fails.
+    // Keep the user signed in across reloads
+    setPersistence(auth, browserLocalPersistence).catch((e) => {
+      console.warn("Auth persistence not set:", e);
+    });
+
     const unsub = onAuthStateChanged(auth, (u) => setFirebaseUser(u));
-
-    (async () => {
-      try {
-        await getRedirectResult(auth);
-        setAuthError(null);
-      } catch (e) {
-        console.error("Redirect sign-in error:", e);
-        setAuthError(
-          "Google sign-in was blocked by this browser. Try opening in Safari/Chrome (not an in-app browser) and turn off Private Browsing."
-        );
-      }
-    })();
-
     return () => unsub();
   }, []);
 
@@ -269,7 +258,7 @@ export default function App() {
   }
 }
 
-  if (!firebaseUser) return <LoginScreen authError={authError} />;
+  if (!firebaseUser) return <LoginScreen />;
 
   return (
     <div style={styles.app}>
@@ -346,26 +335,12 @@ export default function App() {
 }
 
 // ── LOGIN SCREEN ──────────────────────────────────────────────────────
-function LoginScreen({ authError }) {
+function LoginScreen() {
   async function handleGoogleSignIn() {
     const provider = new GoogleAuthProvider();
-    // Force account chooser so Cam can pick his Google, not the last used one.
+    // Show the Google account picker, then sign in.
     provider.setCustomParameters({ prompt: "select_account" });
-
-    try {
-      // Set persistence before starting auth.
-      await setPersistence(auth, browserLocalPersistence);
-    } catch (e) {
-      console.warn("Auth persistence not set:", e);
-    }
-
-    try {
-      // Popup is best when allowed (desktop + many mobile browsers).
-      await signInWithPopup(auth, provider);
-    } catch (e) {
-      console.warn("Popup sign-in failed, falling back to redirect:", e);
-      await signInWithRedirect(auth, provider);
-    }
+    await signInWithPopup(auth, provider);
   }
 
   return (
@@ -384,22 +359,6 @@ function LoginScreen({ authError }) {
             <span style={styles.loginBtnSub}>Secure</span>
           </button>
         </div>
-        {authError && (
-          <div
-            style={{
-              background: "#FFF0F0",
-              border: "1px solid #E8A0B0",
-              color: "#7A1C3E",
-              borderRadius: 12,
-              padding: "10px 12px",
-              fontSize: 12,
-              marginBottom: 12,
-              textAlign: "left",
-            }}
-          >
-            {authError}
-          </div>
-        )}
         <p style={styles.loginNote}>
           After signing in, access level is based on your email.
         </p>
