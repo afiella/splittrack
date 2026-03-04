@@ -209,26 +209,27 @@ export default function App() {
     }
   }
 
-async function handleMarkPaid(id) {
-  if (user !== "emma") return;
+  async function handleMarkPaid(id) {
+    if (user !== "emma") return;
 
-  const ok = window.confirm("Mark this expense as paid?");
-  if (!ok) return;
+    const ok = window.confirm("Mark this expense as paid?");
+    if (!ok) return;
 
-  // Optimistic UI
-  const prevItem = expenses.find((e) => e.id === id) || null;
-  setExpenses((prev) => prev.map((e) => (e.id === id ? { ...e, status: "paid" } : e)));
+    // Optimistic UI
+    const prevItem = expenses.find((e) => e.id === id) || null;
+    const paidAt = new Date().toISOString();
+    setExpenses((prev) => prev.map((e) => (e.id === id ? { ...e, status: "paid", paidAt } : e)));
 
-  try {
-    await updateExpenseInDb(id, { status: "paid" });
-    notify("Marked as paid.");
-  } catch (err) {
-    console.error("Failed to mark paid:", err);
-    // Roll back
-    if (prevItem) setExpenses((prev) => prev.map((e) => (e.id === id ? prevItem : e)));
-    notify("Couldn’t mark as paid. Check Firestore rules.", "error");
+    try {
+      await updateExpenseInDb(id, { status: "paid", paidAt });
+      notify("Marked as paid.");
+    } catch (err) {
+      console.error("Failed to mark paid:", err);
+      // Roll back
+      if (prevItem) setExpenses((prev) => prev.map((e) => (e.id === id ? prevItem : e)));
+      notify("Couldn’t mark as paid. Check Firestore rules.", "error");
+    }
   }
-}
 
 
   async function handleDeleteExpense(id) {
@@ -659,6 +660,7 @@ function HistoryScreen({ expenses, payments, user, onBack, onConfirm, onDeleteCo
             <p style={styles.historyMeta}>
               {item.date} {item.type === "payment" && !item.confirmed && <span style={styles.pendingBadge}>pending</span>}
               {item.type === "payment" && item.confirmed && <span style={styles.confirmedBadge}>confirmed</span>}
+              {item.type === "expense" && item.status === "paid" && <span style={styles.confirmedBadge}>paid</span>}
             </p>
             {item.note && <p style={styles.historyNote}>"{item.note}"</p>}
           </div>
