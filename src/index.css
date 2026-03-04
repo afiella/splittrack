@@ -1,3 +1,12 @@
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: #F8F4FF;
+}
+
 :root {
   font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;
