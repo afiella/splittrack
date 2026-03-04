@@ -50,6 +50,30 @@ function calcPaid(payments) {
   return payments.filter(p => p.confirmed).reduce((sum, p) => sum + p.amount, 0);
 }
 
+function getDaysUntilDue(dueDate) {
+  if (!dueDate) return null;
+  const t = new Date(); t.setHours(0, 0, 0, 0);
+  const d = new Date(dueDate); d.setHours(0, 0, 0, 0);
+  return Math.floor((d - t) / 86400000);
+}
+
+function getUrgencyLevel(e) {
+  if (!e?.dueDate || e.status === "paid") return null;
+  if (!["cam", "split"].includes(e.split)) return null;
+  const days = getDaysUntilDue(e.dueDate);
+  if (days === null) return null;
+  if (days < 0) return "overdue";
+  if (days <= 3) return "critical";
+  if (days <= 7) return "warning";
+  return null;
+}
+
+const URGENCY = {
+  overdue:  { bg: "#FFF0F0", border: "#E8A0B0", badge: "#E05C6E", label: "OVERDUE" },
+  critical: { bg: "#FFF5EC", border: "#F4A05A", badge: "#E07820", label: "DUE SOON" },
+  warning:  { bg: "#FFFBE6", border: "#E8C878", badge: "#C8A020", label: "UPCOMING" },
+};
+
 // ── ICONS ─────────────────────────────────────────────────────────────
 const icons = {
   home: "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6",
@@ -61,6 +85,7 @@ const icons = {
   back: "M15 19l-7-7 7-7",
   x: "M6 18L18 6M6 6l12 12",
   alert: "M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z",
+  fire: "M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z",
 };
 
 function Icon({ path, size = 20, color = "currentColor" }) {
@@ -98,6 +123,9 @@ export default function App() {
   const totalOwed = calcOwed(expenses);
   const totalPaid = calcPaid(payments);
   const balance = totalOwed - totalPaid;
+
+  const urgentExpenses = expenses.filter((e) => getUrgencyLevel(e) !== null);
+  const urgentCount = urgentExpenses.length;
 
   const syncingPayments = payments.some((p) => p && p._optimistic);
 
@@ -266,9 +294,15 @@ export default function App() {
           onDeleteExpense={handleDeleteExpense}
         />
       )}
+      {screen === "urgent" && (
+        <UrgentScreen
+          expenses={urgentExpenses}
+          onBack={() => setScreen("dashboard")}
+        />
+      )}
 
       {/* Bottom Nav */}
-      <BottomNav screen={screen} onNavigate={setScreen} />
+      <BottomNav screen={screen} onNavigate={setScreen} urgentCount={urgentCount} />
     </div>
   );
 }
@@ -408,6 +442,113 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
       </div>
 
       <div style={{height: 80}} />
+    </div>
+  );
+}
+
+// ── URGENT SCREEN ────────────────────────────────────────────────────
+function UrgentScreen({ expenses, onBack }) {
+  const sorted = [...expenses].sort(
+    (a, b) => (getDaysUntilDue(a.dueDate) ?? 999) - (getDaysUntilDue(b.dueDate) ?? 999)
+  );
+
+  return (
+    <div style={styles.screen}>
+      <div style={styles.subHeader}>
+        <button style={styles.backBtn} onClick={onBack}>
+          <Icon path={icons.back} size={20} />
+        </button>
+        <h2 style={styles.subTitle}>🔥 Urgent</h2>
+        <div style={{ width: 36 }} />
+      </div>
+
+      <div style={{ padding: "0 16px 8px", fontSize: 12, color: "#888" }}>
+        Entries with a due date that are overdue or coming up soon
+      </div>
+
+      <div style={{ padding: "0 16px" }}>
+        {sorted.length === 0 ? (
+          <div style={{ textAlign: "center", padding: "60px 20px" }}>
+            <p style={{ fontSize: 48, margin: 0 }}>✅</p>
+            <p style={{ fontWeight: 700, color: "#2D1B5E", fontSize: 18, margin: "12px 0 4px" }}>
+              All clear!
+            </p>
+            <p style={{ color: "#999", fontSize: 13, margin: 0 }}>No overdue or upcoming payments</p>
+          </div>
+        ) : (
+          sorted.map((e) => {
+            const level = getUrgencyLevel(e);
+            const u = URGENCY[level];
+            const days = getDaysUntilDue(e.dueDate);
+
+            const dueLabel =
+              days < 0
+                ? `${Math.abs(days)} day${Math.abs(days) !== 1 ? "s" : ""} overdue`
+                : days === 0
+                ? "Due TODAY"
+                : days === 1
+                ? "Due TOMORROW"
+                : `Due in ${days} days`;
+
+            const camAmt = e.split === "cam" ? e.amount : e.split === "split" ? e.amount / 2 : 0;
+
+            return (
+              <div
+                key={e.id}
+                style={{
+                  background: u.bg,
+                  border: `1.5px solid ${u.border}`,
+                  borderRadius: 16,
+                  padding: "16px",
+                  marginBottom: 10,
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                      <span
+                        style={{
+                          background: u.badge,
+                          color: "#fff",
+                          borderRadius: 6,
+                          padding: "2px 8px",
+                          fontSize: 10,
+                          fontWeight: 800,
+                          letterSpacing: 0.5,
+                        }}
+                      >
+                        {u.label}
+                      </span>
+                      <span style={{ fontSize: 11, color: u.badge, fontWeight: 700 }}>{dueLabel}</span>
+                    </div>
+                    <p style={{ fontSize: 14, fontWeight: 700, color: "#2D1B5E", margin: "0 0 2px" }}>
+                      {e.description}
+                    </p>
+                    <p style={{ fontSize: 11, color: "#888", margin: 0 }}>
+                      {e.account} · {e.category}
+                    </p>
+                    <p style={{ fontSize: 11, color: u.badge, fontWeight: 600, margin: "2px 0 0" }}>
+                      Due: {e.dueDate}
+                    </p>
+                  </div>
+                  <div style={{ textAlign: "right", flexShrink: 0 }}>
+                    <p style={{ fontSize: 18, fontWeight: 800, color: "#2D1B5E", margin: 0 }}>
+                      ${Number(e.amount || 0).toFixed(2)}
+                    </p>
+                    {camAmt > 0 && (
+                      <p style={{ fontSize: 12, color: "#E8A0B0", fontWeight: 700, margin: "2px 0 0" }}>
+                        Cam owes: ${camAmt.toFixed(2)}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      <div style={{ height: 80 }} />
     </div>
   );
 }
@@ -672,18 +813,66 @@ function LogPaymentModal({ balance, onSave, onClose, user }) {
 }
 
 // ── BOTTOM NAV ────────────────────────────────────────────────────────
-function BottomNav({ screen, onNavigate }) {
+function BottomNav({ screen, onNavigate, urgentCount = 0 }) {
   const tabs = [
     { id: "dashboard", icon: icons.home, label: "Home" },
     { id: "expenses", icon: icons.list, label: "Expenses" },
+    { id: "urgent", icon: icons.fire, label: "Urgent" },
     { id: "history", icon: icons.clock, label: "History" },
   ];
   return (
     <div style={styles.bottomNav}>
       {tabs.map(t => (
-        <button key={t.id} style={{...styles.navBtn, ...(screen === t.id ? styles.navBtnActive : {})}} onClick={() => onNavigate(t.id)}>
-          <Icon path={t.icon} size={20} color={screen === t.id ? "#7BBFB0" : "#AAA"} />
-          <span style={{fontSize: 10, color: screen === t.id ? "#7BBFB0" : "#AAA"}}>{t.label}</span>
+        <button
+          key={t.id}
+          style={{ ...styles.navBtn, ...(screen === t.id ? styles.navBtnActive : {}) }}
+          onClick={() => onNavigate(t.id)}
+        >
+          <div style={{ position: "relative" }}>
+            <Icon
+              path={t.icon}
+              size={20}
+              color={
+                screen === t.id
+                  ? "#7BBFB0"
+                  : t.id === "urgent" && urgentCount > 0
+                  ? "#E05C6E"
+                  : "#AAA"
+              }
+            />
+            {t.id === "urgent" && urgentCount > 0 && (
+              <span
+                style={{
+                  position: "absolute",
+                  top: -4,
+                  right: -6,
+                  background: "#E05C6E",
+                  color: "#fff",
+                  borderRadius: 10,
+                  fontSize: 9,
+                  fontWeight: 800,
+                  padding: "1px 5px",
+                  minWidth: 14,
+                  textAlign: "center",
+                }}
+              >
+                {urgentCount}
+              </span>
+            )}
+          </div>
+          <span
+            style={{
+              fontSize: 10,
+              color:
+                screen === t.id
+                  ? "#7BBFB0"
+                  : t.id === "urgent" && urgentCount > 0
+                  ? "#E05C6E"
+                  : "#AAA",
+            }}
+          >
+            {t.label}
+          </span>
         </button>
       ))}
     </div>
