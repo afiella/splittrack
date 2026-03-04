@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { onAuthStateChanged, GoogleAuthProvider, signInWithRedirect, getRedirectResult, signOut, setPersistence, browserLocalPersistence } from "firebase/auth";
+import { onAuthStateChanged, GoogleAuthProvider, signInWithRedirect, signInWithPopup, getRedirectResult, signOut, setPersistence, browserLocalPersistence } from "firebase/auth";
 import { listenExpenses, listenPayments, addExpense, addPayment, confirmPayment as confirmPaymentInDb, deleteExpense as deleteExpenseInDb, deletePayment as deletePaymentInDb, updateExpense as updateExpenseInDb } from "./data";
 import { auth } from "./firebase";
 // ── MOCK DATA ─────────────────────────────────────────────────────────
@@ -112,12 +112,6 @@ export default function App() {
     const unsub = onAuthStateChanged(auth, (u) => setFirebaseUser(u));
 
     (async () => {
-      try {
-        await setPersistence(auth, browserLocalPersistence);
-      } catch (e) {
-        console.warn("Auth persistence not set:", e);
-      }
-
       try {
         await getRedirectResult(auth);
         setAuthError(null);
@@ -357,7 +351,21 @@ function LoginScreen({ authError }) {
     const provider = new GoogleAuthProvider();
     // Force account chooser so Cam can pick his Google, not the last used one.
     provider.setCustomParameters({ prompt: "select_account" });
-    await signInWithRedirect(auth, provider);
+
+    try {
+      // Set persistence before starting auth.
+      await setPersistence(auth, browserLocalPersistence);
+    } catch (e) {
+      console.warn("Auth persistence not set:", e);
+    }
+
+    try {
+      // Popup is best when allowed (desktop + many mobile browsers).
+      await signInWithPopup(auth, provider);
+    } catch (e) {
+      console.warn("Popup sign-in failed, falling back to redirect:", e);
+      await signInWithRedirect(auth, provider);
+    }
   }
 
   return (
