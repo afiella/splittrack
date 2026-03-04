@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut } from "firebase/auth";
+import { onAuthStateChanged, GoogleAuthProvider, signInWithRedirect, getRedirectResult, signOut, setPersistence, browserLocalPersistence } from "firebase/auth";
 import { listenExpenses, listenPayments, addExpense, addPayment, confirmPayment as confirmPaymentInDb, deleteExpense as deleteExpenseInDb, deletePayment as deletePaymentInDb, updateExpense as updateExpenseInDb } from "./data";
 import { auth } from "./firebase";
 // ── MOCK DATA ─────────────────────────────────────────────────────────
@@ -107,7 +107,25 @@ export default function App() {
   const [modal, setModal] = useState(null); // "addExpense" | "logPayment" | "confirmPayment"
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (u) => setFirebaseUser(u));
+    let unsub = () => {};
+
+    (async () => {
+      try {
+        await setPersistence(auth, browserLocalPersistence);
+      } catch (e) {
+        // If persistence fails (some browsers), we still try auth.
+        console.warn("Auth persistence not set:", e);
+      }
+
+      try {
+        await getRedirectResult(auth);
+      } catch (e) {
+        console.error("Redirect sign-in error:", e);
+      }
+
+      unsub = onAuthStateChanged(auth, (u) => setFirebaseUser(u));
+    })();
+
     return () => unsub();
   }, []);
 
@@ -334,7 +352,7 @@ export default function App() {
 function LoginScreen() {
   async function handleGoogleSignIn() {
     const provider = new GoogleAuthProvider();
-    await signInWithPopup(auth, provider);
+    await signInWithRedirect(auth, provider);
   }
 
   return (
