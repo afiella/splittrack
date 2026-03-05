@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut, setPersistence, browserLocalPersistence } from "firebase/auth";
-import { listenExpenses, listenPayments, addExpense, addPayment, confirmPayment as confirmPaymentInDb, deleteExpense as deleteExpenseInDb, deletePayment as deletePaymentInDb, updateExpense as updateExpenseInDb } from "./data";
+import { listenExpenses, listenPayments, addExpense, addPayment, confirmPayment as confirmPaymentInDb, deleteExpense as deleteExpenseInDb, deletePayment as deletePaymentInDb, updateExpense as updateExpenseInDb, updateExpenseNextDue, } from "./data";
 import { auth } from "./firebase";
 // ── MOCK DATA ─────────────────────────────────────────────────────────
 const INITIAL_EXPENSES = [
@@ -58,15 +58,24 @@ function getDaysUntilDue(dueDate) {
 }
 
 function getUrgencyLevel(e) {
-  if (!e?.dueDate || e.status === "paid") return null;
+  if (!(e?.nextDue || e?.dueDate) || e.status === "paid") return null;
   if (!["cam", "split"].includes(e.split)) return null;
-  const days = getDaysUntilDue(e.dueDate);
+  const days = getDaysUntilDue(e.nextDue || e.dueDate);
   if (days === null) return null;
   if (days < 0) return "overdue";
   if (days <= 3) return "critical";
   if (days <= 7) return "warning";
   return null;
 }
+
+function getNextDueDate(currentDue, frequency) {
+  const d = new Date(currentDue);
+  if (frequency === "weekly") d.setDate(d.getDate() + 7);
+  if (frequency === "biweekly") d.setDate(d.getDate() + 14);
+  if (frequency === "monthly") d.setMonth(d.getMonth() + 1);
+  return d.toISOString().split("T")[0];
+}
+
 
 const URGENCY = {
   overdue:  { bg: "#FFF0F0", border: "#E8A0B0", badge: "#E05C6E", label: "OVERDUE" },
@@ -225,8 +234,15 @@ export default function App() {
     setExpenses((prev) => prev.map((e) => (e.id === id ? { ...e, status: "paid", paidAt } : e)));
 
     try {
-      await updateExpenseInDb(id, { status: "paid", paidAt });
-      notify("Marked as paid.");
+      const item = expenses.find((e) => e.id === id);
+      if (item?.recurring && item.recurring !== "none") {
+        const nextDue = getNextDueDate(item.nextDue || item.dueDate, item.recurring);
+        await updateExpenseNextDue(id, nextDue);
+        notify("Marked paid — next due date set to " + nextDue);
+      } else {
+        await updateExpenseInDb(id, { status: "paid", paidAt });
+        notify("Marked as paid.");
+      }
     } catch (err) {
       console.error("Failed to mark paid:", err);
       // Roll back
@@ -741,7 +757,8 @@ function AddExpenseModal({ onSave, onClose, user }) {
   date: new Date().toISOString().split("T")[0],
   dueDate: "",
   account: "Navy Platinum",
-  category: "Groceries"
+  category: "Groceries",
+  recurring: "none",
 });
   const set = (k, v) => setForm(f => ({...f, [k]: v}));
 
@@ -788,6 +805,25 @@ function AddExpenseModal({ onSave, onClose, user }) {
             onChange={(e) => set("dueDate", e.target.value)}
           />
 
+          <label style={styles.label}>Repeats</label>
+          <div style={styles.splitRow}>
+            {[["none","One-time"],["weekly","Weekly"],["biweekly","Every 2 wks"],["monthly","Monthly"]].map(([val, label]) => (
+              <button
+                key={val}
+                style={{
+                  ...styles.splitOption,
+                  fontSize: 12,
+                  background: form.recurring === val ? "#7BBFB0" : "#F5F0FB",
+                  color: form.recurring === val ? "#fff" : "#666",
+                  fontWeight: form.recurring === val ? 700 : 400,
+                }}
+                onClick={() => set("recurring", val)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
           <label style={styles.label}>Category</label>
           <select style={styles.input} value={form.category} onChange={e => set("category", e.target.value)}>
             {CATEGORIES.map(c => <option key={c}>{c}</option>)}
@@ -800,7 +836,11 @@ function AddExpenseModal({ onSave, onClose, user }) {
 
           <button style={styles.saveBtn} onClick={() => {
             if (!form.description || !form.amount) return;
-            const data = { ...form, amount: parseFloat(form.amount) };
+            const data = {
+              ...form,
+              amount: parseFloat(form.amount),
+              nextDue: form.dueDate || null,
+            };
             if (!data.dueDate) delete data.dueDate;
             onSave(data);
           }}>Save Expense</button>

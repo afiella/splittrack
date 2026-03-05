@@ -58,3 +58,11 @@ async function updateExpense(id, updates) {
 }
 
 export { updateExpense };
+
+// Write: set nextDue and reset status to unpaid
+export async function updateExpenseNextDue(id, nextDue) {
+  await updateDoc(doc(db, "expenses", id), {
+    nextDue,
+    status: "unpaid",
+  });
+}
