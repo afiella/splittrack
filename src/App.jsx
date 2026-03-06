@@ -669,7 +669,7 @@ export default function App() {
         setExpenses((prev) => [{ ...newExp, id: tempId, _optimistic: true }, ...prev]);
 
         await addExpense(newExp);
-        notify("Marked paid — next due created for " + nextDue);
+        notify("Marked paid — next due created for " + formatHistoryDate(nextDue));
       } else {
         // Optimistic UI: non-recurring becomes paid
         setExpenses((prev) =>
@@ -716,6 +716,7 @@ export default function App() {
 
   return (
     <div style={styles.app}>
+      <style>{`@keyframes stSpin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}`}</style>
       {/* Notification */}
       {notification && (
         <div style={{
@@ -1383,6 +1384,7 @@ function ExpandableExpenseRow({ expense: e, user, onDelete, onMarkPaid }) {
   const noteSaveTimerRef = useRef(null);
   const [noteSaveFading, setNoteSaveFading] = useState(false);
   const noteFadeTimerRef = useRef(null);
+  const [markPaidBusy, setMarkPaidBusy] = useState(false);
 
   useEffect(() => {
     return () => {
@@ -1584,9 +1586,48 @@ function ExpandableExpenseRow({ expense: e, user, onDelete, onMarkPaid }) {
 
           {user === "emma" && (
             <div style={fw.actionBtns}>
-              {e.status !== "paid" && !e._optimistic && typeof onMarkPaid === "function" && (
-                <button style={fw.markPaidBtn} type="button" onClick={() => onMarkPaid(e.id)}>
-                  ✓ Mark Paid
+              {(markPaidBusy || (e.status !== "paid" && !e._optimistic)) && typeof onMarkPaid === "function" && (
+                <button
+                  style={{
+                    ...fw.markPaidBtn,
+                    opacity: markPaidBusy ? 0.75 : 1,
+                    cursor: markPaidBusy ? "default" : "pointer",
+                  }}
+                  type="button"
+                  disabled={markPaidBusy}
+                  onClick={async () => {
+                    if (markPaidBusy) return;
+                    setMarkPaidBusy(true);
+                    const startedAt = Date.now();
+                    try {
+                      await onMarkPaid(e.id);
+                    } finally {
+                      const elapsed = Date.now() - startedAt;
+                      const wait = Math.max(0, 400 - elapsed);
+                      if (wait > 0) {
+                        setTimeout(() => setMarkPaidBusy(false), wait);
+                      } else {
+                        setMarkPaidBusy(false);
+                      }
+                    }
+                  }}
+                >
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 8, justifyContent: "center" }}>
+                    {markPaidBusy && (
+                      <span
+                        style={{
+                          width: 12,
+                          height: 12,
+                          borderRadius: 999,
+                          border: "2px solid rgba(255,255,255,0.55)",
+                          borderTopColor: "#fff",
+                          animation: "stSpin 0.8s linear infinite",
+                          display: "inline-block",
+                        }}
+                      />
+                    )}
+                    {markPaidBusy ? "Marking…" : "✓ Mark Paid"}
+                  </span>
                 </button>
               )}
               {typeof onDelete === "function" && (
