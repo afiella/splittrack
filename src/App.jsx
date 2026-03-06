@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut, setPersistence, browserLocalPersistence } from "firebase/auth";
-import { listenExpenses, listenPayments, addExpense, addPayment, confirmPayment as confirmPaymentInDb, deleteExpense as deleteExpenseInDb, deletePayment as deletePaymentInDb, updateExpense as updateExpenseInDb, updateExpenseNextDue, } from "./data";
+import { listenExpenses, listenPayments, addExpense, addPayment, confirmPayment as confirmPaymentInDb, deleteExpense as deleteExpenseInDb, deletePayment as deletePaymentInDb, updateExpense as updateExpenseInDb, } from "./data";
 import { auth } from "./firebase";
 // ── MOCK DATA ─────────────────────────────────────────────────────────
 const INITIAL_EXPENSES = [
@@ -33,11 +33,336 @@ function roleFromEmail(email) {
   return "cam";
 }
 
+// Unified target summaries for payment application (plans + one-time expenses)
+function calcTargetSummaries(expenses, payments) {
+  const list = expenses || [];
+  const pays = payments || [];
+
+  function applySplit(e, baseAmount) {
+    if (e.split === "cam") return baseAmount;
+    if (e.split === "split") return baseAmount / 2;
+    if (e.split === "ella") return -baseAmount;
+    return 0;
+  }
+
+  // Confirmed payments allocated to a target key
+  const paidByKey = new Map();
+  for (const p of pays) {
+    if (!p?.confirmed) continue;
+    const key = p.appliedToKey || (p.appliedToGroupId ? `grp:${p.appliedToGroupId}` : "general");
+    if (!key || key === "general") continue;
+    paidByKey.set(key, (paidByKey.get(key) || 0) + Number(p.amount || 0));
+  }
+
+  const summaries = new Map();
+
+  // Plans (recurring) grouped by groupId
+  const groups = new Map();
+  for (const e of list) {
+    const isRecurring = e.recurring && e.recurring !== "none";
+    const gid = isRecurring ? (e.groupId || e.id) : null;
+    if (!gid) continue;
+    if (!groups.has(gid)) groups.set(gid, []);
+    groups.get(gid).push(e);
+  }
+
+  for (const [gid, items] of groups) {
+    const sorted = [...items].sort((a, b) => {
+      const da = a.dueDate || a.nextDue || "9999-99-99";
+      const db = b.dueDate || b.nextDue || "9999-99-99";
+      return da.localeCompare(db);
+    });
+    const t = sorted[0];
+
+    const startDue = t.dueDate || t.nextDue;
+    const freq = t.recurring;
+    const endDate = t.endDate || null;
+    const repeatCount = typeof t.repeatCount === "number" ? t.repeatCount : null;
+    const occurrences = countOccurrences({ startDue, frequency: freq, endDate, repeatCount });
+
+    const perOccurrence = applySplit(t, Number(t.amount || 0));
+    const charged = perOccurrence * occurrences;
+
+    const paidFromExpenses = items
+      .filter((e) => e.status === "paid")
+      .reduce((s, e) => s + applySplit(e, Number(e.amount || 0)), 0);
+
+    const key = `grp:${gid}`;
+    const paidFromPayments = paidByKey.get(key) || 0;
+
+    const paidTotal = paidFromExpenses + paidFromPayments;
+    const remaining = charged - paidTotal;
+    const suggested = Math.max(0, Math.min(Math.abs(remaining), Math.abs(perOccurrence)));
+
+    summaries.set(key, {
+      key,
+      kind: "plan",
+      label: t.description,
+      charged,
+      paid: paidTotal,
+      remaining,
+      suggested,
+    });
+  }
+
+  // One-time expenses as targets
+  for (const e of list) {
+    const isRecurring = e.recurring && e.recurring !== "none";
+    if (isRecurring) continue;
+    if (!e.id) continue;
+
+    const key = `exp:${e.id}`;
+    const charged = applySplit(e, Number(e.amount || 0));
+    const paidFromPayments = paidByKey.get(key) || 0;
+
+    // If Emmanuella marks a one-time expense as paid, treat it as fully paid.
+    const paidFromMarkPaid = e.status === "paid" ? charged : 0;
+
+    // Cap paid to the charged amount (prevents double counting)
+    const paidTotal = Math.max(0, Math.min(Math.abs(charged), Math.abs(paidFromPayments + paidFromMarkPaid))) * (charged < 0 ? -1 : 1);
+
+    const remaining = charged - paidTotal;
+    const suggested = Math.max(0, Math.min(Math.abs(remaining), Math.abs(charged)));
+
+    summaries.set(key, {
+      key,
+      kind: "expense",
+      label: e.description,
+      charged,
+      paid: paidTotal,
+      remaining,
+      suggested,
+    });
+  }
+
+  return summaries;
+}
+
+// Compute totalPaid from targetSummaries plus any confirmed “general” payments
+function calcTotalPaidFromTargets(payments, targetSummaries) {
+  const pays = payments || [];
+
+  // Payments not assigned to a target
+  const generalPaid = pays
+    .filter((p) => p?.confirmed)
+    .filter((p) => {
+      const key = p.appliedToKey || (p.appliedToGroupId ? `grp:${p.appliedToGroupId}` : "general");
+      return !key || key === "general";
+    })
+    .reduce((s, p) => s + Number(p.amount || 0), 0);
+
+  let targetedPaid = 0;
+  if (targetSummaries) {
+    for (const s of targetSummaries.values()) {
+      const charged = Number(s.charged || 0);
+      const paid = Number(s.paid || 0);
+      // Cap so we never count more paid than charged for the target
+      const capped = Math.max(0, Math.min(Math.abs(charged), Math.abs(paid))) * (charged < 0 ? -1 : 1);
+      targetedPaid += capped;
+    }
+  }
+
+  return generalPaid + targetedPaid;
+}
+
+function formatShortDate(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return String(iso);
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+function formatHistoryDate(isoOrDate) {
+  if (!isoOrDate) return "";
+  const d = new Date(isoOrDate);
+  if (Number.isNaN(d.getTime())) return String(isoOrDate);
+  const mon = d.toLocaleDateString("en-US", { month: "short" });
+  const day = d.getDate();
+  const yr = d.getFullYear();
+  return `${mon} · ${day} · ${yr}`;
+}
+
+// Helper: Parse YYYY-MM-DD as local date
+function parseLocalISODate(iso) {
+  if (!iso) return null;
+  const [yy, mm, dd] = String(iso).split("-").map((x) => parseInt(x, 10));
+  if (!yy || !mm || !dd) return null;
+  return new Date(yy, mm - 1, dd);
+}
+
+function toISODateLocal(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function addByFrequency(isoDate, frequency) {
+  const d = parseLocalISODate(isoDate);
+  if (!d) return null;
+  if (frequency === "weekly") d.setDate(d.getDate() + 7);
+  if (frequency === "biweekly") d.setDate(d.getDate() + 14);
+  if (frequency === "monthly") d.setMonth(d.getMonth() + 1);
+  return toISODateLocal(d);
+}
+
+function countOccurrences({ startDue, frequency, endDate, repeatCount }) {
+  // Prefer explicit repeatCount if provided
+  if (typeof repeatCount === "number" && repeatCount > 0) return repeatCount;
+  if (!startDue || !frequency || frequency === "none") return 1;
+  if (!endDate) return 1;
+
+  // Count inclusive occurrences: startDue, startDue+freq, ... <= endDate
+  let count = 0;
+  let cur = startDue;
+  // guard against infinite loops
+  for (let i = 0; i < 500; i++) {
+    if (!cur) break;
+    if (cur > endDate) break;
+    count += 1;
+    cur = addByFrequency(cur, frequency);
+  }
+  return count || 1;
+}
+
 
 // ── CALCULATIONS ──────────────────────────────────────────────────────
-function calcOwed(expenses) {
-  return expenses
-    .filter(e => e.status !== "paid")
+function calcCharged(expenses) {
+  const list = expenses || [];
+
+  // Helper: apply split logic to a base amount
+  function applySplit(e, baseAmount) {
+    if (e.split === "cam") return baseAmount;
+    if (e.split === "split") return baseAmount / 2;
+    if (e.split === "ella") return -baseAmount;
+    return 0;
+  }
+
+  // Group recurring expenses by groupId so we count the plan once.
+  const groups = new Map();
+  const singles = [];
+
+  for (const e of list) {
+    const isRecurring = e.recurring && e.recurring !== "none";
+    const gid = isRecurring ? (e.groupId || e.id) : null;
+
+    if (isRecurring && gid) {
+      if (!groups.has(gid)) groups.set(gid, []);
+      groups.get(gid).push(e);
+    } else {
+      singles.push(e);
+    }
+  }
+
+  let sum = 0;
+
+  // Add one-time expenses as-is
+  for (const e of singles) {
+    sum += applySplit(e, Number(e.amount || 0));
+  }
+
+  // Add recurring plans once per group
+  for (const [, items] of groups) {
+    // Pick a stable template: earliest due/nextDue/dueDate
+    const sorted = [...items].sort((a, b) => {
+      const da = a.dueDate || a.nextDue || "9999-99-99";
+      const db = b.dueDate || b.nextDue || "9999-99-99";
+      return da.localeCompare(db);
+    });
+    const t = sorted[0];
+
+    const startDue = t.dueDate || t.nextDue;
+    const freq = t.recurring;
+    const endDate = t.endDate || null;
+    const repeatCount = typeof t.repeatCount === "number" ? t.repeatCount : null;
+
+    const occurrences = countOccurrences({ startDue, frequency: freq, endDate, repeatCount });
+    const baseTotal = Number(t.amount || 0) * occurrences;
+
+    sum += applySplit(t, baseTotal);
+  }
+
+  return sum;
+}
+
+function calcPlanSummaries(expenses, payments) {
+  const list = expenses || [];
+  const pays = payments || [];
+
+  function applySplit(e, baseAmount) {
+    if (e.split === "cam") return baseAmount;
+    if (e.split === "split") return baseAmount / 2;
+    if (e.split === "ella") return -baseAmount;
+    return 0;
+  }
+
+  // Group recurring expenses by groupId
+  const groups = new Map();
+  for (const e of list) {
+    const isRecurring = e.recurring && e.recurring !== "none";
+    const gid = isRecurring ? (e.groupId || e.id) : null;
+    if (!gid) continue;
+    if (!groups.has(gid)) groups.set(gid, []);
+    groups.get(gid).push(e);
+  }
+
+  // Confirmed payments allocated to a group
+  const paidByGroup = new Map();
+  for (const p of pays) {
+    if (!p?.confirmed) continue;
+    const gid = p.appliedToGroupId || "general";
+    if (!gid || gid === "general") continue;
+    paidByGroup.set(gid, (paidByGroup.get(gid) || 0) + Number(p.amount || 0));
+  }
+
+  const summaries = new Map();
+
+  for (const [gid, items] of groups) {
+    const sorted = [...items].sort((a, b) => {
+      const da = a.dueDate || a.nextDue || "9999-99-99";
+      const db = b.dueDate || b.nextDue || "9999-99-99";
+      return da.localeCompare(db);
+    });
+    const t = sorted[0];
+
+    const startDue = t.dueDate || t.nextDue;
+    const freq = t.recurring;
+    const endDate = t.endDate || null;
+    const repeatCount = typeof t.repeatCount === "number" ? t.repeatCount : null;
+    const occurrences = countOccurrences({ startDue, frequency: freq, endDate, repeatCount });
+
+    const perOccurrence = applySplit(t, Number(t.amount || 0));
+    const charged = perOccurrence * occurrences;
+
+    // If you mark occurrences as paid, count them toward progress too.
+    const paidFromExpenses = items
+      .filter((e) => e.status === "paid")
+      .reduce((s, e) => s + applySplit(e, Number(e.amount || 0)), 0);
+
+    const paidFromPayments = paidByGroup.get(gid) || 0;
+
+    const paidTotal = paidFromExpenses + paidFromPayments;
+    const remaining = charged - paidTotal;
+
+    const suggested = Math.max(0, Math.min(Math.abs(remaining), Math.abs(perOccurrence)));
+
+    summaries.set(gid, {
+      groupId: gid,
+      label: t.description,
+      charged,
+      paid: paidTotal,
+      remaining,
+      suggested,
+    });
+  }
+
+  return summaries;
+}
+
+function calcPaidExpenses(expenses) {
+  // Count PAID expenses as “paid” toward the total.
+  return (expenses || [])
+    .filter((e) => e.status === "paid")
     .reduce((sum, e) => {
       if (e.split === "cam") return sum + e.amount;
       if (e.split === "split") return sum + e.amount / 2;
@@ -69,11 +394,18 @@ function getUrgencyLevel(e) {
 }
 
 function getNextDueDate(currentDue, frequency) {
-  const d = new Date(currentDue);
+  // Parse YYYY-MM-DD as a *local* date to avoid timezone shifting.
+  const [yy, mm, dd] = String(currentDue).split("-").map((x) => parseInt(x, 10));
+  const d = new Date(yy, (mm || 1) - 1, dd || 1);
+
   if (frequency === "weekly") d.setDate(d.getDate() + 7);
   if (frequency === "biweekly") d.setDate(d.getDate() + 14);
   if (frequency === "monthly") d.setMonth(d.getMonth() + 1);
-  return d.toISOString().split("T")[0];
+
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
 
@@ -110,6 +442,7 @@ export default function App() {
   const [firebaseUser, setFirebaseUser] = useState(null);
   const user = roleFromEmail(firebaseUser?.email); // "emma" | "cam"
   const [screen, setScreen] = useState("dashboard");
+  const [activeTargetKey, setActiveTargetKey] = useState(null);
   const [expenses, setExpenses] = useState([]);
   const [payments, setPayments] = useState([]);
   const [notification, setNotification] = useState(null);
@@ -133,14 +466,48 @@ export default function App() {
     };
   }, []);
 
-  const totalOwed = calcOwed(expenses);
-  const totalPaid = calcPaid(payments);
-  const balance = totalOwed - totalPaid;
+  const planSummaries = calcPlanSummaries(expenses, payments);
+  const targetSummaries = calcTargetSummaries(expenses, payments);
+
+  const totalCharged = calcCharged(expenses);
+  const totalPaid = calcTotalPaidFromTargets(payments, targetSummaries);
+  const balance = totalCharged - totalPaid;
 
   const urgentExpenses = expenses.filter((e) => getUrgencyLevel(e) !== null);
   const urgentCount = urgentExpenses.length;
 
+  const paymentTargets = (() => {
+    const planMap = new Map();
+    const expMap = new Map();
+
+    for (const e of expenses) {
+      const isRecurring = e.recurring && e.recurring !== "none";
+
+      if (isRecurring) {
+        const gid = e.groupId || e.id;
+        if (!gid) continue;
+        if (!planMap.has(gid)) {
+          planMap.set(gid, { key: `grp:${gid}`, label: e.description });
+        }
+      } else {
+        // one-time unpaid expense target
+        if (!e.id) continue;
+        if (e.status === "paid") continue;
+        if (!expMap.has(e.id)) {
+          expMap.set(e.id, { key: `exp:${e.id}`, label: e.description });
+        }
+      }
+    }
+
+    return [
+      { key: "general", label: "General (not assigned)" },
+      ...planMap.values(),
+      ...expMap.values(),
+    ];
+  })();
+
   const syncingPayments = payments.some((p) => p && p._optimistic);
+
 
   function notify(msg, type = "success") {
     setNotification({ msg, type });
@@ -150,6 +517,10 @@ export default function App() {
   async function handleAddExpense(data) {
     const tempId = `tmp-exp-${Date.now()}`;
     const exp = { ...data, status: "unpaid" };
+    // If this is a recurring plan, assign a stable groupId so all occurrences link together.
+    if (exp.recurring && exp.recurring !== "none" && !exp.groupId) {
+      exp.groupId = `grp-${Date.now()}`;
+    }
 
     // Optimistic UI: show immediately
     setExpenses((prev) => [{ ...exp, id: tempId, _optimistic: true }, ...prev]);
@@ -228,25 +599,92 @@ export default function App() {
     const ok = window.confirm("Mark this expense as paid?");
     if (!ok) return;
 
-    // Optimistic UI
     const prevItem = expenses.find((e) => e.id === id) || null;
     const paidAt = new Date().toISOString();
-    setExpenses((prev) => prev.map((e) => (e.id === id ? { ...e, status: "paid", paidAt } : e)));
 
     try {
       const item = expenses.find((e) => e.id === id);
+      if (!item || item._optimistic) {
+  notify("Still syncing that expense — try again in a second.", "error");
+  return;
+}
+
       if (item?.recurring && item.recurring !== "none") {
-        const nextDue = getNextDueDate(item.nextDue || item.dueDate, item.recurring);
-        await updateExpenseNextDue(id, nextDue);
-        notify("Marked paid — next due date set to " + nextDue);
+        const justPaidDue = item.nextDue || item.dueDate;
+        const nextDue = getNextDueDate(justPaidDue, item.recurring);
+
+        const remaining =
+          typeof item.repeatCountRemaining === "number"
+            ? item.repeatCountRemaining
+            : typeof item.repeatCount === "number"
+            ? item.repeatCount
+            : null;
+
+        const endDate = item.endDate || null;
+        const nextDueExceedsEnd = endDate ? nextDue > endDate : false;
+        const isLastByCount = remaining !== null ? remaining <= 1 : false;
+
+        // Optimistic: mark CURRENT instance paid
+        setExpenses((prev) =>
+          prev.map((e) =>
+            e.id === id
+              ? { ...e, status: "paid", paidAt, lastPaidAt: paidAt, lastPaidDue: justPaidDue }
+              : e
+          )
+        );
+
+        await updateExpenseInDb(id, {
+          status: "paid",
+          paidAt,
+          lastPaidAt: paidAt,
+          lastPaidDue: justPaidDue,
+        });
+
+        // Stop recurring if we've reached the end condition
+        if (isLastByCount || nextDueExceedsEnd) {
+          notify("Marked paid — recurring complete");
+          return;
+        }
+
+        // Otherwise create NEXT instance as a brand-new expense
+        const nextRemaining = remaining !== null ? remaining - 1 : null;
+        const newExp = {
+          description: item.description,
+          groupId: item.groupId || item.id,
+          amount: item.amount,
+          split: item.split,
+          date: new Date().toISOString().split("T")[0],
+          dueDate: nextDue,
+          nextDue,
+          account: item.account,
+          category: item.category,
+          status: "unpaid",
+          recurring: item.recurring,
+          ...(item.endDate ? { endDate: item.endDate } : {}),
+          ...(typeof item.repeatCount === "number" ? { repeatCount: item.repeatCount } : {}),
+          ...(nextRemaining !== null ? { repeatCountRemaining: nextRemaining } : {}),
+        };
+
+        const tempId = `tmp-exp-${Date.now()}`;
+        setExpenses((prev) => [{ ...newExp, id: tempId, _optimistic: true }, ...prev]);
+
+        await addExpense(newExp);
+        notify("Marked paid — next due created for " + nextDue);
       } else {
+        // Optimistic UI: non-recurring becomes paid
+        setExpenses((prev) =>
+          prev.map((e) => (e.id === id ? { ...e, status: "paid", paidAt } : e))
+        );
+
         await updateExpenseInDb(id, { status: "paid", paidAt });
         notify("Marked as paid.");
       }
     } catch (err) {
       console.error("Failed to mark paid:", err);
       // Roll back
-      if (prevItem) setExpenses((prev) => prev.map((e) => (e.id === id ? prevItem : e)));
+      if (prevItem) {
+        setExpenses((prev) => prev.map((e) => (e.id === id ? prevItem : e)));
+      }
       notify("Couldn’t mark as paid. Check Firestore rules.", "error");
     }
   }
@@ -294,7 +732,15 @@ export default function App() {
         <AddExpenseModal onSave={handleAddExpense} onClose={() => setModal(null)} user={user} />
       )}
       {modal === "logPayment" && (
-        <LogPaymentModal balance={balance} onSave={handleLogPayment} onClose={() => setModal(null)} user={user} />
+        <LogPaymentModal
+          balance={balance}
+          onSave={handleLogPayment}
+          onClose={() => setModal(null)}
+          user={user}
+          targets={paymentTargets}
+          planSummaries={planSummaries}
+          targetSummaries={targetSummaries}
+        />
       )}
 
       {/* Screen */}
@@ -302,18 +748,31 @@ export default function App() {
         <DashboardScreen
           user={user}
           balance={balance}
-          totalOwed={totalOwed}
+          totalOwed={totalCharged}
           totalPaid={totalPaid}
           expenses={expenses}
           payments={payments}
           syncingPayments={syncingPayments}
           urgentCount={urgentCount}
+          targetSummaries={targetSummaries}
+          onOpenTarget={(key) => { setActiveTargetKey(key); setScreen("target"); }}
           onAddExpense={() => setModal("addExpense")}
           onLogPayment={() => setModal("logPayment")}
           onConfirm={handleConfirm}
           onDeleteExpense={handleDeleteExpense}
+          onMarkPaid={handleMarkPaid}
           onNavigate={setScreen}
           onLogout={async () => { await signOut(auth); setScreen("dashboard"); }}
+        />
+      )}
+      {screen === "target" && (
+        <TargetDetailsScreen
+          user={user}
+          targetKey={activeTargetKey}
+          targetSummaries={targetSummaries}
+          expenses={expenses}
+          payments={payments}
+          onBack={() => { setScreen("dashboard"); setActiveTargetKey(null); }}
         />
       )}
       {screen === "history" && (
@@ -324,17 +783,20 @@ export default function App() {
           onBack={() => setScreen("dashboard")}
           onConfirm={handleConfirm}
           onDeleteConfirmedPayment={handleDeleteConfirmedPayment}
+          onDeleteExpense={handleDeleteExpense}
+          targets={paymentTargets}
         />
       )}
       {screen === "expenses" && (
-        <ExpensesScreen
-          expenses={expenses}
-          user={user}
-          onBack={() => setScreen("dashboard")}
-          onAddExpense={() => setModal("addExpense")}
-          onDeleteExpense={handleDeleteExpense}
-        />
-      )}
+       <ExpensesScreen
+         expenses={expenses}
+         user={user}
+         onBack={() => setScreen("dashboard")}
+         onAddExpense={() => setModal("addExpense")}
+         onDeleteExpense={handleDeleteExpense}
+         onMarkPaid={handleMarkPaid}
+   />
+ )}
       {screen === "urgent" && (
   <UrgentScreen
     expenses={urgentExpenses}
@@ -384,9 +846,32 @@ function LoginScreen() {
 }
 
 // ── DASHBOARD ─────────────────────────────────────────────────────────
-function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, payments, syncingPayments, urgentCount, onAddExpense, onLogPayment, onConfirm, onDeleteExpense, onNavigate, onLogout }) {
-  const pending = payments.filter(p => !p.confirmed);
-  const recentExpenses = expenses.slice(0, 4);
+function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, payments, syncingPayments, urgentCount, targetSummaries, onOpenTarget, onAddExpense, onLogPayment, onConfirm, onDeleteExpense, onMarkPaid, onNavigate, onLogout }) {
+  const pending = payments.filter((p) => !p.confirmed);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchVal, setSearchVal] = useState("");
+
+  const sortedByDate = (expenses || [])
+    .slice()
+    .sort((a, b) => new Date(b.date) - new Date(a.date));
+
+  const q = String(searchVal || "").trim().toLowerCase();
+  const filtered = q
+    ? sortedByDate.filter((e) =>
+        String(e.description || "").toLowerCase().includes(q)
+      )
+    : sortedByDate;
+
+  // Show 4 items normally, but show up to 10 matches when searching.
+  const searchedRecent = (q ? filtered.slice(0, 10) : filtered.slice(0, 4));
+
+  // Dashboard progress section: plans + one-time targets
+  const allTargets = targetSummaries ? Array.from(targetSummaries.values()) : [];
+  const planTargets = allTargets.filter((t) => t.key?.startsWith("grp:") && Number(t.charged || 0) !== 0);
+  const oneTimeTargets = allTargets.filter((t) => t.key?.startsWith("exp:") && Number(t.remaining || 0) !== 0);
+
+  planTargets.sort((a, b) => Number(b.remaining || 0) - Number(a.remaining || 0));
+  oneTimeTargets.sort((a, b) => Number(b.remaining || 0) - Number(a.remaining || 0));
 
   return (
     <div style={styles.screen}>
@@ -396,8 +881,37 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
           <p style={styles.headerGreet}>Hey {user === "emma" ? "Emmanuella" : "Cameron"} 👋</p>
           <p style={styles.headerSub}>{new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}</p>
         </div>
-        <button style={styles.logoutBtn} onClick={onLogout}>Switch</button>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <button
+            style={styles.iconBtn}
+            onClick={() => {
+              setSearchOpen((o) => !o);
+              setSearchVal("");
+            }}
+            aria-label={searchOpen ? "Close search" : "Search"}
+            type="button"
+          >
+            {searchOpen ? "✕" : "🔍"}
+          </button>
+          <button style={styles.logoutBtn} onClick={onLogout}>Switch</button>
+        </div>
       </div>
+
+      {searchOpen && (
+        <div style={styles.searchBar}>
+          <span style={styles.searchIcon}>🔍</span>
+          <input
+            autoFocus
+            style={styles.searchInput}
+            placeholder="Search recent charges…"
+            value={searchVal}
+            onChange={(e) => setSearchVal(e.target.value)}
+          />
+          {searchVal && (
+            <button style={styles.clearSearch} onClick={() => setSearchVal("")} type="button">✕</button>
+          )}
+        </div>
+      )}
 
       {/* Balance Card */}
       <div style={styles.balanceCard}>
@@ -417,6 +931,72 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
           </div>
         </div>
       </div>
+
+      <MonthlySummaryCard expenses={expenses} />
+      <InsightsSection expenses={expenses} />
+
+      {/* Progress */}
+      {(planTargets.length > 0 || oneTimeTargets.length > 0) && (
+        <div style={styles.section}>
+          <div style={{ ...styles.sectionHeader, justifyContent: "space-between" }}>
+            <span style={styles.sectionTitle}>Progress</span>
+            <span style={{ fontSize: 12, color: "#888" }}>
+              {user === "cam" ? "Your balances" : "All balances"}
+            </span>
+          </div>
+
+          {planTargets.length > 0 && (
+            <>
+              <p style={styles.progressSubTitle}>Plans</p>
+              {planTargets.map((p) => {
+                const charged = Number(p.charged || 0);
+                const paid = Number(p.paid || 0);
+                const remaining = Number(p.remaining || 0);
+                const pct = charged > 0 ? Math.max(0, Math.min(1, paid / charged)) : 0;
+
+                return (
+                  <div
+                    key={p.key}
+                    style={{ ...styles.planCard, cursor: "pointer" }}
+                    onClick={() => onOpenTarget && onOpenTarget(p.key)}
+                    role="button"
+                  >
+                    <div style={styles.planTopRow}>
+                      <p style={styles.planTitle}>{p.label}</p>
+                      <p style={styles.planRemaining}>${remaining.toFixed(2)} left</p>
+                    </div>
+                    <div style={styles.planMetaRow}>
+                      <span style={styles.planMetaText}>Paid: ${paid.toFixed(2)}</span>
+                      <span style={styles.planMetaText}>Total: ${charged.toFixed(2)}</span>
+                    </div>
+                    <div style={styles.progressTrack}>
+                      <div style={{ ...styles.progressFill, width: `${pct * 100}%` }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </>
+          )}
+
+          {oneTimeTargets.length > 0 && (
+            <>
+              <p style={styles.progressSubTitle}>One-time</p>
+              {oneTimeTargets.slice(0, 6).map((t) => (
+                <div
+                  key={t.key}
+                  style={{ ...styles.oneTimeRow, cursor: "pointer" }}
+                  onClick={() => onOpenTarget && onOpenTarget(t.key)}
+                  role="button"
+                >
+                  <span style={styles.oneTimeLabel}>{t.label}</span>
+                  <span style={styles.oneTimeAmt}>${Number(t.remaining || 0).toFixed(2)} left</span>
+                </div>
+              ))}
+            </>
+          )}
+        </div>
+      )}
+
       {/* Urgent banner */}
 {urgentCount > 0 && (
   <div
@@ -500,8 +1080,14 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
           <span style={styles.sectionTitle}>Recent charges</span>
           <button style={styles.seeAll} onClick={() => onNavigate("expenses")}>See all</button>
         </div>
-        {recentExpenses.map(e => (
-          <ExpenseRow key={e.id} expense={e} user={user} onDelete={onDeleteExpense} />
+        {searchedRecent.map(e => (
+          <ExpenseRow
+             key={e.id}
+             expense={e}
+             user={user}
+             onDelete={onDeleteExpense}
+             onMarkPaid={onMarkPaid}
+          />
         ))}
       </div>
 
@@ -513,7 +1099,7 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
 // ── URGENT SCREEN ────────────────────────────────────────────────────
 function UrgentScreen({ expenses, user, onBack, onMarkPaid }) {
   const sorted = [...expenses].sort(
-    (a, b) => (getDaysUntilDue(a.dueDate) ?? 999) - (getDaysUntilDue(b.dueDate) ?? 999)
+    (a, b) => (getDaysUntilDue(a.nextDue || a.dueDate) ?? 999) - (getDaysUntilDue(b.nextDue || b.dueDate) ?? 999)
   );
 
   return (
@@ -543,7 +1129,7 @@ function UrgentScreen({ expenses, user, onBack, onMarkPaid }) {
           sorted.map((e) => {
             const level = getUrgencyLevel(e);
             const u = URGENCY[level];
-            const days = getDaysUntilDue(e.dueDate);
+            const days = getDaysUntilDue(e.nextDue || e.dueDate);
 
             const dueLabel =
               days < 0
@@ -592,7 +1178,7 @@ function UrgentScreen({ expenses, user, onBack, onMarkPaid }) {
                       {e.account} · {e.category}
                     </p>
                     <p style={{ fontSize: 11, color: u.badge, fontWeight: 600, margin: "2px 0 0" }}>
-                      Due: {e.dueDate}
+                      Due: {formatShortDate(e.nextDue || e.dueDate)}
                     </p>
                   </div>
                   <div style={{ textAlign: "right", flexShrink: 0 }}>
@@ -604,11 +1190,11 @@ function UrgentScreen({ expenses, user, onBack, onMarkPaid }) {
                         Cam owes: ${camAmt.toFixed(2)}
                       </p>
                     )}
-                    {user === "emma" && (
-                      <button style={styles.markPaidBtn} onClick={() => onMarkPaid(e.id)}>
-                        Mark paid
-                      </button>
-                    )}
+                    {user === "emma" && !e._optimistic && (
+  <button style={styles.markPaidBtn} onClick={() => onMarkPaid(e.id)}>
+    Mark paid
+  </button>
+)}
                   </div>
                 </div>
               </div>
@@ -623,16 +1209,26 @@ function UrgentScreen({ expenses, user, onBack, onMarkPaid }) {
 }
 
 // ── EXPENSES SCREEN ───────────────────────────────────────────────────
-function ExpensesScreen({ expenses, user, onBack, onAddExpense, onDeleteExpense }) {
+function ExpensesScreen({ expenses, user, onBack, onAddExpense, onDeleteExpense, onMarkPaid }) {
   const [filter, setFilter] = useState("all");
-  const filtered = filter === "all" ? expenses : expenses.filter(e => e.split === filter);
+  const baseFiltered = filter === "all" ? expenses : expenses.filter((e) => e.split === filter);
+  const [filteredList, setFilteredList] = useState(baseFiltered);
+
+  useEffect(() => {
+    setFilteredList(baseFiltered);
+  }, [filter, expenses]);
+
+  const filtered = filteredList;
 
   return (
     <div style={styles.screen}>
       <div style={styles.subHeader}>
         <button style={styles.backBtn} onClick={onBack}><Icon path={icons.back} size={20} /></button>
         <h2 style={styles.subTitle}>All Expenses</h2>
-        <button style={styles.addSmall} onClick={onAddExpense}><Icon path={icons.plus} size={18} color="#fff" /></button>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <SearchBar expenses={baseFiltered} onFilter={setFilteredList} />
+          <button style={styles.addSmall} onClick={onAddExpense}><Icon path={icons.plus} size={18} color="#fff" /></button>
+        </div>
       </div>
 
       {/* Filter tabs */}
@@ -645,19 +1241,51 @@ function ExpensesScreen({ expenses, user, onBack, onAddExpense, onDeleteExpense 
       </div>
 
       {filtered.map(e => (
-        <ExpenseRow key={e.id} expense={e} detailed user={user} onDelete={onDeleteExpense} />
-      ))}
+  <ExpenseRow
+    key={e.id}
+    expense={e}
+    detailed
+    user={user}
+    onDelete={onDeleteExpense}
+    onMarkPaid={onMarkPaid}
+  />
+))}
       <div style={{height: 80}} />
     </div>
   );
 }
 
 // ── HISTORY SCREEN ────────────────────────────────────────────────────
-function HistoryScreen({ expenses, payments, user, onBack, onConfirm, onDeleteConfirmedPayment }) {
+function HistoryScreen({ expenses, payments, user, targets = [], onBack, onConfirm, onDeleteConfirmedPayment, onDeleteExpense }) {
   const all = [
-    ...payments.map(p => ({ ...p, type: "payment" })),
-    ...expenses.map(e => ({ ...e, type: "expense" })),
+    ...payments.map((p) => ({ ...p, type: "payment" })),
+    ...expenses.flatMap((e) => {
+      // Show ONE history row per expense.
+      // If it has a paid timestamp, show it as a paid event with that timestamp.
+      if (e.lastPaidAt) {
+        return [
+          {
+            ...e,
+            type: "expense",
+            status: "paid",
+            date: e.lastPaidAt,
+            _paidEvent: true,
+          },
+        ];
+      }
+      return [{ ...e, type: "expense" }];
+    }),
   ].sort((a, b) => new Date(b.date) - new Date(a.date));
+
+  const targetLabelByKey = new Map(
+    (targets || []).map((t) => [t.key, t.label])
+  );
+
+  function paymentTargetLabel(p) {
+    const key = p.appliedToKey || (p.appliedToGroupId ? `grp:${p.appliedToGroupId}` : "general");
+    if (!key || key === "general") return null;
+    return targetLabelByKey.get(key) || null;
+  }
 
   return (
     <div style={styles.screen}>
@@ -666,6 +1294,9 @@ function HistoryScreen({ expenses, payments, user, onBack, onConfirm, onDeleteCo
         <h2 style={styles.subTitle}>History</h2>
         <div style={{width: 36}} />
       </div>
+
+      {/* Step 5: Add PaymentTimeline framework component */}
+      <PaymentTimeline payments={payments} />
 
       {all.map((item, i) => (
         <div key={i} style={styles.historyItem}>
@@ -677,10 +1308,15 @@ function HistoryScreen({ expenses, payments, user, onBack, onConfirm, onDeleteCo
           </div>
           <div style={styles.historyInfo}>
             <p style={styles.historyDesc}>
-              {item.type === "payment" ? `Payment via ${item.method}` : item.description}
+              {item.type === "payment"
+                ? (() => {
+                    const lbl = paymentTargetLabel(item);
+                    return lbl ? `Payment via ${item.method} · toward ${lbl}` : `Payment via ${item.method}`;
+                  })()
+                : item.description}
             </p>
             <p style={styles.historyMeta}>
-              {item.date} {item.type === "payment" && !item.confirmed && <span style={styles.pendingBadge}>pending</span>}
+              {formatHistoryDate(item.date)} {item.type === "payment" && !item.confirmed && <span style={styles.pendingBadge}>pending</span>}
               {item.type === "payment" && item.confirmed && <span style={styles.confirmedBadge}>confirmed</span>}
               {item.type === "expense" && item.status === "paid" && <span style={styles.confirmedBadge}>paid</span>}
             </p>
@@ -705,6 +1341,15 @@ function HistoryScreen({ expenses, payments, user, onBack, onConfirm, onDeleteCo
                 <Icon path={icons.x} size={16} color="#E8A0B0" />
               </button>
             )}
+            {item.type === "expense" && item.status === "paid" && user === "emma" && typeof onDeleteExpense === "function" && (
+              <button
+                style={styles.deleteBtn}
+                onClick={() => onDeleteExpense(item.id)}
+                title="Delete paid expense"
+              >
+                <Icon path={icons.x} size={16} color="#E8A0B0" />
+              </button>
+            )}
           </div>
         </div>
       ))}
@@ -715,35 +1360,385 @@ function HistoryScreen({ expenses, payments, user, onBack, onConfirm, onDeleteCo
 
 
 // ── EXPENSE ROW ───────────────────────────────────────────────────────
-function ExpenseRow({ expense: e, detailed, user, onDelete }) {
-  const camAmt =
-  e.split === "cam" ? e.amount :
-  e.split === "split" ? e.amount / 2 :
-  e.split === "ella" ? -e.amount :
-  0;
+function ExpenseRow({ expense, user, onDelete, onMarkPaid }) {
   return (
-    <div style={styles.expenseRow}>
-      <div style={{...styles.splitDot, background: SPLIT_COLORS[e.split]}} />
-      <div style={styles.expenseInfo}>
-        <p style={styles.expenseDesc}>{e.description}</p>
-        <p style={styles.expenseMeta}>
-          {e.date} · {e.account}
-          {detailed && <span style={{...styles.splitBadge, background: SPLIT_COLORS[e.split] + "33", color: "#555"}}> {SPLIT_LABELS[e.split]}</span>}
-        </p>
+    <ExpandableExpenseRow
+      expense={expense}
+      user={user}
+      onDelete={onDelete}
+      onMarkPaid={onMarkPaid}
+    />
+  );
+}
+
+
+// ── SPLITTRACK FRAMEWORK COMPONENTS (imported) ───────────────────────
+
+function ExpandableExpenseRow({ expense: e, user, onDelete, onMarkPaid }) {
+  const [expanded, setExpanded] = useState(false);
+  const [note, setNote] = useState(e.note || "");
+  const [editingNote, setEditingNote] = useState(false);
+  const [noteDraft, setNoteDraft] = useState(e.note || "");
+  const [noteSaveStatus, setNoteSaveStatus] = useState(null); // null | "saving" | "saved" | "error"
+  const noteSaveTimerRef = useRef(null);
+
+  useEffect(() => {
+    return () => {
+      if (noteSaveTimerRef.current) clearTimeout(noteSaveTimerRef.current);
+    };
+  }, []);
+
+  const camAmt =
+    e.split === "cam" ? Number(e.amount || 0) :
+    e.split === "split" ? Number(e.amount || 0) / 2 :
+    e.split === "ella" ? -Number(e.amount || 0) :
+    0;
+
+  async function handleSaveNote(nextVal) {
+    // clear any existing timer
+    if (noteSaveTimerRef.current) clearTimeout(noteSaveTimerRef.current);
+
+    setNoteSaveStatus("saving");
+    setEditingNote(false);
+    setNote(nextVal);
+
+    try {
+      await updateExpenseInDb(e.id, { note: nextVal });
+      setNoteSaveStatus("saved");
+      // auto-hide after 1.5s
+      noteSaveTimerRef.current = setTimeout(() => {
+        setNoteSaveStatus(null);
+        noteSaveTimerRef.current = null;
+      }, 1500);
+    } catch (err) {
+      console.error("Failed to save note:", err);
+      setNote(e.note || "");
+      setNoteDraft(e.note || "");
+      setNoteSaveStatus("error");
+      // auto-hide error after 2s
+      noteSaveTimerRef.current = setTimeout(() => {
+        setNoteSaveStatus(null);
+        noteSaveTimerRef.current = null;
+      }, 2000);
+    }
+  }
+
+  return (
+    <div style={fw.expenseCard}>
+      <div
+        style={fw.expenseTop}
+        onClick={() => setExpanded((o) => !o)}
+        role="button"
+      >
+        <div style={{ ...fw.splitDot, background: SPLIT_COLORS[e.split] }} />
+        <div style={fw.expenseInfo}>
+          <p style={fw.expenseDesc}>{e.description}</p>
+          <p style={fw.expenseMeta}>{formatShortDate(e.date)} · {e.account}</p>
+        </div>
+        <div style={fw.expenseRight}>
+          <p style={fw.expenseTotal}>${Number(e.amount || 0).toFixed(2)}</p>
+          {camAmt !== 0 && <p style={fw.expenseCam}>Cam: ${Number(camAmt || 0).toFixed(2)}</p>}
+          <span style={{ ...fw.chevron, transform: expanded ? "rotate(180deg)" : "rotate(0deg)" }}>▾</span>
+        </div>
       </div>
-      <div style={styles.expenseAmts}>
-        <p style={styles.expenseTotal}>${e.amount.toFixed(2)}</p>
-        {camAmt !== 0 && <p style={styles.expenseCam}>Cam: ${camAmt.toFixed(2)}</p>}
-        {user === "emma" && typeof onDelete === "function" && (
-          <button
-            style={styles.deleteBtn}
-            onClick={() => onDelete(e.id)}
-            title="Delete"
-          >
-            <Icon path={icons.x} size={16} color="#E8A0B0" />
-          </button>
-        )}
+
+      {expanded && (
+        <div style={fw.expandPanel} onClick={(ev) => ev.stopPropagation()}>
+          <div style={fw.detailRow}>
+            <span style={fw.detailLabel}>Status</span>
+            <span
+              style={{
+                ...fw.statusBadge,
+                background: e.status === "paid" ? "#EEF5EC" : "#FFF0F0",
+                color: e.status === "paid" ? "#1E8449" : "#E05C6E",
+              }}
+            >
+              {e.status === "paid" ? "✓ Paid" : "Unpaid"}
+            </span>
+          </div>
+
+          <div style={fw.detailRow}>
+            <span style={fw.detailLabel}>Split</span>
+            <span style={{ ...fw.splitChip, background: SPLIT_COLORS[e.split] + "33", color: "#444" }}>
+              {SPLIT_LABELS[e.split]}
+            </span>
+          </div>
+
+          <div style={fw.detailRow}>
+            <span style={fw.detailLabel}>Category</span>
+            <span style={fw.detailVal}>{e.category || "Other"}</span>
+          </div>
+
+          {(e.nextDue || e.dueDate) && (
+            <div style={fw.detailRow}>
+              <span style={fw.detailLabel}>Due Date</span>
+              <span style={fw.detailVal}>{formatShortDate(e.nextDue || e.dueDate)}</span>
+            </div>
+          )}
+
+          <div style={{ marginTop: 8 }}>
+            <span style={fw.detailLabel}>Note</span>
+            {editingNote ? (
+              <div style={{ marginTop: 4 }}>
+                <textarea
+                  style={fw.noteTextarea}
+                  value={noteDraft}
+                  onChange={(ev) => setNoteDraft(ev.target.value)}
+                  placeholder="Add a note…"
+                  rows={3}
+                  autoFocus
+                  onKeyDown={(ev) => {
+                    const isSave = (ev.ctrlKey || ev.metaKey) && ev.key === "Enter";
+                    if (isSave) {
+                      ev.preventDefault();
+                      const trimmed = String(noteDraft || "");
+                      handleSaveNote(trimmed);
+                    }
+                  }}
+                />
+                <div style={fw.noteBtnRow}>
+                  <button
+                    style={fw.noteCancelBtn}
+                    type="button"
+                    onClick={() => {
+                      setEditingNote(false);
+                      setNoteDraft(note);
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    style={fw.noteSaveBtn}
+                    type="button"
+                    onClick={() => handleSaveNote(String(noteDraft || ""))}
+                  >
+                    Save
+                  </button>
+                </div>
+                {noteSaveStatus && (
+                  <div
+                    style={{
+                      marginTop: 8,
+                      fontSize: 12,
+                      fontWeight: 700,
+                      color:
+                        noteSaveStatus === "saved"
+                          ? "#1E8449"
+                          : noteSaveStatus === "error"
+                          ? "#E05C6E"
+                          : "#888",
+                    }}
+                  >
+                    {noteSaveStatus === "saving"
+                      ? "Saving…"
+                      : noteSaveStatus === "saved"
+                      ? "Saved ✓"
+                      : "Couldn’t save"}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <>
+                <p
+                  style={fw.noteTap}
+                  onClick={() => {
+                    setNoteDraft(note);
+                    setEditingNote(true);
+                  }}
+                >
+                  {note || "Tap to add a note…"}
+                </p>
+                {noteSaveStatus === "saved" && (
+                  <div style={{ marginTop: 6, fontSize: 12, fontWeight: 700, color: "#1E8449" }}>
+                    Saved ✓
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+
+          {user === "emma" && (
+            <div style={fw.actionBtns}>
+              {e.status !== "paid" && !e._optimistic && typeof onMarkPaid === "function" && (
+                <button style={fw.markPaidBtn} type="button" onClick={() => onMarkPaid(e.id)}>
+                  ✓ Mark Paid
+                </button>
+              )}
+              {typeof onDelete === "function" && (
+                <button style={fw.deleteBtn} type="button" onClick={() => onDelete(e.id)}>
+                  🗑 Delete
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function InsightsSection({ expenses }) {
+  const [open, setOpen] = useState(false);
+
+  const totalUnpaid = (expenses || [])
+    .filter((e) => e.status !== "paid" && ["cam", "split"].includes(e.split))
+    .reduce((s, e) => s + (e.split === "split" ? Number(e.amount || 0) / 2 : Number(e.amount || 0)), 0);
+
+  return (
+    <div style={fw.insightCard}>
+      <div style={fw.insightHeader} onClick={() => setOpen((o) => !o)} role="button">
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontSize: 18 }}>📊</span>
+          <span style={fw.insightTitle}>Insights</span>
+        </div>
+        <span style={{ ...fw.chevron, transform: open ? "rotate(180deg)" : "rotate(0deg)" }}>▾</span>
       </div>
+
+      {open && (
+        <div style={fw.insightBody}>
+          <div style={fw.insightStat}>
+            <span style={fw.insightStatLabel}>Cam still owes</span>
+            <span style={fw.insightStatVal}>${totalUnpaid.toFixed(2)}</span>
+          </div>
+          <div style={fw.insightDivider} />
+          <div style={fw.insightStat}>
+            <span style={fw.insightStatLabel}>Total expenses</span>
+            <span style={fw.insightStatVal}>{(expenses || []).length} items</span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SearchBar({ expenses, onFilter }) {
+  const [visible, setVisible] = useState(false);
+  const [query, setQuery] = useState("");
+
+  function handleChange(val) {
+    setQuery(val);
+    const q = String(val || "").toLowerCase();
+    const filtered = (expenses || []).filter((e) =>
+      String(e.description || "").toLowerCase().includes(q) ||
+      String(e.category || "").toLowerCase().includes(q)
+    );
+    onFilter(filtered);
+  }
+
+  return (
+    <div>
+      <button
+        style={fw.searchIconBtn}
+        type="button"
+        onClick={() => {
+          setVisible((v) => !v);
+          if (visible) {
+            setQuery("");
+            onFilter(expenses);
+          }
+        }}
+        aria-label={visible ? "Close search" : "Search"}
+      >
+        🔍
+      </button>
+
+      {visible && (
+        <div style={fw.searchBar}>
+          <input
+            style={fw.searchInput}
+            placeholder="Search expenses…"
+            value={query}
+            onChange={(e) => handleChange(e.target.value)}
+            autoFocus
+          />
+          {query.length > 0 && (
+            <button style={fw.searchClear} type="button" onClick={() => { setQuery(""); onFilter(expenses); }}>
+              ✕
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MonthlySummaryCard({ expenses }) {
+  const [open, setOpen] = useState(false);
+
+  const now = new Date();
+  const month = now.toLocaleString("en-US", { month: "long" });
+  const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+
+  const thisMonth = (expenses || []).filter((e) => String(e.date || "").startsWith(monthKey));
+  const total = thisMonth.reduce((s, e) => s + Number(e.amount || 0), 0);
+  const camTotal = thisMonth
+    .filter((e) => ["cam", "split"].includes(e.split))
+    .reduce((s, e) => s + (e.split === "split" ? Number(e.amount || 0) / 2 : Number(e.amount || 0)), 0);
+
+  return (
+    <div style={fw.summaryCard} onClick={() => setOpen((o) => !o)} role="button">
+      <div style={fw.summaryTop}>
+        <div>
+          <p style={fw.summaryMonth}>{month} Summary</p>
+          <p style={fw.summaryTotal}>${total.toFixed(2)} total</p>
+        </div>
+        <span style={{ ...fw.chevron, fontSize: 18, color: "#fff", transform: open ? "rotate(180deg)" : "rotate(0deg)" }}>▾</span>
+      </div>
+
+      {open && (
+        <div style={fw.summaryBreakdown}>
+          <div style={fw.summaryRow}>
+            <span style={{ color: "rgba(255,255,255,0.7)", fontSize: 13 }}>Cam owes (this month)</span>
+            <span style={{ color: "#A8EFC4", fontWeight: 700 }}>${camTotal.toFixed(2)}</span>
+          </div>
+          <div style={fw.summaryRow}>
+            <span style={{ color: "rgba(255,255,255,0.7)", fontSize: 13 }}>Your expenses</span>
+            <span style={{ color: "#fff", fontWeight: 700 }}>${(total - camTotal).toFixed(2)}</span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PaymentTimeline({ payments }) {
+  const [open, setOpen] = useState(false);
+  const confirmed = (payments || []).filter((p) => p && p.confirmed);
+
+  return (
+    <div style={fw.timelineCard}>
+      <div style={fw.timelineHeader} onClick={() => setOpen((o) => !o)} role="button">
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontSize: 16 }}>💳</span>
+          <span style={fw.insightTitle}>Payment History</span>
+          {confirmed.length > 0 && <span style={fw.countBadge}>{confirmed.length}</span>}
+        </div>
+        <span style={{ ...fw.chevron, transform: open ? "rotate(180deg)" : "rotate(0deg)" }}>▾</span>
+      </div>
+
+      {open && (
+        <div style={{ padding: "8px 16px 12px" }}>
+          {confirmed.length === 0 ? (
+            <p style={{ color: "#999", fontSize: 13, textAlign: "center", padding: "16px 0" }}>
+              No confirmed payments yet
+            </p>
+          ) : (
+            confirmed.map((p, i) => (
+              <div key={p.id || i} style={fw.timelineItem}>
+                <div style={fw.timelineLine}>
+                  <div style={fw.timelineDot} />
+                  {i < confirmed.length - 1 && <div style={fw.timelineConnector} />}
+                </div>
+                <div style={fw.timelineContent}>
+                  <p style={fw.timelineAmt}>${Number(p.amount || 0).toFixed(2)}</p>
+                  <p style={fw.timelineMeta}>{p.method} · {formatShortDate(p.date)}</p>
+                  {p.note && <p style={fw.timelineNote}>"{p.note}"</p>}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -751,99 +1746,255 @@ function ExpenseRow({ expense: e, detailed, user, onDelete }) {
 // ── ADD EXPENSE MODAL ─────────────────────────────────────────────────
 function AddExpenseModal({ onSave, onClose, user }) {
   const [form, setForm] = useState({
-  description: "",
-  amount: "",
-  split: "split",
-  date: new Date().toISOString().split("T")[0],
-  dueDate: "",
-  account: "Navy Platinum",
-  category: "Groceries",
-  recurring: "none",
-});
-  const set = (k, v) => setForm(f => ({...f, [k]: v}));
+    description: "",
+    amount: "",
+    split: "split",
+    date: new Date().toISOString().split("T")[0],
+    dueDate: "",
+    endDate: "",
+    repeatCount: "",
+    account: "Navy Platinum",
+    category: "Groceries",
+    recurring: "none",
+  });
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const previewNextDue =
+    form.recurring && form.recurring !== "none" && form.dueDate
+      ? getNextDueDate(form.dueDate, form.recurring)
+      : "";
 
   return (
     <div style={styles.modalOverlay}>
       <div style={styles.modal}>
+        <div style={styles.dragHandle} />
+
         <div style={styles.modalHeader}>
           <h3 style={styles.modalTitle}>Add Expense</h3>
-          <button style={styles.closeBtn} onClick={onClose}><Icon path={icons.x} size={18} /></button>
+          <button style={styles.closeBtn} onClick={onClose}>
+            <Icon path={icons.x} size={18} />
+          </button>
         </div>
+
         <div style={styles.form}>
-          <label style={styles.label}>Description</label>
-          <input style={styles.input} placeholder="e.g. Groceries — Wegmans" value={form.description} onChange={e => set("description", e.target.value)} />
+          {/* Transaction Details */}
+          <div style={styles.sectionLabelRow}>
+            <span style={styles.sectionLabel}>Transaction details</span>
+          </div>
 
-          <label style={styles.label}>Amount ($)</label>
-          <input style={styles.input} type="number" placeholder="0.00" value={form.amount} onChange={e => set("amount", e.target.value)} />
+          <label style={styles.fieldLabel}>Description</label>
+          <input
+            style={styles.input}
+            placeholder="e.g. Netflix, Wegmans…"
+            value={form.description}
+            onChange={(e) => set("description", e.target.value)}
+          />
 
-          <label style={styles.label}>Who pays?</label>
+          <label style={styles.fieldLabel}>Amount ($)</label>
+          <div style={{ position: "relative" }}>
+            <span style={styles.dollarSign}>$</span>
+            <input
+              style={{ ...styles.input, paddingLeft: 28, fontSize: 20, fontWeight: 700 }}
+              type="number"
+              placeholder="0.00"
+              value={form.amount}
+              onChange={(e) => set("amount", e.target.value)}
+            />
+          </div>
+
+          <div style={styles.twoCol}>
+            <div style={{ flex: 1 }}>
+              <label style={styles.fieldLabel}>Transaction date</label>
+              <input
+                style={styles.input}
+                type="date"
+                value={form.date}
+                onChange={(e) => set("date", e.target.value)}
+              />
+            </div>
+            <div style={{ flex: 1 }}>
+              <label style={styles.fieldLabel}>Reference # (optional)</label>
+              <input
+                style={styles.input}
+                placeholder="TXN-4821"
+                value={form.referenceNum || ""}
+                onChange={(e) => set("referenceNum", e.target.value)}
+              />
+            </div>
+          </div>
+          <p style={styles.hintText}>Optional — from bank statement or receipt</p>
+
+          {/* Schedule */}
+          <div style={styles.sectionLabelRow}>
+  <span style={styles.sectionLabel}>Schedule</span>
+  {form.recurring && form.recurring !== "none" && <span style={styles.newBadge}>NEW</span>}
+</div>
+
+          <label style={styles.fieldLabel}>Frequency</label>
+          <div style={styles.chipRow}>
+            {[["none", "One-time"], ["weekly", "Weekly"], ["biweekly", "Biweekly"], ["monthly", "Monthly"]].map(
+              ([val, label]) => (
+                <button
+                  key={val}
+                  type="button"
+                  style={{
+                    ...styles.freqBtn,
+                    ...(form.recurring === val ? styles.freqBtnActive : {}),
+                  }}
+                  onClick={() => set("recurring", val)}
+                >
+                  {label}
+                </button>
+              )
+            )}
+          </div>
+
+          {(!form.recurring || form.recurring === "none") && (
+            <>
+              <label style={styles.fieldLabel}>Due date (optional)</label>
+              <input
+                style={styles.input}
+                type="date"
+                value={form.dueDate}
+                onChange={(e) => set("dueDate", e.target.value)}
+              />
+            </>
+          )}
+
+          {form.recurring && form.recurring !== "none" && (
+          <div style={styles.dueDateBox}>
+            <div style={styles.twoCol}>
+              <div style={{ flex: 1 }}>
+                <label style={styles.fieldLabel}>First due date</label>
+                <input
+                  style={styles.input}
+                  type="date"
+                  value={form.dueDate}
+                  onChange={(e) => set("dueDate", e.target.value)}
+                />
+              </div>
+              {form.recurring && form.recurring !== "none" && (
+                <div style={{ flex: 1 }}>
+                  <label style={styles.fieldLabel}>Auto-advance to</label>
+                  <div style={styles.previewPill}>
+                    Next: <strong>{formatHistoryDate(previewNextDue)}</strong>
+                  </div>
+                </div>
+              )}
+            </div>
+
+              <>
+                <div style={styles.endDateDivider} />
+
+                <label style={styles.fieldLabel}>End date (optional)</label>
+                <input
+                  style={styles.input}
+                  type="date"
+                  value={form.endDate}
+                  min={form.dueDate || undefined}
+                  onChange={(e) => set("endDate", e.target.value)}
+                />
+
+                <label style={styles.fieldLabel}>Repeat count (optional)</label>
+                <input
+                  style={styles.input}
+                  type="number"
+                  min="1"
+                  placeholder="e.g. 8"
+                  value={form.repeatCount}
+                  onChange={(e) => set("repeatCount", e.target.value)}
+                />
+
+                <p style={styles.hintText}>
+                  Stops repeating when end date is reached or repeat count runs out.
+                </p>
+              </>
+          </div>
+          )}
+
+          {/* Who Pays */}
+          <div style={styles.sectionLabelRow}>
+            <span style={styles.sectionLabel}>Who pays?</span>
+          </div>
+
           <div style={styles.splitRow}>
             {(
               user === "cam"
-                ? [["cam","I pay","#E8A0B0"],["ella","Emmanuella pays","#7BBFB0"],["split","Split 50/50","#C4A8D4"]]
-                : [["mine","I pay","#7BBFB0"],["cam","Cam pays","#E8A0B0"],["split","Split 50/50","#C4A8D4"]]
+                ? [["cam", "I pay", "#E8A0B0"], ["ella", "Emmanuella pays", "#7BBFB0"], ["split", "Split 50/50", "#C4A8D4"]]
+                : [["mine", "I pay", "#7BBFB0"], ["cam", "Cam pays", "#E8A0B0"], ["split", "Split 50/50", "#C4A8D4"]]
             ).map(([val, label, color]) => (
-              <button key={val} style={{
-                ...styles.splitOption,
-                background: form.split === val ? color : "#F5F0FB",
-                color: form.split === val ? "#fff" : "#666",
-                fontWeight: form.split === val ? 700 : 400,
-              }} onClick={() => set("split", val)}>{label}</button>
-            ))}
-          </div>
-
-          <label style={styles.label}>Date</label>
-          <input style={styles.input} type="date" value={form.date} onChange={e => set("date", e.target.value)} />
-
-          <label style={styles.label}>
-            Due Date <span style={{ color: "#BBB", fontWeight: 400, textTransform: "none", fontSize: 11 }}>(optional)</span>
-          </label>
-          <input
-            style={styles.input}
-            type="date"
-            value={form.dueDate}
-            onChange={(e) => set("dueDate", e.target.value)}
-          />
-
-          <label style={styles.label}>Repeats</label>
-          <div style={styles.splitRow}>
-            {[["none","One-time"],["weekly","Weekly"],["biweekly","Every 2 wks"],["monthly","Monthly"]].map(([val, label]) => (
               <button
                 key={val}
+                type="button"
                 style={{
                   ...styles.splitOption,
-                  fontSize: 12,
-                  background: form.recurring === val ? "#7BBFB0" : "#F5F0FB",
-                  color: form.recurring === val ? "#fff" : "#666",
-                  fontWeight: form.recurring === val ? 700 : 400,
+                  background: form.split === val ? color : "#F5F0FB",
+                  color: form.split === val ? "#fff" : "#666",
+                  fontWeight: form.split === val ? 700 : 500,
                 }}
-                onClick={() => set("recurring", val)}
+                onClick={() => set("split", val)}
               >
                 {label}
               </button>
             ))}
           </div>
 
-          <label style={styles.label}>Category</label>
-          <select style={styles.input} value={form.category} onChange={e => set("category", e.target.value)}>
-            {CATEGORIES.map(c => <option key={c}>{c}</option>)}
+          <label style={styles.fieldLabel}>Account</label>
+          <select style={styles.input} value={form.account} onChange={(e) => set("account", e.target.value)}>
+            {["Navy Platinum", "Best Buy Visa", "Klarna", "Affirm", "Cash", "Zelle"].map((a) => (
+              <option key={a}>{a}</option>
+            ))}
           </select>
 
-          <label style={styles.label}>Account</label>
-          <select style={styles.input} value={form.account} onChange={e => set("account", e.target.value)}>
-            {["Navy Platinum","Best Buy Visa","Klarna","Affirm","Cash","Zelle"].map(a => <option key={a}>{a}</option>)}
-          </select>
+          <div style={styles.sectionLabelRow}>
+            <span style={styles.sectionLabel}>Category</span>
+          </div>
 
-          <button style={styles.saveBtn} onClick={() => {
-            if (!form.description || !form.amount) return;
-            const data = {
-              ...form,
-              amount: parseFloat(form.amount),
-              nextDue: form.dueDate || null,
-            };
-            if (!data.dueDate) delete data.dueDate;
-            onSave(data);
-          }}>Save Expense</button>
+          <div style={styles.catRow}>
+            {CATEGORIES.map((c) => (
+              <button
+                key={c}
+                type="button"
+                style={{
+                  ...styles.catChip,
+                  background: form.category === c ? "#2D1B5E" : "#F5F0FB",
+                  color: form.category === c ? "#fff" : "#666",
+                  borderColor: form.category === c ? "#2D1B5E" : "#E5DFF5",
+                }}
+                onClick={() => set("category", c)}
+              >
+                {c}
+              </button>
+            ))}
+          </div>
+
+          <button
+            style={styles.saveBtn}
+            onClick={() => {
+              if (!form.description || !form.amount) return;
+              const repeatCountNum = form.repeatCount ? parseInt(form.repeatCount, 10) : null;
+
+              const data = {
+                ...form,
+                amount: parseFloat(form.amount),
+                nextDue: form.dueDate || null,
+                repeatCount: repeatCountNum,
+                repeatCountRemaining: repeatCountNum,
+              };
+
+              if (!data.dueDate) delete data.dueDate;
+              if (!data.endDate) delete data.endDate;
+
+              if (!repeatCountNum) {
+                delete data.repeatCount;
+                delete data.repeatCountRemaining;
+              }
+
+              onSave(data);
+            }}
+            type="button"
+          >
+            Save Expense
+          </button>
         </div>
       </div>
     </div>
@@ -851,11 +2002,23 @@ function AddExpenseModal({ onSave, onClose, user }) {
 }
 
 // ── LOG PAYMENT MODAL ─────────────────────────────────────────────────
-function LogPaymentModal({ balance, onSave, onClose, user }) {
+function LogPaymentModal({ balance, onSave, onClose, user, targets = [], planSummaries, targetSummaries }) {
   const [form, setForm] = useState({
-    amount: "", method: "Zelle", date: new Date().toISOString().split("T")[0], note: ""
+    amount: "",
+    method: "Zelle",
+    date: new Date().toISOString().split("T")[0],
+    note: "",
+    appliedToKey: "general",
   });
   const set = (k, v) => setForm(f => ({...f, [k]: v}));
+
+  const selectedTarget =
+    targetSummaries && form.appliedToKey && form.appliedToKey !== "general"
+      ? targetSummaries.get(form.appliedToKey)
+      : null;
+
+  const targetRemaining = selectedTarget ? selectedTarget.remaining : null;
+  const suggestedAmount = selectedTarget ? selectedTarget.suggested : null;
 
   return (
     <div style={styles.modalOverlay}>
@@ -866,14 +2029,66 @@ function LogPaymentModal({ balance, onSave, onClose, user }) {
         </div>
         {user === "cam" && (
           <div style={{...styles.alertBox, margin: "0 0 16px", background: "#FBF5E0", borderColor: "#E8C878"}}>
-            <p style={{color: "#7A5A10", fontSize: 13, margin: 0}}>
-              Current balance: <strong>${balance.toFixed(2)}</strong>
-            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <p style={{color: "#7A5A10", fontSize: 13, margin: 0}}>
+                Current balance: <strong>${balance.toFixed(2)}</strong>
+              </p>
+              {selectedTarget && (
+                <p style={{color: "#7A5A10", fontSize: 12, margin: 0}}>
+                  {selectedTarget.label}: <strong>${Number(targetRemaining || 0).toFixed(2)}</strong> remaining
+                </p>
+              )}
+            </div>
           </div>
         )}
         <div style={styles.form}>
           <label style={styles.label}>Amount ($)</label>
           <input style={styles.input} type="number" placeholder="0.00" value={form.amount} onChange={e => set("amount", e.target.value)} />
+          {selectedTarget && (
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4 }}>
+              <span style={{ fontSize: 12, color: "#7A5A10" }}>
+                Suggested: <strong>${Number(suggestedAmount || 0).toFixed(2)}</strong>
+              </span>
+              <button
+                type="button"
+                style={{ background: "none", border: "none", color: "#7BBFB0", fontWeight: 700, cursor: "pointer", fontSize: 12 }}
+                onClick={() => set("amount", String(Number(suggestedAmount || 0).toFixed(2)))}
+              >
+                Use suggested
+              </button>
+            </div>
+          )}
+
+          <label style={styles.label}>Apply payment to</label>
+          <select
+            style={styles.input}
+            value={form.appliedToKey}
+            onChange={(e) => {
+              const key = e.target.value;
+              set("appliedToKey", key);
+              // If user hasn't typed an amount yet, auto-fill a suggested amount for the selected target.
+              if (!form.amount && targetSummaries && key !== "general") {
+                const s = targetSummaries.get(key);
+                if (s && s.suggested != null) {
+                  set("amount", String(s.suggested));
+                }
+              }
+            }}
+          >
+            {(targets.length ? targets : [{ key: "general", label: "General (not assigned)" }]).map((t) => {
+              const summary =
+                targetSummaries && t.key && t.key !== "general" ? targetSummaries.get(t.key) : null;
+              const remainingText = summary
+                ? ` · $${Number(summary.remaining || 0).toFixed(2)} remaining`
+                : "";
+
+              return (
+                <option key={t.key} value={t.key}>
+                  {t.label}{remainingText}
+                </option>
+              );
+            })}
+          </select>
 
           <label style={styles.label}>How did you pay?</label>
           <div style={styles.splitRow}>
@@ -898,7 +2113,14 @@ function LogPaymentModal({ balance, onSave, onClose, user }) {
 
           <button style={{...styles.saveBtn, background: "linear-gradient(135deg, #7BBFB0, #5CA89A)"}} onClick={() => {
             if (!form.amount) return;
-            onSave({...form, amount: parseFloat(form.amount)});
+            const key = form.appliedToKey || "general";
+            const legacyGroupId = key.startsWith("grp:") ? key.slice(4) : undefined;
+            onSave({
+              ...form,
+              amount: parseFloat(form.amount),
+              appliedToKey: key,
+              ...(legacyGroupId ? { appliedToGroupId: legacyGroupId } : {}),
+            });
           }}>Submit Payment</button>
         </div>
       </div>
@@ -973,6 +2195,71 @@ function BottomNav({ screen, onNavigate, urgentCount = 0 }) {
   );
 }
 
+// ── FRAMEWORK STYLES ─────────────────────────────────────────────────
+const fw = {
+  expenseCard: { background: "#fff", borderRadius: 16, marginBottom: 8, overflow: "hidden", boxShadow: "0 2px 8px rgba(0,0,0,0.06)" },
+  expenseTop: { display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", cursor: "pointer" },
+  expenseInfo: { flex: 1, minWidth: 0 },
+  expenseDesc: { fontSize: 13, fontWeight: 600, color: "#2D1B5E", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" },
+  expenseMeta: { fontSize: 11, color: "#999", margin: "2px 0 0" },
+  expenseRight: { textAlign: "right", flexShrink: 0 },
+  expenseTotal: { fontSize: 14, fontWeight: 700, color: "#2D1B5E", margin: 0 },
+  expenseCam: { fontSize: 11, color: "#E8A0B0", margin: "1px 0 0", fontWeight: 600 },
+  splitDot: { width: 8, height: 8, borderRadius: "50%", flexShrink: 0 },
+  chevron: { fontSize: 14, color: "#AAA", display: "block", marginTop: 4, transition: "transform 0.2s" },
+
+  expandPanel: { padding: "14px 16px 16px", borderTop: "1px solid #F5F0FB" },
+  detailRow: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: "1px solid #F9F5FF" },
+  detailLabel: { fontSize: 11, color: "#AAA", fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5 },
+  detailVal: { fontSize: 13, color: "#2D1B5E", fontWeight: 600 },
+  statusBadge: { fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 8 },
+  splitChip: { fontSize: 11, fontWeight: 600, padding: "3px 10px", borderRadius: 8 },
+
+  noteInput: { width: "100%", maxWidth: "100%", boxSizing: "border-box", display: "block", padding: "12px 14px", borderRadius: 14, border: "1.5px solid #E5DFF5", fontSize: 15, lineHeight: 1.4, fontFamily: "inherit", outline: "none", marginTop: 8, background: "#fff" },
+  noteTextarea: { width: "100%", maxWidth: "100%", boxSizing: "border-box", display: "block", padding: "12px 14px", borderRadius: 14, border: "1.5px solid #E5DFF5", fontSize: 15, lineHeight: 1.45, fontFamily: "inherit", outline: "none", marginTop: 8, background: "#fff", resize: "vertical", minHeight: 84 },
+  noteSaveBtn: { flex: 1, marginTop: 0, padding: "8px 16px", borderRadius: 12, border: "none", background: "#7BBFB0", color: "#fff", fontWeight: 700, fontSize: 12, cursor: "pointer" },
+  noteBtnRow: { display: "flex", gap: 10, marginTop: 10 },
+  noteCancelBtn: { flex: 1, padding: "8px 16px", borderRadius: 12, border: "1.5px solid #E5DFF5", background: "#F5F0FB", color: "#2D1B5E", fontWeight: 700, fontSize: 12, cursor: "pointer" },
+  noteTap: { fontSize: 13, lineHeight: 1.4, color: "#777", fontStyle: "italic", marginTop: 6, marginBottom: 0, cursor: "pointer" },
+
+  actionBtns: { display: "flex", gap: 8, marginTop: 12 },
+  markPaidBtn: { flex: 1, padding: "9px", borderRadius: 12, border: "none", background: "#7BBFB0", color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer" },
+  deleteBtn: { flex: 1, padding: "9px", borderRadius: 12, border: "none", background: "#FFF0F0", color: "#E05C6E", fontWeight: 700, fontSize: 13, cursor: "pointer" },
+
+  insightCard: { background: "#fff", borderRadius: 16, margin: "0 16px 12px", overflow: "hidden", boxShadow: "0 2px 8px rgba(0,0,0,0.06)" },
+  insightHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 16px", cursor: "pointer" },
+  insightTitle: { fontSize: 14, fontWeight: 700, color: "#2D1B5E" },
+  insightBody: { padding: "4px 16px 16px", display: "flex", gap: 12 },
+  insightStat: { flex: 1, display: "flex", flexDirection: "column", gap: 2 },
+  insightStatLabel: { fontSize: 11, color: "#AAA" },
+  insightStatVal: { fontSize: 18, fontWeight: 800, color: "#2D1B5E" },
+  insightDivider: { width: 1, background: "#F0EAF8" },
+
+  searchIconBtn: { background: "#F5F0FB", border: "none", borderRadius: 10, padding: "6px 10px", fontSize: 16, cursor: "pointer" },
+  searchBar: { padding: "8px 0 4px", position: "relative", display: "flex", alignItems: "center" },
+  searchInput: { width: "100%", padding: "10px 36px 10px 14px", borderRadius: 12, border: "1.5px solid #E5DFF5", fontSize: 14, fontFamily: "inherit", outline: "none", background: "#FDFBFF" },
+  searchClear: { position: "absolute", right: 10, background: "none", border: "none", color: "#BBB", fontSize: 14, cursor: "pointer" },
+
+  summaryCard: { margin: "0 16px 12px", background: "linear-gradient(135deg, #2D1B5E, #5B3B8C)", borderRadius: 20, padding: "20px 20px", color: "#fff", cursor: "pointer", boxShadow: "0 8px 30px rgba(45,27,94,0.25)" },
+  summaryTop: { display: "flex", justifyContent: "space-between", alignItems: "center" },
+  summaryMonth: { fontSize: 13, opacity: 0.7, margin: 0 },
+  summaryTotal: { fontSize: 28, fontWeight: 800, margin: "4px 0 0", letterSpacing: -1 },
+  summaryBreakdown: { marginTop: 16, borderTop: "1px solid rgba(255,255,255,0.15)", paddingTop: 12 },
+  summaryRow: { display: "flex", justifyContent: "space-between", marginBottom: 8 },
+
+  timelineCard: { background: "#fff", borderRadius: 16, overflow: "hidden", boxShadow: "0 2px 8px rgba(0,0,0,0.06)", margin: "0 16px 12px" },
+  timelineHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 16px", cursor: "pointer" },
+  countBadge: { background: "#7BBFB0", color: "#fff", fontSize: 11, fontWeight: 800, padding: "2px 8px", borderRadius: 10 },
+  timelineItem: { display: "flex", gap: 12, marginBottom: 4 },
+  timelineLine: { display: "flex", flexDirection: "column", alignItems: "center", paddingTop: 4 },
+  timelineDot: { width: 10, height: 10, borderRadius: "50%", background: "#7BBFB0", flexShrink: 0 },
+  timelineConnector: { width: 2, flex: 1, background: "#F0EAF8", minHeight: 20, marginTop: 4 },
+  timelineContent: { flex: 1, paddingBottom: 12 },
+  timelineAmt: { fontSize: 14, fontWeight: 700, color: "#2D1B5E", margin: 0 },
+  timelineMeta: { fontSize: 11, color: "#999", margin: "2px 0 0" },
+  timelineNote: { fontSize: 11, color: "#BBB", fontStyle: "italic", margin: "2px 0 0" },
+};
+
 // ── STYLES ────────────────────────────────────────────────────────────
 const styles = {
   app: { maxWidth: 430, margin: "0 auto", minHeight: "100vh", background: "#F8F4FF", position: "relative", fontFamily: "'DM Sans', system-ui, sans-serif" },
@@ -992,6 +2279,11 @@ const styles = {
 
   // Header
   header: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "52px 20px 16px", background: "linear-gradient(160deg, #EDE4F5, #EBF6F4)" },
+  iconBtn: { width: 36, height: 36, borderRadius: 12, border: "none", cursor: "pointer", background: "rgba(255,255,255,0.7)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14 },
+  searchBar: { margin: "-6px 16px 12px", background: "#fff", borderRadius: 14, border: "1px solid #F0EAF8", display: "flex", alignItems: "center", gap: 8, padding: "10px 12px", boxShadow: "0 2px 10px rgba(0,0,0,0.04)" },
+  searchIcon: { fontSize: 14, opacity: 0.7 },
+  searchInput: { flex: 1, border: "none", outline: "none", fontSize: 13, background: "transparent", color: "#2D1B5E" },
+  clearSearch: { width: 28, height: 28, borderRadius: 10, border: "none", cursor: "pointer", background: "#F5F0FB", color: "#888", display: "flex", alignItems: "center", justifyContent: "center" },
   headerGreet: { fontSize: 22, fontWeight: 800, color: "#2D1B5E", margin: 0 },
   headerSub: { fontSize: 12, color: "#888", margin: "2px 0 0" },
   logoutBtn: { fontSize: 12, color: "#888", background: "rgba(255,255,255,0.7)", border: "none", borderRadius: 20, padding: "6px 14px", cursor: "pointer" },
@@ -1014,6 +2306,18 @@ const styles = {
   sectionHeader: { display: "flex", alignItems: "center", gap: 8, marginBottom: 12, paddingTop: 16 },
   sectionTitle: { fontSize: 14, fontWeight: 700, color: "#2D1B5E" },
   seeAll: { fontSize: 12, color: "#7BBFB0", background: "none", border: "none", cursor: "pointer", fontWeight: 600 },
+  progressSubTitle: { margin: "6px 0 10px", fontSize: 12, fontWeight: 800, color: "#5B3B8C" },
+  planCard: { background: "#fff", borderRadius: 16, padding: "14px 14px", marginBottom: 10, boxShadow: "0 2px 10px rgba(0,0,0,0.04)", border: "1px solid #F0EAF8" },
+  planTopRow: { display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline" },
+  planTitle: { margin: 0, fontSize: 13, fontWeight: 800, color: "#2D1B5E", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+  planRemaining: { margin: 0, fontSize: 13, fontWeight: 800, color: "#5B3B8C", flexShrink: 0 },
+  planMetaRow: { display: "flex", justifyContent: "space-between", marginTop: 6 },
+  planMetaText: { fontSize: 11, color: "#888", fontWeight: 600 },
+  progressTrack: { marginTop: 10, height: 10, background: "#F5F0FB", borderRadius: 999, overflow: "hidden" },
+  progressFill: { height: "100%", background: "linear-gradient(135deg, #7BBFB0, #5CA89A)", borderRadius: 999 },
+  oneTimeRow: { background: "#fff", borderRadius: 14, padding: "12px 14px", marginBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "center", boxShadow: "0 2px 8px rgba(0,0,0,0.04)", border: "1px solid #F0EAF8" },
+  oneTimeLabel: { fontSize: 12, fontWeight: 700, color: "#2D1B5E", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 240 },
+  oneTimeAmt: { fontSize: 12, fontWeight: 800, color: "#E05C6E" },
 
   // Pending
   pendingCard: { background: "#FBF5E0", borderRadius: 14, padding: "14px 16px", marginBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "center", border: "1px solid #E8C878" },
@@ -1062,10 +2366,33 @@ const styles = {
   confirmedBadge: { background: "#EEF5EC", color: "#1E8449", borderRadius: 6, padding: "1px 6px", fontSize: 10, marginLeft: 4 },
   miniConfirm: { fontSize: 11, background: "#7BBFB0", color: "#fff", border: "none", borderRadius: 8, padding: "4px 10px", cursor: "pointer", marginTop: 4, fontWeight: 600 },
   markPaidBtn: { marginTop: 10, background: "#2D1B5E", color: "#fff", border: "none", borderRadius: 10, padding: "8px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer" },
+  markPaidSmall: { marginTop: 6, background: "#2D1B5E", color: "#fff", border: "none", borderRadius: 10, padding: "6px 10px", fontSize: 11, fontWeight: 700, cursor: "pointer" },
+  menuWrap: { position: "relative", display: "inline-block", marginTop: 6 },
+  menuDotBtn: { background: "#F5F0FB", border: "none", borderRadius: 10, fontSize: 18, fontWeight: 800, color: "#888", padding: "4px 10px", cursor: "pointer", letterSpacing: 1, minWidth: 40, minHeight: 36, lineHeight: 1, display: "flex", alignItems: "center", justifyContent: "center" },
+  menuDotBtnActive: { background: "#EAE0F8", color: "#5B3B8C" },
+  menuPopup: { position: "absolute", right: 0, top: "110%", background: "#fff", borderRadius: 14, boxShadow: "0 8px 30px rgba(0,0,0,0.15)", zIndex: 100, minWidth: 160, overflow: "hidden", border: "1px solid #F0EAF8" },
+  menuItem: { display: "block", width: "100%", padding: "14px 18px", textAlign: "left", background: "none", border: "none", borderBottom: "1px solid #F5F0FB", fontSize: 14, fontWeight: 600, color: "#2D1B5E", cursor: "pointer", fontFamily: "'DM Sans', system-ui, sans-serif" },
+  menuItemDelete: { borderBottom: "none", color: "#E05C6E" },
 
   // Modal
   modalOverlay: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 100, display: "flex", alignItems: "flex-end", justifyContent: "center" },
   modal: { background: "#fff", borderRadius: "24px 24px 0 0", padding: "24px 20px 40px", width: "100%", maxWidth: 430, maxHeight: "90vh", overflowY: "auto" },
+  dragHandle: { width: 40, height: 4, background: "#E0D8F0", borderRadius: 2, margin: "12px auto 0" },
+  sectionLabelRow: { display: "flex", alignItems: "center", gap: 6, margin: "18px 0 10px" },
+  sectionLabel: { fontSize: 10, fontWeight: 800, color: "#C4A8D4", textTransform: "uppercase", letterSpacing: 1.2 },
+  newBadge: { fontSize: 10, fontWeight: 800, background: "#EEF5EC", color: "#1E8449", borderRadius: 8, padding: "2px 8px" },
+  fieldLabel: { display: "block", fontSize: 11, fontWeight: 700, color: "#999", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 5 },
+  hintText: { fontSize: 11, color: "#BBB", marginTop: 6, marginBottom: 8, paddingLeft: 2 },
+  twoCol: { display: "flex", gap: 10 },
+  chipRow: { display: "flex", gap: 6, flexWrap: "wrap" },
+  freqBtn: { flex: 1, padding: "9px 6px", borderRadius: 12, border: "1.5px solid #E5DFF5", background: "#FDFBFF", fontSize: 12, fontFamily: "inherit", fontWeight: 600, color: "#999", cursor: "pointer" },
+  freqBtnActive: { background: "#2D1B5E", borderColor: "#2D1B5E", color: "#fff" },
+  dueDateBox: { background: "#FBF8FF", border: "1.5px solid #E5DFF5", borderRadius: 14, padding: "12px 12px 6px", marginBottom: 8 },
+  endDateDivider: { height: 1, background: "#E5DFF5", margin: "10px 0" },
+  dollarSign: { position: "absolute", left: 13, top: "50%", transform: "translateY(-50%)", fontSize: 16, fontWeight: 700, color: "#C4A8D4", pointerEvents: "none" },
+  previewPill: { padding: "12px 14px", borderRadius: 12, border: "1.5px solid #E5DFF5", background: "#FDFBFF", fontSize: 13, color: "#888" },
+  catRow: { display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 },
+  catChip: { padding: "6px 14px", borderRadius: 999, border: "1.5px solid #E5DFF5", background: "#F5F0FB", fontSize: 12, fontWeight: 700, cursor: "pointer" },
   modalHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 },
   modalTitle: { fontSize: 20, fontWeight: 800, color: "#2D1B5E", margin: 0 },
   closeBtn: { background: "#F5F0FB", border: "none", borderRadius: 10, width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" },
@@ -1085,3 +2412,145 @@ const styles = {
 
   notification: { position: "fixed", top: 16, left: "50%", transform: "translateX(-50%)", padding: "12px 24px", borderRadius: 16, fontSize: 14, fontWeight: 700, zIndex: 999, boxShadow: "0 4px 20px rgba(0,0,0,0.15)", whiteSpace: "nowrap" },
 };
+// ── TARGET DETAILS SCREEN ────────────────────────────────────────────
+
+function TargetDetailsScreen({ user, targetKey, targetSummaries, expenses, payments, onBack }) {
+  const summary = targetSummaries && targetKey ? targetSummaries.get(targetKey) : null;
+
+  const title = summary?.label || "Details";
+
+  const relatedExpenses = (() => {
+    if (!targetKey) return [];
+    if (targetKey.startsWith("grp:")) {
+      const gid = targetKey.slice(4);
+      return (expenses || []).filter((e) => (e.groupId || e.id) === gid);
+    }
+    if (targetKey.startsWith("exp:")) {
+      const id = targetKey.slice(4);
+      return (expenses || []).filter((e) => e.id === id);
+    }
+    return [];
+  })();
+
+  const relatedPayments = (() => {
+    if (!targetKey) return [];
+    return (payments || []).filter((p) => {
+      const key = p.appliedToKey || (p.appliedToGroupId ? `grp:${p.appliedToGroupId}` : "general");
+      return key === targetKey;
+    });
+  })().sort((a, b) => new Date(b.date) - new Date(a.date));
+  const pendingPayments = relatedPayments.filter((p) => !p.confirmed);
+  const confirmedPayments = relatedPayments.filter((p) => p.confirmed);
+  const charged = Number(summary?.charged || 0);
+  const paid = Number(summary?.paid || 0);
+  const remaining = Number(summary?.remaining || 0);
+  const pct = charged !== 0 ? Math.max(0, Math.min(1, Math.abs(paid) / Math.abs(charged))) : 0;
+
+  return (
+    <div style={styles.screen}>
+      <div style={styles.subHeader}>
+        <button style={styles.backBtn} onClick={onBack}>
+          <Icon path={icons.back} size={20} />
+        </button>
+        <h2 style={styles.subTitle}>{title}</h2>
+        <div style={{ width: 36 }} />
+      </div>
+
+      {summary && (
+        <div style={{ ...styles.section, paddingTop: 0 }}>
+          <div style={styles.planCard}>
+            <div style={styles.planTopRow}>
+              <p style={styles.planTitle}>{summary.label}</p>
+              <p style={styles.planRemaining}>${remaining.toFixed(2)} left</p>
+            </div>
+            <div style={styles.planMetaRow}>
+              <span style={styles.planMetaText}>Paid: ${paid.toFixed(2)}</span>
+              <span style={styles.planMetaText}>Total: ${charged.toFixed(2)}</span>
+            </div>
+            <div style={styles.progressTrack}>
+              <div style={{ ...styles.progressFill, width: `${pct * 100}%` }} />
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div style={styles.section}>
+        <div style={styles.sectionHeader}>
+          <span style={styles.sectionTitle}>Related charges</span>
+        </div>
+        {relatedExpenses.length === 0 ? (
+          <p style={{ color: "#999", fontSize: 13, margin: "0 0 12px" }}>No charges found.</p>
+        ) : (
+          relatedExpenses
+            .slice()
+            .sort((a, b) => new Date(b.date) - new Date(a.date))
+            .map((e) => (
+              <ExpenseRow key={e.id} expense={e} detailed user={user} />
+            ))
+        )}
+      </div>
+
+      <div style={styles.section}>
+  <div style={{ ...styles.sectionHeader, justifyContent: "space-between" }}>
+  <span style={styles.sectionTitle}>Payments</span>
+  {pendingPayments.length > 0 && (
+    <span style={{ fontSize: 12, color: "#C8A020", fontWeight: 700 }}>
+      {pendingPayments.length} pending
+    </span>
+  )}
+</div>
+
+  {pendingPayments.length > 0 && (
+    <div
+      style={{
+        ...styles.alertBox,
+        margin: "0 0 12px",
+        background: "#FBF5E0",
+        borderColor: "#E8C878",
+      }}
+    >
+      <Icon path={icons.clock} size={16} color="#C8A020" />
+      <p style={{ color: "#7A5A10", fontSize: 13, margin: 0 }}>
+        Pending payments will reduce the balance once Emmanuella confirms them.
+      </p>
+    </div>
+  )}
+
+  {relatedPayments.length === 0 ? (
+    <p style={{ color: "#999", fontSize: 13, margin: 0 }}>No payments yet.</p>
+  ) : (
+    <>
+      {pendingPayments.map((p) => (
+        <div key={p.id} style={styles.oneTimeRow}>
+          <span style={styles.oneTimeLabel}>
+            {formatShortDate(p.date)} · {p.method}{" "}
+            <span style={{ ...styles.pendingBadge, marginLeft: 6 }}>pending</span>
+          </span>
+          <span style={{ ...styles.oneTimeAmt, color: "#C8A020" }}>
+            ${Number(p.amount || 0).toFixed(2)}
+          </span>
+        </div>
+      ))}
+
+      {confirmedPayments.length > 0 && pendingPayments.length > 0 && (
+        <div style={{ height: 1, background: "#F0EAF8", margin: "6px 0 12px" }} />
+      )}
+
+      {confirmedPayments.map((p) => (
+        <div key={p.id} style={styles.oneTimeRow}>
+          <span style={styles.oneTimeLabel}>
+            {formatShortDate(p.date)} · {p.method}
+          </span>
+          <span style={{ ...styles.oneTimeAmt, color: "#1E8449" }}>
+            ${Number(p.amount || 0).toFixed(2)}
+          </span>
+        </div>
+      ))}
+    </>
+  )}
+</div>
+
+      <div style={{ height: 80 }} />
+    </div>
+  );
+}
