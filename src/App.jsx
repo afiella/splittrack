@@ -1381,10 +1381,13 @@ function ExpandableExpenseRow({ expense: e, user, onDelete, onMarkPaid }) {
   const [noteDraft, setNoteDraft] = useState(e.note || "");
   const [noteSaveStatus, setNoteSaveStatus] = useState(null); // null | "saving" | "saved" | "error"
   const noteSaveTimerRef = useRef(null);
+  const [noteSaveFading, setNoteSaveFading] = useState(false);
+  const noteFadeTimerRef = useRef(null);
 
   useEffect(() => {
     return () => {
       if (noteSaveTimerRef.current) clearTimeout(noteSaveTimerRef.current);
+      if (noteFadeTimerRef.current) clearTimeout(noteFadeTimerRef.current);
     };
   }, []);
 
@@ -1395,8 +1398,10 @@ function ExpandableExpenseRow({ expense: e, user, onDelete, onMarkPaid }) {
     0;
 
   async function handleSaveNote(nextVal) {
-    // clear any existing timer
+    // clear any existing timers
     if (noteSaveTimerRef.current) clearTimeout(noteSaveTimerRef.current);
+    if (noteFadeTimerRef.current) clearTimeout(noteFadeTimerRef.current);
+    setNoteSaveFading(false);
 
     setNoteSaveStatus("saving");
     setEditingNote(false);
@@ -1405,9 +1410,17 @@ function ExpandableExpenseRow({ expense: e, user, onDelete, onMarkPaid }) {
     try {
       await updateExpenseInDb(e.id, { note: nextVal });
       setNoteSaveStatus("saved");
-      // auto-hide after 1.5s
+      setNoteSaveFading(false);
+
+      // start fading near the end, then clear
+      noteFadeTimerRef.current = setTimeout(() => {
+        setNoteSaveFading(true);
+        noteFadeTimerRef.current = null;
+      }, 1100);
+
       noteSaveTimerRef.current = setTimeout(() => {
         setNoteSaveStatus(null);
+        setNoteSaveFading(false);
         noteSaveTimerRef.current = null;
       }, 1500);
     } catch (err) {
@@ -1415,6 +1428,7 @@ function ExpandableExpenseRow({ expense: e, user, onDelete, onMarkPaid }) {
       setNote(e.note || "");
       setNoteDraft(e.note || "");
       setNoteSaveStatus("error");
+      setNoteSaveFading(false);
       // auto-hide error after 2s
       noteSaveTimerRef.current = setTimeout(() => {
         setNoteSaveStatus(null);
@@ -1527,6 +1541,8 @@ function ExpandableExpenseRow({ expense: e, user, onDelete, onMarkPaid }) {
                           : noteSaveStatus === "error"
                           ? "#E05C6E"
                           : "#888",
+                      opacity: noteSaveStatus === "saved" ? (noteSaveFading ? 0 : 1) : 1,
+                      transition: "opacity 300ms ease",
                     }}
                   >
                     {noteSaveStatus === "saving"
@@ -1549,7 +1565,16 @@ function ExpandableExpenseRow({ expense: e, user, onDelete, onMarkPaid }) {
                   {note || "Tap to add a note…"}
                 </p>
                 {noteSaveStatus === "saved" && (
-                  <div style={{ marginTop: 6, fontSize: 12, fontWeight: 700, color: "#1E8449" }}>
+                  <div
+                    style={{
+                      marginTop: 6,
+                      fontSize: 12,
+                      fontWeight: 700,
+                      color: "#1E8449",
+                      opacity: noteSaveFading ? 0 : 1,
+                      transition: "opacity 300ms ease",
+                    }}
+                  >
                     Saved ✓
                   </div>
                 )}
