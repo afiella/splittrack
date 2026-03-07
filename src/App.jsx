@@ -172,6 +172,7 @@ function formatShortDate(iso) {
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
+
 function formatHistoryDate(isoOrDate) {
   if (!isoOrDate) return "";
   const d = new Date(isoOrDate);
@@ -180,6 +181,86 @@ function formatHistoryDate(isoOrDate) {
   const day = d.getDate();
   const yr = d.getFullYear();
   return `${mon} · ${day} · ${yr}`;
+}
+
+// ── SEARCH FRAMEWORK (web) ───────────────────────────────────────────
+function useExpensesSearchLogic(expenses) {
+  const [searchActive, setSearchActive] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filteredExpenses, setFilteredExpenses] = useState(expenses || []);
+
+  // keep filtered list synced if the base list changes
+  useEffect(() => {
+    const list = expenses || [];
+    const q = String(searchQuery || "").trim().toLowerCase();
+
+    if (!searchActive) {
+      setFilteredExpenses(list);
+      return;
+    }
+
+    // If searching, keep results up-to-date when the base list changes
+    if (!q) {
+      setFilteredExpenses(list);
+      return;
+    }
+
+    setFilteredExpenses(
+      list.filter((e) => {
+        const d = String(e.description || "").toLowerCase();
+        const c = String(e.category || "").toLowerCase();
+        const a = String(e.account || "").toLowerCase();
+        const amt = String(e.amount ?? "").toLowerCase();
+        const due = String(e.nextDue || e.dueDate || "").toLowerCase();
+        return d.includes(q) || c.includes(q) || a.includes(q) || amt.includes(q) || due.includes(q);
+      })
+    );
+  }, [expenses, searchActive, searchQuery]);
+
+  function activateSearch() {
+    setSearchActive(true);
+  }
+
+  function cancelSearch() {
+    setSearchActive(false);
+    setSearchQuery("");
+    setFilteredExpenses(expenses || []);
+  }
+
+  function clearSearch() {
+    setSearchQuery("");
+    setFilteredExpenses(expenses || []);
+  }
+
+  function handleSearch(text) {
+    setSearchQuery(text);
+    const q = String(text || "").trim().toLowerCase();
+    if (!q) {
+      setFilteredExpenses(expenses || []);
+      return;
+    }
+
+    const results = (expenses || []).filter((e) => {
+      const d = String(e.description || "").toLowerCase();
+      const c = String(e.category || "").toLowerCase();
+      const a = String(e.account || "").toLowerCase();
+      const amt = String(e.amount ?? "").toLowerCase();
+      const due = String(e.nextDue || e.dueDate || "").toLowerCase();
+      return d.includes(q) || c.includes(q) || a.includes(q) || amt.includes(q) || due.includes(q);
+    });
+
+    setFilteredExpenses(results);
+  }
+
+  return {
+    searchActive,
+    searchQuery,
+    filteredExpenses,
+    activateSearch,
+    cancelSearch,
+    clearSearch,
+    handleSearch,
+  };
 }
 
 // Helper: Parse YYYY-MM-DD as local date
@@ -427,6 +508,12 @@ const icons = {
   x: "M6 18L18 6M6 6l12 12",
   alert: "M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z",
   fire: "M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z",
+  forward:     "M9 5l7 7-7 7",
+  chevronDown: "M19 9l-7 7-7-7",
+  chevronUp:   "M5 15l7-7 7 7",
+  plusCircle:  "M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z",
+  search:      "M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z",
+  trash:       "M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16",
 };
 
 function Icon({ path, size = 20, color = "currentColor" }) {
@@ -447,6 +534,8 @@ export default function App() {
   const [payments, setPayments] = useState([]);
   const [notification, setNotification] = useState(null);
   const [modal, setModal] = useState(null); // "addExpense" | "logPayment" | "confirmPayment"
+  
+  const [paymentDraftKey, setPaymentDraftKey] = useState("general");
   useEffect(() => {
     // Keep the user signed in across reloads
     setPersistence(auth, browserLocalPersistence).catch((e) => {
@@ -560,7 +649,34 @@ export default function App() {
 
   async function handleConfirm(id) {
     try {
+      const pmt = payments.find((p) => p && p.id === id) || null;
       await confirmPaymentInDb(id);
+
+      // If this payment was applied to a specific one-time expense, and it fully covers the remaining,
+      // automatically mark that expense as paid.
+      const key = pmt?.appliedToKey || (pmt?.appliedToGroupId ? `grp:${pmt.appliedToGroupId}` : "general");
+      if (user === "emma" && key && key.startsWith("exp:")) {
+        const expId = key.slice(4);
+        // Simulate the payment being confirmed locally to compute the new remaining
+        const nextPays = payments.map((p) => (p && p.id === id ? { ...p, confirmed: true } : p));
+        const summaries = calcTargetSummaries(expenses, nextPays);
+        const s = summaries.get(key);
+        const remaining = Number(s?.remaining ?? 0);
+
+        // If remaining is effectively 0, mark the expense as paid
+        if (Math.abs(remaining) < 0.01) {
+          const paidAt = new Date().toISOString();
+          try {
+            await updateExpenseInDb(expId, { status: "paid", paidAt });
+            notify("Payment confirmed — expense marked paid ✓");
+            return;
+          } catch (e) {
+            console.error("Failed to mark expense paid after confirmation:", e);
+            // Fall through to normal confirm toast
+          }
+        }
+      }
+
       notify("Payment confirmed! ✓");
     } catch (err) {
       console.error("Failed to confirm payment:", err);
@@ -624,11 +740,11 @@ export default function App() {
         const nextDueExceedsEnd = endDate ? nextDue > endDate : false;
         const isLastByCount = remaining !== null ? remaining <= 1 : false;
 
-        // Optimistic: mark CURRENT instance paid
+        // Optimistic: mark CURRENT instance paid and _marking:true
         setExpenses((prev) =>
           prev.map((e) =>
             e.id === id
-              ? { ...e, status: "paid", paidAt, lastPaidAt: paidAt, lastPaidDue: justPaidDue }
+              ? { ...e, status: "paid", paidAt, lastPaidAt: paidAt, lastPaidDue: justPaidDue, _marking: true }
               : e
           )
         );
@@ -639,6 +755,8 @@ export default function App() {
           lastPaidAt: paidAt,
           lastPaidDue: justPaidDue,
         });
+        // Clear _marking after update
+        setExpenses((prev) => prev.map((e) => (e.id === id ? { ...e, _marking: false } : e)));
 
         // Stop recurring if we've reached the end condition
         if (isLastByCount || nextDueExceedsEnd) {
@@ -671,12 +789,13 @@ export default function App() {
         await addExpense(newExp);
         notify("Marked paid — next due created for " + formatHistoryDate(nextDue));
       } else {
-        // Optimistic UI: non-recurring becomes paid
+        // Optimistic UI: non-recurring becomes paid and _marking:true
         setExpenses((prev) =>
-          prev.map((e) => (e.id === id ? { ...e, status: "paid", paidAt } : e))
+          prev.map((e) => (e.id === id ? { ...e, status: "paid", paidAt, _marking: true } : e))
         );
 
         await updateExpenseInDb(id, { status: "paid", paidAt });
+        setExpenses((prev) => prev.map((e) => (e.id === id ? { ...e, _marking: false } : e)));
         notify("Marked as paid.");
       }
     } catch (err) {
@@ -691,26 +810,43 @@ export default function App() {
 
 
   async function handleDeleteExpense(id) {
-  if (user !== "emma") return;
+    if (user !== "emma") return;
 
-  const ok = window.confirm("Delete this expense? This cannot be undone.");
-  if (!ok) return;
+    const ok = window.confirm("Delete this expense? This cannot be undone.");
+    if (!ok) return;
 
-  // Optimistic UI: remove immediately
-  const removed = expenses.find((e) => e.id === id) || null;
-  setExpenses((prev) => prev.filter((e) => e.id !== id));
+    // Optimistic UI: mark as deleting (keep row briefly so spinner is visible)
+    const removed = expenses.find((e) => e.id === id) || null;
+    setExpenses((prev) => prev.map((e) => (e.id === id ? { ...e, _deleting: true } : e)));
 
-  try {
-    await deleteExpenseInDb(id);
-    notify("Expense deleted.");
-    // Firestore listener will keep things synced.
-  } catch (err) {
-    console.error("Failed to delete expense:", err);
-    // Roll back if it fails
-    if (removed) setExpenses((prev) => [removed, ...prev]);
-    notify("Couldn’t delete expense. Check Firestore rules.", "error");
+    // Remove after a short delay so the in-row spinner can render
+    const startedAt = Date.now();
+    const removeAfter = () => {
+      setExpenses((prev) => prev.filter((e) => e.id !== id));
+    };
+    const wait = Math.max(0, 400 - (Date.now() - startedAt));
+    if (wait > 0) setTimeout(removeAfter, wait);
+    else removeAfter();
+
+    try {
+      await deleteExpenseInDb(id);
+      notify("Expense deleted.");
+      // Firestore listener will keep things synced.
+    } catch (err) {
+      console.error("Failed to delete expense:", err);
+      // Roll back if it fails
+      if (removed) {
+        setExpenses((prev) => {
+          const exists = prev.some((e) => e.id === id);
+          if (exists) {
+            return prev.map((e) => (e.id === id ? { ...removed } : e));
+          }
+          return [removed, ...prev];
+        });
+      }
+      notify("Couldn’t delete expense. Check Firestore rules.", "error");
+    }
   }
-}
 
   if (!firebaseUser) return <LoginScreen />;
 
@@ -736,11 +872,12 @@ export default function App() {
         <LogPaymentModal
           balance={balance}
           onSave={handleLogPayment}
-          onClose={() => setModal(null)}
+          onClose={() => { setModal(null); setPaymentDraftKey("general"); }}
           user={user}
           targets={paymentTargets}
           planSummaries={planSummaries}
           targetSummaries={targetSummaries}
+          initialAppliedToKey={paymentDraftKey}
         />
       )}
 
@@ -789,15 +926,20 @@ export default function App() {
         />
       )}
       {screen === "expenses" && (
-       <ExpensesScreen
-         expenses={expenses}
-         user={user}
-         onBack={() => setScreen("dashboard")}
-         onAddExpense={() => setModal("addExpense")}
-         onDeleteExpense={handleDeleteExpense}
-         onMarkPaid={handleMarkPaid}
-   />
- )}
+  <ExpensesScreen
+    expenses={expenses}
+    user={user}
+    onBack={() => setScreen("dashboard")}
+    onDeleteExpense={handleDeleteExpense}
+    onMarkPaid={handleMarkPaid}
+    targetSummaries={targetSummaries}
+    onLogPaymentForKey={(key) => {
+      const nextKey = key || "general";
+      setPaymentDraftKey(nextKey);
+      setModal("logPayment");
+    }}
+  />
+)}
       {screen === "urgent" && (
   <UrgentScreen
     expenses={urgentExpenses}
@@ -846,11 +988,620 @@ function LoginScreen() {
   );
 }
 
+// ── DASHBOARD MOCKUP (incremental) ───────────────────────────────────
+// Step 1: mockup components (not rendered yet)
+function DashboardPendingCard({ pendingPayments = [], onConfirm, user }) {
+  if (user !== "emma") return null;
+
+  const [selectedIds, setSelectedIds] = useState(() => new Set((pendingPayments || []).map((p) => p.id)));
+
+  // Keep selection in sync with the latest pending list
+  useEffect(() => {
+    setSelectedIds((prev) => {
+      const next = new Set();
+      for (const p of pendingPayments) {
+        if (prev.has(p.id) || prev.size === 0) next.add(p.id);
+      }
+      // If prev was empty (first load), default-select all
+      if (prev.size === 0) {
+        for (const p of pendingPayments) next.add(p.id);
+      }
+      return next;
+    });
+  }, [pendingPayments]);
+
+  const selectedCount = selectedIds.size;
+
+  async function confirmAll() {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    // confirm sequentially to reduce Firestore contention
+    for (const pid of ids) {
+      // eslint-disable-next-line no-await-in-loop
+      await onConfirm(pid);
+    }
+  }
+
+  return (
+    <div
+      style={{
+        flex: 1,
+        minWidth: 0,
+        background: "#fff",
+        borderRadius: 20,
+        padding: 14,
+        boxShadow: "0 4px 16px rgba(30,15,69,0.09)",
+        border: "1.5px solid #ede4f5",
+        display: "flex",
+        flexDirection: "column",
+      }}
+    >
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+        <div style={{ fontSize: 11, fontWeight: 800, color: "#1e0f45", display: "flex", alignItems: "center", gap: 6 }}>
+          <Icon path={icons.clock} size={12} color="#e8c878" />
+          Pending
+        </div>
+        <span
+          style={{
+            background: "#e8c878",
+            color: "#5a3a10",
+            fontSize: 9,
+            fontWeight: 800,
+            padding: "2px 6px",
+            borderRadius: 8,
+          }}
+        >
+          {pendingPayments.length === 0 ? "0 pending" : `${selectedCount} selected`}
+        </span>
+      </div>
+
+      {/* Scrollable list */}
+      <div style={{ flex: 1, maxHeight: 112, overflowY: "auto" }}>
+        {pendingPayments.length === 0 ? (
+          <div
+            style={{
+              height: 112,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: "#888",
+              fontSize: 12,
+              fontWeight: 700,
+              textAlign: "center",
+            }}
+          >
+            No Pending Payments
+          </div>
+        ) : (
+          pendingPayments.map((p) => (
+            <div
+              key={p.id}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                padding: "6px 0",
+                borderBottom: "1px solid #faf7ff",
+                gap: 8,
+                cursor: "pointer",
+              }}
+              role="button"
+              onClick={() =>
+                setSelectedIds((prev) => {
+                  const next = new Set(prev);
+                  if (next.has(p.id)) next.delete(p.id);
+                  else next.add(p.id);
+                  return next;
+                })
+              }
+            >
+              <div
+                style={{
+                  width: 20,
+                  height: 20,
+                  borderRadius: 7,
+                  flexShrink: 0,
+                  border: selectedIds.has(p.id) ? "1.5px solid #7bbfb0" : "1.5px solid #d8eae7",
+                  background: selectedIds.has(p.id) ? "#7bbfb0" : "#f5fffd",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                {selectedIds.has(p.id) && <Icon path={icons.check} size={14} color="#fff" />}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 600,
+                    color: "#1e0f45",
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    margin: 0,
+                  }}
+                >
+                  {p.method || "Payment"}
+                </p>
+                <p style={{ fontSize: 9, color: "#bbb", margin: "1px 0 0" }}>
+                  {formatHistoryDate(p.date)} · Cam
+                </p>
+              </div>
+              <p style={{ fontSize: 11, fontWeight: 700, color: "#1e0f45", flexShrink: 0, margin: 0 }}>
+                ${Number(p.amount || 0).toFixed(2)}
+              </p>
+              <button
+                type="button"
+                onClick={(ev) => {
+                  ev.stopPropagation();
+                  setSelectedIds((prev) => {
+                    const next = new Set(prev);
+                    next.add(p.id);
+                    return next;
+                  });
+                  onConfirm(p.id);
+                }}
+                style={{
+                  marginLeft: 6,
+                  background: "#7bbfb0",
+                  border: "none",
+                  borderRadius: 10,
+                  padding: "6px 8px",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+                aria-label="Confirm payment"
+                title="Confirm"
+              >
+                <Icon path={icons.check} size={14} color="#fff" />
+              </button>
+            </div>
+          ))
+        )}
+      </div>
+
+      {pendingPayments.length > 0 && (
+        <button
+          type="button"
+          style={{
+            width: "100%",
+            marginTop: 8,
+            background: "linear-gradient(135deg, #7bbfb0, #5ca898)",
+            border: "none",
+            borderRadius: 11,
+            padding: 8,
+            color: "#fff",
+            fontSize: 11,
+            fontWeight: 700,
+            opacity: selectedCount === 0 ? 0.55 : 1,
+            cursor: selectedCount === 0 ? "default" : "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 5,
+          }}
+          onClick={confirmAll}
+          disabled={selectedCount === 0}
+        >
+          <Icon path={icons.check} size={12} color="#fff" />
+          Confirm {selectedCount || 0}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function CamPendingCard({ pendingPayments = [], onOpenHistory }) {
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={() => { if (typeof onOpenHistory === "function") onOpenHistory(); }}
+      onKeyDown={(ev) => {
+        if (ev.key === "Enter" || ev.key === " ") {
+          ev.preventDefault();
+          if (typeof onOpenHistory === "function") onOpenHistory();
+        }
+      }}
+      style={{
+        flex: 1,
+        minWidth: 0,
+        background: "#fff",
+        borderRadius: 20,
+        padding: 14,
+        boxShadow: "0 4px 16px rgba(30,15,69,0.09)",
+        border: "1.5px solid #ede4f5",
+        display: "flex",
+        flexDirection: "column",
+        cursor: "pointer",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+        <div style={{ fontSize: 11, fontWeight: 800, color: "#1e0f45", display: "flex", alignItems: "center", gap: 6 }}>
+          <Icon path={icons.clock} size={12} color="#e8c878" />
+          My Payments
+        </div>
+        <span
+          style={{
+            background: "#e8c878",
+            color: "#5a3a10",
+            fontSize: 9,
+            fontWeight: 800,
+            padding: "2px 6px",
+            borderRadius: 8,
+          }}
+        >
+          {pendingPayments.length} pending
+        </span>
+      </div>
+
+      <div style={{ flex: 1, maxHeight: 112, overflowY: "auto" }}>
+        {pendingPayments.length === 0 ? (
+          <div
+            style={{
+              height: 112,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: "#888",
+              fontSize: 12,
+              fontWeight: 700,
+              textAlign: "center",
+            }}
+          >
+            No pending payments
+          </div>
+        ) : (
+          pendingPayments.map((p) => (
+            <div
+              key={p.id}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                padding: "6px 0",
+                borderBottom: "1px solid #faf7ff",
+                gap: 8,
+              }}
+            >
+              <div style={{ width: 7, height: 7, borderRadius: 999, background: "#e8c878", flexShrink: 0 }} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 600,
+                    color: "#1e0f45",
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    margin: 0,
+                  }}
+                >
+                  {p.method || "Payment"}
+                </p>
+                <p style={{ fontSize: 9, color: "#bbb", margin: "1px 0 0" }}>
+                  {formatHistoryDate(p.date)} · You sent
+                </p>
+              </div>
+              <div style={{ textAlign: "right", flexShrink: 0 }}>
+                <p style={{ fontSize: 11, fontWeight: 700, color: "#1e0f45", margin: 0 }}>
+                  ${Number(p.amount || 0).toFixed(2)}
+                </p>
+                <p style={{ fontSize: 9, color: "#bbb", margin: "2px 0 0" }}>Awaiting Ella</p>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      <div
+        style={{
+          marginTop: 8,
+          padding: "7px 10px",
+          background: "#faf7ff",
+          borderRadius: 10,
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+          color: "#aaa",
+          fontSize: 10,
+          fontWeight: 600,
+        }}
+      >
+        <Icon path={icons.clock} size={11} color="#aaa" />
+        Ella confirms payments
+      </div>
+    </div>
+  );
+}
+
+function DashboardRecentChargesList({ items = [], onOpenTarget, user }) {
+  function targetKeyForExpense(e) {
+    if (!e) return null;
+    const isRecurring = e.recurring && e.recurring !== "none";
+    if (isRecurring) {
+      const gid = e.groupId || e.id;
+      return gid ? `grp:${gid}` : null;
+    }
+    return e.id ? `exp:${e.id}` : null;
+  }
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 10,
+        maxHeight: 220,
+        overflowY: "auto",
+        paddingRight: 4,
+        WebkitOverflowScrolling: "touch",
+      }}
+    >
+      {items.map((e) => {
+        const key = targetKeyForExpense(e);
+        const due = e.nextDue || e.dueDate || null;
+        const metaLeft = due ? `Due ${formatShortDate(due)}` : formatShortDate(e.date);
+        const camAmt =
+          e.split === "cam" ? Number(e.amount || 0) :
+          e.split === "split" ? Number(e.amount || 0) / 2 :
+          e.split === "ella" ? -Number(e.amount || 0) :
+          0;
+        const youAmt = camAmt;
+        const youIsCredit = youAmt < 0;
+        const dashUrgency = getUrgencyLevel(e);
+        const dashStatusLabel =
+          e.status === "paid"
+            ? "Paid"
+            : youIsCredit
+              ? "Credit"
+              : dashUrgency === "overdue"
+                ? "Overdue"
+                : "Unpaid";
+        const dashStatusColor =
+          e.status === "paid" || youIsCredit
+            ? "#7BBFB0"
+            : dashUrgency === "overdue"
+              ? "#E05C6E"
+              : "#C06A8A";
+        const dashStatusWidth =
+          e.status === "paid" || youIsCredit ? "100%" : dashUrgency === "overdue" ? "85%" : "55%";
+        const dashStatusBg =
+          e.status === "paid" || youIsCredit
+            ? "#EEF5EC"
+            : dashUrgency === "overdue"
+              ? "#FFF0F0"
+              : "#FBEFF5";
+
+        return (
+          <button
+            key={e.id || `${e.description}-${e.date}`}
+            type="button"
+            onClick={() => {
+              if (key && typeof onOpenTarget === "function") onOpenTarget(key);
+            }}
+            style={{
+              width: "100%",
+              background: "#fff",
+              border: "1px solid #F0EAF8",
+              borderRadius: 16,
+              padding: "12px 14px",
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
+              boxShadow: "0 2px 10px rgba(0,0,0,0.04)",
+              cursor: "pointer",
+              textAlign: "left",
+              flexShrink: 0,
+            }}
+          >
+            <div
+              style={{
+                width: 10,
+                height: 10,
+                borderRadius: 999,
+                background: SPLIT_COLORS[e.split] || "#CCC",
+                flexShrink: 0,
+              }}
+            />
+
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <p
+                style={{
+                  margin: 0,
+                  fontSize: 13,
+                  fontWeight: 800,
+                  color: "#2D1B5E",
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}
+              >
+                {e.description}
+              </p>
+              <p style={{ margin: "3px 0 0", fontSize: 11, color: "#999" }}>
+  {user === "cam"
+    ? `${e.account} · ${e.category}`
+    : `${metaLeft} · ${e.account}`}
+</p>
+            </div>
+
+            <div style={{ textAlign: "right", flexShrink: 0 }}>
+              <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: "#2D1B5E" }}>
+                ${Number(user === "cam" ? Math.abs(youAmt) : Number(e.amount || 0)).toFixed(2)}
+              </p>
+              {user === "emma" && camAmt !== 0 && (
+                <p style={{ margin: "2px 0 0", fontSize: 11, fontWeight: 700, color: "#E8A0B0" }}>
+                  Cam: ${Number(camAmt || 0).toFixed(2)}
+                </p>
+              )}
+
+              {user === "cam" && (e.status === "paid" || youAmt !== 0) && (
+                <>
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      padding: "3px 10px",
+                      borderRadius: 999,
+                      fontSize: 10,
+                      fontWeight: 800,
+                      letterSpacing: 0.2,
+                      marginTop: 4,
+                      background: dashStatusBg,
+                      color:
+                        e.status === "paid" || youIsCredit
+                          ? "#1E8449"
+                          : dashUrgency === "overdue"
+                            ? "#E05C6E"
+                            : "#C06A8A",
+                    }}
+                  >
+                    {dashStatusLabel}
+                  </span>
+
+                  <div
+                    style={{
+                      width: 84,
+                      height: 5,
+                      borderRadius: 999,
+                      background: "#F3EDF8",
+                      marginLeft: "auto",
+                      marginTop: 6,
+                      overflow: "hidden",
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: dashStatusWidth,
+                        height: "100%",
+                        background: dashStatusColor,
+                        borderRadius: 999,
+                      }}
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div style={{ marginLeft: 6, flexShrink: 0 }}>
+              <Icon path={icons.forward} size={18} color="#C4A8D4" />
+            </div>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function DashboardActionChips({ onAddExpense, onLogPayment }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10, flexShrink: 0, width: 110 }}>
+      <button
+        type="button"
+        onClick={onAddExpense}
+        style={{
+          flex: 1,
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 8,
+          borderRadius: 18,
+          cursor: "pointer",
+          border: "none",
+          padding: "14px 10px",
+          boxShadow: "0 3px 12px rgba(30,15,69,0.13)",
+          background: "linear-gradient(160deg, #7bbfb0, #4e9e90)",
+        }}
+      >
+        <div
+          style={{
+            width: 34,
+            height: 34,
+            background: "rgba(255,255,255,0.22)",
+            borderRadius: 11,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <Icon path={icons.plus} size={18} color="#fff" />
+        </div>
+        <span
+          style={{
+            fontSize: 11,
+            fontWeight: 800,
+            color: "#fff",
+            textAlign: "center",
+            lineHeight: 1.3,
+            whiteSpace: "pre",
+          }}
+        >
+          {"Add\nExpense"}
+        </span>
+      </button>
+
+      <button
+        type="button"
+        onClick={onLogPayment}
+        style={{
+          flex: 1,
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 8,
+          borderRadius: 18,
+          cursor: "pointer",
+          border: "none",
+          padding: "14px 10px",
+          boxShadow: "0 3px 12px rgba(30,15,69,0.13)",
+          background: "linear-gradient(160deg, #c4a8d4, #9a72ba)",
+        }}
+      >
+        <div
+          style={{
+            width: 34,
+            height: 34,
+            background: "rgba(255,255,255,0.22)",
+            borderRadius: 11,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <Icon path={icons.wallet} size={18} color="#fff" />
+        </div>
+        <span
+          style={{
+            fontSize: 11,
+            fontWeight: 800,
+            color: "#fff",
+            textAlign: "center",
+            lineHeight: 1.3,
+            whiteSpace: "pre",
+          }}
+        >
+          {"Log\nPayment"}
+        </span>
+      </button>
+    </div>
+  );
+}
+
 // ── DASHBOARD ─────────────────────────────────────────────────────────
 function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, payments, syncingPayments, urgentCount, targetSummaries, onOpenTarget, onAddExpense, onLogPayment, onConfirm, onDeleteExpense, onMarkPaid, onNavigate, onLogout }) {
   const pending = payments.filter((p) => !p.confirmed);
+  // Cam dashboard urgent banner improvement: Step 3
+  const urgentList = (expenses || []).filter((e) => getUrgencyLevel(e) !== null);
+  const overdueCount = urgentList.filter((e) => getUrgencyLevel(e) === "overdue").length;
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchVal, setSearchVal] = useState("");
+  const [balanceOpen, setBalanceOpen] = useState(false);
 
   const sortedByDate = (expenses || [])
     .slice()
@@ -858,9 +1609,14 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
 
   const q = String(searchVal || "").trim().toLowerCase();
   const filtered = q
-    ? sortedByDate.filter((e) =>
-        String(e.description || "").toLowerCase().includes(q)
-      )
+    ? sortedByDate.filter((e) => {
+        const d = String(e.description || "").toLowerCase();
+        const c = String(e.category || "").toLowerCase();
+        const a = String(e.account || "").toLowerCase();
+        const amt = String(e.amount ?? "").toLowerCase();
+        const due = String(e.nextDue || e.dueDate || "").toLowerCase();
+        return d.includes(q) || c.includes(q) || a.includes(q) || amt.includes(q) || due.includes(q);
+      })
     : sortedByDate;
 
   // Show 4 items normally, but show up to 10 matches when searching.
@@ -874,6 +1630,38 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
   planTargets.sort((a, b) => Number(b.remaining || 0) - Number(a.remaining || 0));
   oneTimeTargets.sort((a, b) => Number(b.remaining || 0) - Number(a.remaining || 0));
 
+  // Monthly breakdown (simple): use nextDue/dueDate/date to bucket by current month
+  const now = new Date();
+  const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+
+  const monthItems = (expenses || []).filter((e) => {
+    const iso = e.nextDue || e.dueDate || e.date;
+    if (!iso) return false;
+    return String(iso).slice(0, 7) === monthKey;
+  });
+
+  const camOwesThisMonth = monthItems.reduce((s, e) => {
+    const amt = Number(e.amount || 0);
+    if (e.split === "cam") return s + amt;
+    if (e.split === "split") return s + amt / 2;
+    if (e.split === "ella") return s - amt; // Emmanuella pays reduces Cam's owed
+    return s;
+  }, 0);
+
+  const emmaPaidThisMonth = monthItems.reduce((s, e) => {
+    const amt = Number(e.amount || 0);
+    if (e.split === "mine") return s + amt;
+    if (e.split === "ella") return s + amt;
+    if (e.split === "split") return s + amt / 2;
+    return s;
+  }, 0);
+
+  // Cam's confirmed payments for the current month
+  const camPaidThisMonth = (payments || [])
+    .filter((p) => p?.confirmed)
+    .filter((p) => String(p.date || "").slice(0, 7) === monthKey)
+    .reduce((s, p) => s + Number(p.amount || 0), 0);
+
   return (
     <div style={styles.screen}>
       {/* Header */}
@@ -884,7 +1672,18 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <button
-            style={styles.iconBtn}
+            style={{
+              ...styles.logoutBtn,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 8,
+              padding: "6px 12px",
+              minWidth: 40,
+              height: 32,
+              background: searchOpen ? "#2D1B5E" : "rgba(255,255,255,0.7)",
+              color: searchOpen ? "#fff" : "#888",
+            }}
             onClick={() => {
               setSearchOpen((o) => !o);
               setSearchVal("");
@@ -892,7 +1691,11 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
             aria-label={searchOpen ? "Close search" : "Search"}
             type="button"
           >
-            {searchOpen ? "✕" : "🔍"}
+            {searchOpen ? (
+              <Icon path={icons.x} size={18} color="#fff" />
+            ) : (
+              <Icon path={icons.search} size={18} color="#888" />
+            )}
           </button>
           <button style={styles.logoutBtn} onClick={onLogout}>Switch</button>
         </div>
@@ -900,22 +1703,48 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
 
       {searchOpen && (
         <div style={styles.searchBar}>
-          <span style={styles.searchIcon}>🔍</span>
+          <span style={styles.searchIcon}>
+            <Icon path={icons.search} size={14} color="#AAA" />
+          </span>
           <input
             autoFocus
             style={styles.searchInput}
-            placeholder="Search recent charges…"
+            placeholder={user === "cam" ? "Search your charges…" : "Search recent charges…"}
             value={searchVal}
             onChange={(e) => setSearchVal(e.target.value)}
+            onKeyDown={(ev) => {
+              if (ev.key === "Escape") {
+                ev.preventDefault();
+                setSearchOpen(false);
+                setSearchVal("");
+              }
+            }}
           />
           {searchVal && (
-            <button style={styles.clearSearch} onClick={() => setSearchVal("")} type="button">✕</button>
+            <button style={styles.clearSearch} onClick={() => setSearchVal("")} type="button">
+              <Icon path={icons.x} size={14} color="#888" />
+            </button>
           )}
         </div>
       )}
 
       {/* Balance Card */}
-      <div style={styles.balanceCard}>
+      <div
+        style={{
+          ...styles.balanceCard,
+          cursor: "pointer",
+          background:
+            user === "cam"
+              ? "linear-gradient(135deg, #7A1C3E, #E05C6E)"
+              : styles.balanceCard.background,
+          boxShadow:
+            user === "cam"
+              ? "0 12px 40px rgba(224,92,110,0.22)"
+              : styles.balanceCard.boxShadow,
+        }}
+        onClick={() => setBalanceOpen((o) => !o)}
+        role="button"
+      >
         <p style={styles.balanceLabel}>{user === "cam" ? "You owe Emmanuella" : "Cameron owes you"}</p>
         <p style={styles.balanceAmount}>${balance.toFixed(2)}</p>
         <div style={styles.balanceRow}>
@@ -925,13 +1754,56 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
           </div>
           <div style={styles.balanceDivider} />
           <div style={styles.balanceStat}>
-            <span style={styles.balanceStatLabel}>Total paid</span>
+            <span style={styles.balanceStatLabel}>{user === "cam" ? "You’ve paid" : "Total paid"}</span>
             <span style={{ ...styles.balanceStatVal, color: "#A8EFC4" }}>
               ${totalPaid.toFixed(2)}
             </span>
           </div>
         </div>
+
+        {balanceOpen && (
+          <div style={styles.breakdownBox}>
+            <p style={styles.breakdownTitle}>This month</p>
+            <div style={styles.breakdownRow}>
+              <span style={styles.breakdownDesc}>{user === "cam" ? "You owe this month" : "Cam owes this month"}</span>
+              <span style={styles.breakdownAmt}>${Number(camOwesThisMonth || 0).toFixed(2)}</span>
+            </div>
+            <div style={styles.breakdownRow}>
+              <span style={styles.breakdownDesc}>{user === "cam" ? "Paid this month" : "Your expenses this month"}</span>
+              <span style={{ ...styles.breakdownAmt, color: "#fff" }}>
+                ${Number(user === "cam" ? camPaidThisMonth : emmaPaidThisMonth || 0).toFixed(2)}
+              </span>
+            </div>
+          </div>
+        )}
       </div>
+
+      {/* Mockup actions (Emma): Pending + Actions if pending exists, else Actions only */}
+      {user === "emma" && pending.length > 0 ? (
+        <div style={{ display: "flex", gap: 12, padding: "0 16px", marginBottom: 16 }}>
+          <DashboardPendingCard user={user} pendingPayments={pending} onConfirm={onConfirm} />
+          <DashboardActionChips onAddExpense={onAddExpense} onLogPayment={onLogPayment} />
+        </div>
+      ) : user === "emma" ? (
+        <div style={{ display: "flex", gap: 12, padding: "0 16px", marginBottom: 16 }}>
+          <DashboardPendingCard user={user} pendingPayments={pending} onConfirm={onConfirm} />
+          <DashboardActionChips onAddExpense={onAddExpense} onLogPayment={onLogPayment} />
+        </div>
+      ) : null}
+
+      {/* Cam quick actions row */}
+      {user === "cam" && (
+        <div style={{ ...styles.section, paddingTop: 0, marginBottom: 10 }}>
+          <div style={{ ...styles.sectionHeader, justifyContent: "space-between", paddingTop: 0 }}>
+            <span style={styles.sectionTitle}>Quick actions</span>
+            <span style={{ fontSize: 12, color: "#888", fontWeight: 700 }}>Tap to log</span>
+          </div>
+          <div style={{ display: "flex", gap: 12, alignItems: "stretch" }}>
+            <CamPendingCard pendingPayments={pending} onOpenHistory={() => onNavigate("history")} />
+            <DashboardActionChips onAddExpense={onAddExpense} onLogPayment={onLogPayment} />
+          </div>
+        </div>
+      )}
 
       <MonthlySummaryCard expenses={expenses} />
       <InsightsSection expenses={expenses} />
@@ -999,27 +1871,57 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
       )}
 
       {/* Urgent banner */}
-{urgentCount > 0 && (
-  <div
-    style={styles.urgentBanner}
-    onClick={() => onNavigate("urgent")}
-    role="button"
-  >
-    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-      <span style={{ fontSize: 22 }}>🔥</span>
-      <div>
-        <p style={styles.urgentBannerTitle}>
-          {urgentCount} payment{urgentCount === 1 ? "" : "s"} due soon
-        </p>
-        <p style={styles.urgentBannerSub}>Tap to see what needs attention</p>
-      </div>
-    </div>
-    <span style={{ color: "#E05C6E", fontSize: 22, fontWeight: 700 }}>›</span>
-  </div>
-)}
+      {urgentCount > 0 && (
+        <div
+          style={{
+            ...styles.urgentBanner,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 12,
+          }}
+          onClick={() => onNavigate("urgent")}
+          role="button"
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+            <div
+              style={{
+                width: 38,
+                height: 38,
+                borderRadius: 14,
+                background: "rgba(224,92,110,0.12)",
+                border: "1.5px solid #E8A0B0",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+              }}
+            >
+              <Icon path={icons.fire} size={18} color="#E05C6E" />
+            </div>
+
+            <div style={{ minWidth: 0 }}>
+              <p style={styles.urgentBannerTitle}>
+                {user === "cam" && overdueCount > 0
+                  ? `${overdueCount} charge${overdueCount === 1 ? "" : "s"} overdue`
+                  : user === "cam"
+                    ? `${urgentCount} charge${urgentCount === 1 ? "" : "s"} due soon`
+                    : `${urgentCount} payment${urgentCount === 1 ? "" : "s"} due soon`}
+              </p>
+              <p style={styles.urgentBannerSub}>
+                {user === "cam" ? "Tap to review your charges" : "Tap to see what needs attention"}
+              </p>
+            </div>
+          </div>
+
+          <div style={{ flexShrink: 0 }}>
+            <Icon path={icons.forward} size={20} color="#E05C6E" />
+          </div>
+        </div>
+      )}
 
       {/* Pending Confirmations (Emma only) */}
-      {user === "emma" && pending.length > 0 && (
+      {user === "emma" && pending.length > 0 && false && (
         <div style={styles.section}>
           <div style={styles.sectionHeader}>
             <Icon path={icons.alert} size={16} color="#E8C878" />
@@ -1040,12 +1942,59 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
       )}
 
       {/* Cam pending message */}
-      {user === "cam" && pending.length > 0 && (
-        <div style={{...styles.alertBox, background: "#FBF5E0", borderColor: "#E8C878"}}>
-          <Icon path={icons.clock} size={16} color="#C8A020" />
-          <p style={{color: "#7A5A10", fontSize: 13, margin: 0}}>
-            ${pending.reduce((s,p) => s+p.amount, 0).toFixed(2)} payment pending Emmanuella's confirmation
-          </p>
+      {false && user === "cam" && pending.length > 0 && (
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => onNavigate("history")}
+          onKeyDown={(ev) => {
+            if (ev.key === "Enter" || ev.key === " ") {
+              ev.preventDefault();
+              onNavigate("history");
+            }
+          }}
+          style={{
+            margin: "0 16px 16px",
+            background: "#fff",
+            borderRadius: 20,
+            padding: 14,
+            boxShadow: "0 4px 16px rgba(30,15,69,0.09)",
+            border: "1.5px solid #ede4f5",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 12,
+            cursor: "pointer",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+            <div
+              style={{
+                width: 38,
+                height: 38,
+                borderRadius: 14,
+                background: "#FBF5E0",
+                border: "1.5px solid #E8C878",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+              }}
+            >
+              <Icon path={icons.clock} size={18} color="#C8A020" />
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: "#2D1B5E" }}>
+                Pending confirmation
+              </p>
+              <p style={{ margin: "3px 0 0", fontSize: 11, color: "#888" }}>
+                ${pending.reduce((s, p) => s + Number(p.amount || 0), 0).toFixed(2)} waiting for Emmanuella
+              </p>
+            </div>
+          </div>
+          <div style={{ flexShrink: 0 }}>
+            <Icon path={icons.forward} size={20} color="#E05C6E" />
+          </div>
         </div>
       )}
 
@@ -1060,36 +2009,32 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
       )}
 
       {/* Action Buttons */}
-      <div style={styles.actionRow}>
-        <button style={{...styles.actionBtn, background: "linear-gradient(135deg, #7BBFB0, #5CA89A)"}} onClick={onAddExpense}>
-          <Icon path={icons.plus} size={18} color="#fff" />
-          <span>Add Expense</span>
-        </button>
-        <button style={{
-          ...styles.actionBtn,
-          background: "linear-gradient(135deg, #C4A8D4, #A88CC0)",
-        }} onClick={onLogPayment}>
-          <Icon path={icons.wallet} size={18} color="#fff" />
-          <span>{user === "cam" ? "Log My Payment" : "Record Payment"}</span>
-        </button>
-      </div>
+      {user !== "emma" && user !== "cam" && (
+        <div style={styles.actionRow}>
+          <button style={{...styles.actionBtn, background: "linear-gradient(135deg, #7BBFB0, #5CA89A)"}} onClick={onAddExpense}>
+            <Icon path={icons.plus} size={18} color="#fff" />
+            <span>Add Expense</span>
+          </button>
+          <button style={{
+            ...styles.actionBtn,
+            background: "linear-gradient(135deg, #C4A8D4, #A88CC0)",
+          }} onClick={onLogPayment}>
+            <Icon path={icons.wallet} size={18} color="#fff" />
+            <span>{user === "cam" ? "Log My Payment" : "Record Payment"}</span>
+          </button>
+        </div>
+      )}
 
 
       {/* Recent Expenses */}
       <div style={styles.section}>
         <div style={{...styles.sectionHeader, justifyContent: "space-between"}}>
-          <span style={styles.sectionTitle}>Recent charges</span>
-          <button style={styles.seeAll} onClick={() => onNavigate("expenses")}>See all</button>
+          <span style={styles.sectionTitle}>{user === "cam" ? "Your charges" : "Recent charges"}</span>
+          <button style={styles.seeAll} onClick={() => onNavigate("expenses")}>
+            {user === "cam" ? "View all" : "See all"}
+          </button>
         </div>
-        {searchedRecent.map(e => (
-          <ExpenseRow
-             key={e.id}
-             expense={e}
-             user={user}
-             onDelete={onDeleteExpense}
-             onMarkPaid={onMarkPaid}
-          />
-        ))}
+        <DashboardRecentChargesList items={searchedRecent} onOpenTarget={onOpenTarget} user={user} />
       </div>
 
       <div style={{height: 80}} />
@@ -1106,11 +2051,28 @@ function UrgentScreen({ expenses, user, onBack, onMarkPaid }) {
   return (
     <div style={styles.screen}>
       <div style={styles.subHeader}>
-        <button style={styles.backBtn} onClick={onBack}>
-          <Icon path={icons.back} size={20} />
+        <button
+          type="button"
+          style={{
+            ...styles.logoutBtn,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "6px 12px",
+            minWidth: 40,
+            height: 32,
+            background: "rgba(255,255,255,0.7)",
+            color: "#2D1B5E",
+          }}
+          onClick={onBack}
+          aria-label="Back"
+        >
+          <Icon path={icons.back} size={18} />
         </button>
-        <h2 style={styles.subTitle}>🔥 Urgent</h2>
-        <div style={{ width: 36 }} />
+
+        <h2 style={{ ...styles.subTitle, flex: 1, textAlign: "center", minWidth: 0 }}>Urgent</h2>
+
+        <div style={{ minWidth: 40, height: 32 }} />
       </div>
 
       <div style={{ padding: "0 16px 8px", fontSize: 12, color: "#888" }}>
@@ -1209,49 +2171,413 @@ function UrgentScreen({ expenses, user, onBack, onMarkPaid }) {
   );
 }
 
-// ── EXPENSES SCREEN ───────────────────────────────────────────────────
-function ExpensesScreen({ expenses, user, onBack, onAddExpense, onDeleteExpense, onMarkPaid }) {
-  const [filter, setFilter] = useState("all");
-  const baseFiltered = filter === "all" ? expenses : expenses.filter((e) => e.split === filter);
-  const [filteredList, setFilteredList] = useState(baseFiltered);
+
+// ---- Expenses screen ----
+// Sticky Dynamic Island = Header + (Cam Summary Pill) + Search + Filters (All / Unpaid / Paid)
+function ExpensesScreen({
+  expenses,
+  user,
+  onBack,
+  onDeleteExpense,
+  onMarkPaid,
+  targetSummaries,
+  onLogPaymentForKey,
+}) {
+  const isCam = user === "cam";
+  const screenRef = useRef(null);
+
+  // Only 3 filters
+  const [statusFilter, setStatusFilter] = useState("all"); // all | unpaid | paid
+  const [searchOpen, setSearchOpen] = useState(false);
+
+  // ---- CAM SUMMARY CARD DATA (for maroon pill) ----
+  const camVisibleExpenses = isCam
+    ? (expenses || []).filter((e) => ["cam", "split", "ella"].includes(e.split))
+    : [];
+
+  const camVisibleTargets = isCam
+    ? Array.from(targetSummaries?.values?.() || []).filter((t) => Number(t.charged || 0) !== 0)
+    : [];
+
+  const camChargeSummary = camVisibleTargets.reduce(
+    (acc, t) => {
+      const charged = Number(t.charged || 0);
+      const paid = Number(t.paid || 0);
+      const remaining = Number(t.remaining || 0);
+
+      acc.totalCharged += charged;
+      acc.totalPaid += Math.max(0, paid);
+      acc.totalOwed += remaining;
+      return acc;
+    },
+    { totalCharged: 0, totalOwed: 0, totalPaid: 0, overdueCount: 0 }
+  );
+
+  camChargeSummary.overdueCount = camVisibleExpenses.filter(
+    (e) => e.status !== "paid" && getUrgencyLevel(e) === "overdue"
+  ).length;
+
+  const progressBase = Math.max(0, Number(camChargeSummary.totalCharged || 0));
+  const camChargePct =
+    progressBase > 0
+      ? Math.round((Math.max(0, Number(camChargeSummary.totalPaid || 0)) / progressBase) * 100)
+      : 0;
+
+  // ---- Filter helpers ----
+  function matchesStatusFilter(e) {
+    const isPaid = e?.status === "paid";
+    const isCredit = e?.split === "ella"; // credits reduce Cam owed
+
+    if (statusFilter === "paid") return isPaid;
+    if (statusFilter === "unpaid") return !isPaid && !isCredit;
+    return true; // all
+  }
+
+  // ---- Base list (role + status filter) ----
+  const baseList = (() => {
+    const list = expenses || [];
+    if (isCam) return list.filter((e) => ["cam", "split", "ella"].includes(e.split));
+    return list;
+  })();
+
+  const baseFiltered = baseList.filter(matchesStatusFilter);
+
+  // ---- Search logic ----
+  const search = useExpensesSearchLogic(baseFiltered);
+  const listToRender = search.searchActive ? search.filteredExpenses : baseFiltered;
+
+  // Keep the UI toggle in sync with the hook
+  useEffect(() => {
+    if (searchOpen && !search.searchActive) search.activateSearch();
+    if (!searchOpen && search.searchActive) search.cancelSearch();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchOpen]);
 
   useEffect(() => {
-    setFilteredList(baseFiltered);
-  }, [filter, expenses]);
+    if (search.searchActive && screenRef.current) {
+      screenRef.current.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  }, [search.searchActive]);
 
-  const filtered = filteredList;
+  // ---- Inline island styles (self-contained, avoids missing styles.* keys) ----
+  const island = {
+    sticky: {
+      position: "sticky",
+      top: 0,
+      zIndex: 30,
+      padding: "48px 16px 12px",
+      background: "linear-gradient(160deg, rgba(248,244,255,0.98), rgba(248,244,255,0.90))",
+      backdropFilter: "blur(10px)",
+    },
+    card: {
+      background: "rgba(255,255,255,0.85)",
+      border: "1px solid #F0EAF8",
+      borderRadius: 22,
+      boxShadow: "0 8px 30px rgba(45,27,94,0.10)",
+      overflow: "hidden",
+    },
+    headerRow: {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      padding: "10px 12px",
+      gap: 10,
+    },
+    iconBtn: {
+      width: 40,
+      height: 34,
+      borderRadius: 16,
+      border: "none",
+      background: "rgba(255,255,255,0.7)",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      cursor: "pointer",
+    },
+    title: {
+      flex: 1,
+      minWidth: 0,
+      textAlign: "center",
+      fontSize: 16,
+      fontWeight: 900,
+      color: isCam ? "#7A1C3E" : "#2D1B5E",
+      margin: 0,
+    },
+    rightRow: { display: "flex", gap: 8, alignItems: "center", flexShrink: 0 },
+    searchBtn: {
+      width: 40,
+      height: 34,
+      borderRadius: 16,
+      border: "none",
+      background: search.searchActive ? (isCam ? "#E05C6E" : "#2D1B5E") : "rgba(255,255,255,0.7)",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      cursor: "pointer",
+    },
+    addBtn: {
+      width: 40,
+      height: 34,
+      borderRadius: 16,
+      border: "none",
+      background: "linear-gradient(135deg, #7BBFB0, #5CA89A)",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      cursor: "pointer",
+    },
+    pillWrap: { padding: "0 12px 12px" },
+    maroonPill: {
+      background: "linear-gradient(135deg, #3a0f1a, #802040)",
+      borderRadius: 22,
+      padding: "14px 16px",
+      color: "#fff",
+      boxShadow: "0 10px 30px rgba(80,15,30,0.25)",
+    },
+    filterRow: { display: "flex", gap: 8, overflowX: "auto", padding: "10px 12px 12px" },
+    chip: {
+      flexShrink: 0,
+      padding: "6px 14px",
+      borderRadius: 999,
+      border: "1.5px solid #E5DFF5",
+      background: "#fff",
+      fontSize: 13,
+      fontWeight: 800,
+      color: "#888",
+      cursor: "pointer",
+      whiteSpace: "nowrap",
+    },
+    chipActive: {
+      background: isCam ? "#FFF0F0" : "#2D1B5E",
+      color: isCam ? "#E05C6E" : "#fff",
+      borderColor: isCam ? "#E8A0B0" : "#2D1B5E",
+    },
+    searchRow: { padding: "10px 12px 12px" },
+    searchFieldWrap: { position: "relative", display: "flex", alignItems: "center" },
+    searchIcon: { position: "absolute", left: 12, display: "flex", alignItems: "center", justifyContent: "center" },
+    searchInput: {
+      width: "100%",
+      padding: "10px 36px 10px 34px",
+      borderRadius: 12,
+      border: "1.5px solid #E5DFF5",
+      background: "#fff",
+      fontSize: 15,
+      color: "#2D1B5E",
+      outline: "none",
+    },
+    searchClearBtn: {
+      position: "absolute",
+      right: 10,
+      width: 20,
+      height: 20,
+      borderRadius: 10,
+      border: "none",
+      cursor: "pointer",
+      background: "#CCC",
+      color: "#fff",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+    },
+  };
 
   return (
-    <div style={styles.screen}>
-      <div style={styles.subHeader}>
-        <button style={styles.backBtn} onClick={onBack}><Icon path={icons.back} size={20} /></button>
-        <h2 style={styles.subTitle}>All Expenses</h2>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <SearchBar expenses={baseFiltered} onFilter={setFilteredList} />
-          <button style={styles.addSmall} onClick={onAddExpense}><Icon path={icons.plus} size={18} color="#fff" /></button>
+    <div ref={screenRef} style={styles.screen}>
+      {/* Sticky Dynamic Island */}
+      <div style={island.sticky}>
+        <div style={island.card}>
+          {/* Header */}
+          <div style={island.headerRow}>
+            <button
+              type="button"
+              style={island.iconBtn}
+              onClick={() => {
+                if (search.searchActive) {
+                  setSearchOpen(false);
+                  search.cancelSearch();
+                  return;
+                }
+                if (typeof onBack === "function") onBack();
+              }}
+              aria-label="Back"
+            >
+              <Icon path={icons.back} size={18} color={isCam ? "#7A1C3E" : "#2D1B5E"} />
+            </button>
+
+            <h2 style={island.title}>{isCam ? "My charges" : "All Expenses"}</h2>
+
+            <div style={island.rightRow}>
+              <button
+                type="button"
+                style={island.searchBtn}
+                onClick={() => setSearchOpen((v) => !v)}
+                aria-label={search.searchActive ? "Close search" : "Search"}
+              >
+                {search.searchActive ? (
+                  <Icon path={icons.x} size={18} color="#fff" />
+                ) : (
+                  <Icon path={icons.search} size={18} color={isCam ? "#E05C6E" : "#2D1B5E"} />
+                )}
+              </button>
+
+              {!isCam && (
+                <button
+                  type="button"
+                  style={island.addBtn}
+                  onClick={() => (typeof onAddExpense === "function" ? onAddExpense() : null)}
+                  aria-label="Add expense"
+                >
+                  <Icon path={icons.plusCircle} size={18} color="#fff" />
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Cam maroon summary pill */}
+          {isCam && (
+            <div style={island.pillWrap}>
+              <div style={island.maroonPill}>
+                <div style={{ display: "flex", alignItems: "stretch" }}>
+                  <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 2 }}>
+                    <span style={{ fontSize: 10, opacity: 0.55 }}>Still owe</span>
+                    <span style={{ fontSize: 18, fontWeight: 900, letterSpacing: -0.5, color: "#ffb3b3" }}>
+                      ${camChargeSummary.totalOwed.toFixed(2)}
+                    </span>
+                  </div>
+
+                  <div style={{ width: 1, background: "rgba(255,255,255,0.15)", margin: "0 12px" }} />
+
+                  <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 2 }}>
+                    <span style={{ fontSize: 10, opacity: 0.55 }}>Paid so far</span>
+                    <span style={{ fontSize: 18, fontWeight: 900, letterSpacing: -0.5, color: "#a8efc4" }}>
+                      ${camChargeSummary.totalPaid.toFixed(2)}
+                    </span>
+                  </div>
+
+                  <div style={{ width: 1, background: "rgba(255,255,255,0.15)", margin: "0 12px" }} />
+
+                  <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 2 }}>
+                    <span style={{ fontSize: 10, opacity: 0.55 }}>Overdue</span>
+                    <span
+                      style={{
+                        fontSize: 18,
+                        fontWeight: 900,
+                        letterSpacing: -0.5,
+                        color: camChargeSummary.overdueCount > 0 ? "#ffb3b3" : "#a8efc4",
+                      }}
+                    >
+                      {camChargeSummary.overdueCount}
+                    </span>
+                  </div>
+                </div>
+
+                <div style={{ marginTop: 12 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
+                    <span style={{ fontSize: 10, color: "rgba(255,255,255,0.55)" }}>Overall progress</span>
+                    <span style={{ fontSize: 10, color: "rgba(255,255,255,0.85)", fontWeight: 800 }}>
+                      {camChargePct}% cleared
+                    </span>
+                  </div>
+
+                  <div style={{ background: "rgba(255,255,255,0.15)", borderRadius: 6, height: 7, overflow: "hidden" }}>
+                    <div
+                      style={{
+                        height: "100%",
+                        borderRadius: 6,
+                        background: "#a8efc4",
+                        width: `${camChargePct}%`,
+                        transition: "width 0.4s",
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Filters (All / Unpaid / Paid) */}
+          {!search.searchActive && (
+            <div style={island.filterRow}>
+              {[
+                ["all", "All"],
+                ["unpaid", "Unpaid"],
+                ["paid", "Paid"],
+              ].map(([val, label]) => {
+                const active = statusFilter === val;
+                return (
+                  <button
+                    key={val}
+                    type="button"
+                    onClick={() => setStatusFilter(val)}
+                    style={{ ...island.chip, ...(active ? island.chipActive : {}) }}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Search input (when active) */}
+          {search.searchActive && (
+            <div style={island.searchRow}>
+              <div style={island.searchFieldWrap}>
+                <span style={island.searchIcon}>
+                  <Icon path={icons.search} size={14} color="#AAA" />
+                </span>
+                <input
+                  style={island.searchInput}
+                  placeholder={isCam ? "Search your charges…" : "Search expenses…"}
+                  value={search.searchQuery}
+                  onChange={(e) => search.handleSearch(e.target.value)}
+                  autoFocus
+                  onKeyDown={(ev) => {
+                    if (ev.key === "Escape") {
+                      ev.preventDefault();
+                      setSearchOpen(false);
+                      search.cancelSearch();
+                    }
+                  }}
+                />
+                {search.searchQuery.length > 0 && (
+                  <button type="button" style={island.searchClearBtn} onClick={search.clearSearch} aria-label="Clear search">
+                    <Icon path={icons.x} size={14} color="#fff" />
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Filter tabs */}
-      <div style={styles.filterRow}>
-        {[["all","All"],["cam","Cam's"],["split","Split"],["mine","Mine"]].map(([val, label]) => (
-          <button key={val} style={{...styles.filterTab, ...(filter === val ? styles.filterTabActive : {})}} onClick={() => setFilter(val)}>
-            {label}
-          </button>
-        ))}
-      </div>
-
-      {filtered.map(e => (
+      {/* Results */}
+      {search.searchActive && search.searchQuery.length > 0 && listToRender.length === 0 ? (
+        <div style={{ textAlign: "center", padding: "60px 20px" }}>
+          <div style={{ fontSize: 48, marginBottom: 12 }}>
+            <Icon path={icons.search} size={48} color="#C4A8D4" />
+          </div>
+          <p style={{ margin: 0, fontSize: 14, fontWeight: 900, color: "#2D1B5E" }}>No results found</p>
+          <p style={{ margin: "6px 0 0", fontSize: 12, color: "#888" }}>
+            {isCam ? `No charges match "${search.searchQuery}"` : `No expenses match "${search.searchQuery}"`}
+          </p>
+        </div>
+      ) : (
+        <div style={{ padding: "0 16px" }}>
+          {listToRender.map((e) => (
   <ExpenseRow
     key={e.id}
     expense={e}
-    detailed
     user={user}
     onDelete={onDeleteExpense}
     onMarkPaid={onMarkPaid}
+    targetSummaries={targetSummaries}
+    onLogPaymentForKey={onLogPaymentForKey}
   />
 ))}
-      <div style={{height: 80}} />
+        </div>
+      )}
+
+      <div style={{ height: 80 }} />
     </div>
   );
 }
@@ -1291,9 +2617,28 @@ function HistoryScreen({ expenses, payments, user, targets = [], onBack, onConfi
   return (
     <div style={styles.screen}>
       <div style={styles.subHeader}>
-        <button style={styles.backBtn} onClick={onBack}><Icon path={icons.back} size={20} /></button>
-        <h2 style={styles.subTitle}>History</h2>
-        <div style={{width: 36}} />
+        <button
+          type="button"
+          style={{
+            ...styles.logoutBtn,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "6px 12px",
+            minWidth: 40,
+            height: 32,
+            background: "rgba(255,255,255,0.7)",
+            color: "#2D1B5E",
+          }}
+          onClick={onBack}
+          aria-label="Back"
+        >
+          <Icon path={icons.back} size={18} />
+        </button>
+
+        <h2 style={{ ...styles.subTitle, flex: 1, textAlign: "center", minWidth: 0 }}>History</h2>
+
+        <div style={{ minWidth: 40, height: 32 }} />
       </div>
 
       {/* Step 5: Add PaymentTimeline framework component */}
@@ -1305,7 +2650,11 @@ function HistoryScreen({ expenses, payments, user, targets = [], onBack, onConfi
             ...styles.historyIcon,
             background: item.type === "payment" ? "#EEF5EC" : "#EDE4F5"
           }}>
-            {item.type === "payment" ? "💳" : "🧾"}
+            {item.type === "payment" ? (
+              <Icon path={icons.wallet} size={18} color="#1E8449" />
+            ) : (
+              <Icon path={icons.list} size={18} color="#5B3B8C" />
+            )}
           </div>
           <div style={styles.historyInfo}>
             <p style={styles.historyDesc}>
@@ -1361,13 +2710,15 @@ function HistoryScreen({ expenses, payments, user, targets = [], onBack, onConfi
 
 
 // ── EXPENSE ROW ───────────────────────────────────────────────────────
-function ExpenseRow({ expense, user, onDelete, onMarkPaid }) {
+function ExpenseRow({ expense, user, onDelete, onMarkPaid, targetSummaries, onLogPaymentForKey }) {
   return (
     <ExpandableExpenseRow
       expense={expense}
       user={user}
       onDelete={onDelete}
       onMarkPaid={onMarkPaid}
+      targetSummaries={targetSummaries}
+      onLogPaymentForKey={onLogPaymentForKey}
     />
   );
 }
@@ -1375,7 +2726,7 @@ function ExpenseRow({ expense, user, onDelete, onMarkPaid }) {
 
 // ── SPLITTRACK FRAMEWORK COMPONENTS (imported) ───────────────────────
 
-function ExpandableExpenseRow({ expense: e, user, onDelete, onMarkPaid }) {
+function ExpandableExpenseRow({ expense: e, user, onDelete, onMarkPaid, targetSummaries, onLogPaymentForKey }) {
   const [expanded, setExpanded] = useState(false);
   const [note, setNote] = useState(e.note || "");
   const [editingNote, setEditingNote] = useState(false);
@@ -1385,6 +2736,7 @@ function ExpandableExpenseRow({ expense: e, user, onDelete, onMarkPaid }) {
   const [noteSaveFading, setNoteSaveFading] = useState(false);
   const noteFadeTimerRef = useRef(null);
   const [markPaidBusy, setMarkPaidBusy] = useState(false);
+  const [deleteBusy, setDeleteBusy] = useState(false);
 
   useEffect(() => {
     return () => {
@@ -1393,6 +2745,33 @@ function ExpandableExpenseRow({ expense: e, user, onDelete, onMarkPaid }) {
     };
   }, []);
 
+  const isCam = user === "cam";
+  const camShare =
+    e.split === "cam" ? Number(e.amount || 0) :
+    e.split === "split" ? Number(e.amount || 0) / 2 :
+    e.split === "ella" ? -Number(e.amount || 0) :
+    0;
+  const camIsCredit = camShare < 0;
+
+  const urgency = getUrgencyLevel(e);
+  const camStatusLabel =
+    e.status === "paid"
+      ? "Paid"
+      : camIsCredit
+        ? "Credit"
+        : urgency === "overdue"
+          ? "Overdue"
+          : "Unpaid";
+
+  const camStatusColor =
+    e.status === "paid"
+      ? "#7BBFB0"
+      : camIsCredit
+        ? "#7BBFB0"
+        : urgency === "overdue"
+          ? "#E05C6E"
+          : "#E8A0B0";
+
   const camAmt =
     e.split === "cam" ? Number(e.amount || 0) :
     e.split === "split" ? Number(e.amount || 0) / 2 :
@@ -1400,7 +2779,6 @@ function ExpandableExpenseRow({ expense: e, user, onDelete, onMarkPaid }) {
     0;
 
   async function handleSaveNote(nextVal) {
-    // clear any existing timers
     if (noteSaveTimerRef.current) clearTimeout(noteSaveTimerRef.current);
     if (noteFadeTimerRef.current) clearTimeout(noteFadeTimerRef.current);
     setNoteSaveFading(false);
@@ -1414,7 +2792,6 @@ function ExpandableExpenseRow({ expense: e, user, onDelete, onMarkPaid }) {
       setNoteSaveStatus("saved");
       setNoteSaveFading(false);
 
-      // start fading near the end, then clear
       noteFadeTimerRef.current = setTimeout(() => {
         setNoteSaveFading(true);
         noteFadeTimerRef.current = null;
@@ -1431,7 +2808,7 @@ function ExpandableExpenseRow({ expense: e, user, onDelete, onMarkPaid }) {
       setNoteDraft(e.note || "");
       setNoteSaveStatus("error");
       setNoteSaveFading(false);
-      // auto-hide error after 2s
+
       noteSaveTimerRef.current = setTimeout(() => {
         setNoteSaveStatus(null);
         noteSaveTimerRef.current = null;
@@ -1440,21 +2817,102 @@ function ExpandableExpenseRow({ expense: e, user, onDelete, onMarkPaid }) {
   }
 
   return (
-    <div style={fw.expenseCard}>
+    <div
+      style={{
+        ...fw.expenseCard,
+        opacity: e._deleting ? 0.55 : e._marking ? 0.75 : 1,
+        pointerEvents: e._deleting || e._marking ? "none" : "auto",
+        border: isCam ? "1.5px solid #F0EAF8" : fw.expenseCard.border,
+        boxShadow: isCam ? "0 2px 10px rgba(0,0,0,0.04)" : fw.expenseCard.boxShadow,
+      }}
+    >
       <div
         style={fw.expenseTop}
-        onClick={() => setExpanded((o) => !o)}
+        onClick={() => {
+          if (e._deleting || e._marking) return;
+          setExpanded((o) => !o);
+        }}
         role="button"
       >
         <div style={{ ...fw.splitDot, background: SPLIT_COLORS[e.split] }} />
+
         <div style={fw.expenseInfo}>
           <p style={fw.expenseDesc}>{e.description}</p>
-          <p style={fw.expenseMeta}>{formatShortDate(e.date)} · {e.account}</p>
+          <p style={fw.expenseMeta}>
+            {isCam
+              ? `${e.account} · ${e.category}`
+              : `${formatShortDate(e.date)} · ${e.account}`}
+          </p>
+          {isCam && (
+            <div
+              style={{
+                width: "100%",
+                height: 6,
+                borderRadius: 999,
+                background: "#F3EDF8",
+                marginTop: 8,
+                overflow: "hidden",
+              }}
+            >
+              <div
+                style={{
+                  width: e.status === "paid" ? "100%" : camIsCredit ? "100%" : "55%",
+                  height: "100%",
+                  background: camStatusColor,
+                  borderRadius: 999,
+                }}
+              />
+            </div>
+          )}
         </div>
-        <div style={fw.expenseRight}>
-          <p style={fw.expenseTotal}>${Number(e.amount || 0).toFixed(2)}</p>
-          {camAmt !== 0 && <p style={fw.expenseCam}>Cam: ${Number(camAmt || 0).toFixed(2)}</p>}
-          <span style={{ ...fw.chevron, transform: expanded ? "rotate(180deg)" : "rotate(0deg)" }}>▾</span>
+
+        <div style={{ ...fw.expenseRight, display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
+          <p style={fw.expenseTotal}>
+            ${Number(isCam ? Math.abs(camShare) : Number(e.amount || 0)).toFixed(2)}
+          </p>
+
+          {!isCam && camAmt !== 0 && (
+            <p style={fw.expenseCam}>Cam: ${Number(camAmt || 0).toFixed(2)}</p>
+          )}
+
+          {isCam && (
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                alignSelf: "flex-end",
+                padding: "3px 10px",
+                borderRadius: 999,
+                fontSize: 10,
+                fontWeight: 800,
+                letterSpacing: 0.2,
+                background:
+                  camStatusLabel === "Paid" || camStatusLabel === "Credit"
+                    ? "#EEF5EC"
+                    : camStatusLabel === "Overdue"
+                      ? "#FFF0F0"
+                      : "#FBEFF5",
+                color:
+                  camStatusLabel === "Paid" || camStatusLabel === "Credit"
+                    ? "#1E8449"
+                    : camStatusLabel === "Overdue"
+                      ? "#E05C6E"
+                      : "#C06A8A",
+                marginTop: 2,
+              }}
+            >
+              {camStatusLabel}
+            </span>
+          )}
+
+          <div style={fw.chevron}>
+            <Icon
+              path={expanded ? icons.chevronUp : icons.chevronDown}
+              size={16}
+              color={expanded ? "#2D1B5E" : "#CCC"}
+            />
+          </div>
         </div>
       </div>
 
@@ -1462,28 +2920,48 @@ function ExpandableExpenseRow({ expense: e, user, onDelete, onMarkPaid }) {
         <div style={fw.expandPanel} onClick={(ev) => ev.stopPropagation()}>
           <div style={fw.detailRow}>
             <span style={fw.detailLabel}>Status</span>
-            <span
-              style={{
-                ...fw.statusBadge,
-                background: e.status === "paid" ? "#EEF5EC" : "#FFF0F0",
-                color: e.status === "paid" ? "#1E8449" : "#E05C6E",
-              }}
-            >
-              {e.status === "paid" ? "✓ Paid" : "Unpaid"}
-            </span>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span
+                style={{
+                  ...fw.statusBadge,
+                  background: e.status === "paid" ? "#EEF5EC" : "#FFF0F0",
+                  color: e.status === "paid" ? "#1E8449" : "#E05C6E",
+                }}
+              >
+                {e.status === "paid"
+                  ? "✓ Paid"
+                  : isCam
+                    ? (camIsCredit ? "Credit" : "You owe")
+                    : "Unpaid"}
+              </span>
+
+              {e._marking && (
+                <span
+                  style={{
+                    ...fw.statusBadge,
+                    background: "#FBF5E0",
+                    color: "#C8A020",
+                  }}
+                >
+                  Marking…
+                </span>
+              )}
+
+              {e._deleting && (
+                <span
+                  style={{
+                    ...fw.statusBadge,
+                    background: "#FFF0F0",
+                    color: "#E05C6E",
+                  }}
+                >
+                  Deleting…
+                </span>
+              )}
+            </div>
           </div>
 
-          <div style={fw.detailRow}>
-            <span style={fw.detailLabel}>Split</span>
-            <span style={{ ...fw.splitChip, background: SPLIT_COLORS[e.split] + "33", color: "#444" }}>
-              {SPLIT_LABELS[e.split]}
-            </span>
-          </div>
-
-          <div style={fw.detailRow}>
-            <span style={fw.detailLabel}>Category</span>
-            <span style={fw.detailVal}>{e.category || "Other"}</span>
-          </div>
+          
 
           {(e.nextDue || e.dueDate) && (
             <div style={fw.detailRow}>
@@ -1492,8 +2970,83 @@ function ExpandableExpenseRow({ expense: e, user, onDelete, onMarkPaid }) {
             </div>
           )}
 
+          {/* ---- Payment plan containers (Cam view) ---- */}
+{isCam && (
+  <>
+    {/* Payment plan container: “2 of 4” + progress circles + next payment row */}
+    <div style={fw.payPlanCard}>
+      <div style={fw.payPlanTop}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+          <div style={fw.payPlanPill}>Payment plan</div>
+          <div style={fw.payPlanStepText}>2 of 4 payments</div>
+        </div>
+
+        <div style={fw.payPlanCircles} aria-label="Installment progress">
+          {[0, 1, 2, 3].map((i) => {
+            const done = i < 2;
+            return (
+              <div
+                key={i}
+                style={{
+                  ...fw.payPlanCircle,
+                  ...(done ? fw.payPlanCircleDone : {}),
+                }}
+              />
+            );
+          })}
+        </div>
+      </div>
+
+      <div style={fw.payPlanBarTrack}>
+        <div style={{ ...fw.payPlanBarFill, width: "50%" }} />
+      </div>
+
+      <div style={fw.payPlanNextRow}>
+        <div style={{ minWidth: 0 }}>
+          <div style={fw.payPlanNextLabel}>Next payment</div>
+          <div style={fw.payPlanNextSub}>Auto-calculated (wiring next)</div>
+        </div>
+
+        <div style={fw.payPlanNextRight}>
+          <div style={fw.payPlanNextAmt}>$0.00</div>
+          <div style={fw.payPlanNextDate}>—</div>
+        </div>
+      </div>
+    </div>
+
+    {/* Breakdown container: paid / remaining / total + log a payment button */}
+    <div style={fw.payMetaCard}>
+      <div style={fw.payMetaRow}>
+        <div style={fw.payMetaStat}>
+          <div style={fw.payMetaLabel}>Paid</div>
+          <div style={{ ...fw.payMetaVal, color: "#1E8449" }}>$0.00</div>
+        </div>
+
+        <div style={fw.payMetaDivider} />
+
+        <div style={fw.payMetaStat}>
+          <div style={fw.payMetaLabel}>Remaining</div>
+          <div style={{ ...fw.payMetaVal, color: "#E05C6E" }}>$0.00</div>
+        </div>
+
+        <div style={fw.payMetaDivider} />
+
+        <div style={fw.payMetaStat}>
+          <div style={fw.payMetaLabel}>Total</div>
+          <div style={fw.payMetaVal}>$0.00</div>
+        </div>
+      </div>
+
+      <button type="button" style={fw.logPayBtn}>
+        Log a payment
+      </button>
+    </div>
+  </>
+)}
+
           <div style={{ marginTop: 8 }}>
             <span style={fw.detailLabel}>Note</span>
+
             {editingNote ? (
               <div style={{ marginTop: 4 }}>
                 <textarea
@@ -1512,6 +3065,7 @@ function ExpandableExpenseRow({ expense: e, user, onDelete, onMarkPaid }) {
                     }
                   }}
                 />
+
                 <div style={fw.noteBtnRow}>
                   <button
                     style={fw.noteCancelBtn}
@@ -1523,6 +3077,7 @@ function ExpandableExpenseRow({ expense: e, user, onDelete, onMarkPaid }) {
                   >
                     Cancel
                   </button>
+
                   <button
                     style={fw.noteSaveBtn}
                     type="button"
@@ -1531,6 +3086,7 @@ function ExpandableExpenseRow({ expense: e, user, onDelete, onMarkPaid }) {
                     Save
                   </button>
                 </div>
+
                 {noteSaveStatus && (
                   <div
                     style={{
@@ -1541,8 +3097,8 @@ function ExpandableExpenseRow({ expense: e, user, onDelete, onMarkPaid }) {
                         noteSaveStatus === "saved"
                           ? "#1E8449"
                           : noteSaveStatus === "error"
-                          ? "#E05C6E"
-                          : "#888",
+                            ? "#E05C6E"
+                            : "#888",
                       opacity: noteSaveStatus === "saved" ? (noteSaveFading ? 0 : 1) : 1,
                       transition: "opacity 300ms ease",
                     }}
@@ -1550,8 +3106,8 @@ function ExpandableExpenseRow({ expense: e, user, onDelete, onMarkPaid }) {
                     {noteSaveStatus === "saving"
                       ? "Saving…"
                       : noteSaveStatus === "saved"
-                      ? "Saved ✓"
-                      : "Couldn’t save"}
+                        ? "Saved ✓"
+                        : "Couldn’t save"}
                   </div>
                 )}
               </div>
@@ -1566,6 +3122,7 @@ function ExpandableExpenseRow({ expense: e, user, onDelete, onMarkPaid }) {
                 >
                   {note || "Tap to add a note…"}
                 </p>
+
                 {noteSaveStatus === "saved" && (
                   <div
                     style={{
@@ -1584,7 +3141,7 @@ function ExpandableExpenseRow({ expense: e, user, onDelete, onMarkPaid }) {
             )}
           </div>
 
-          {user === "emma" && (
+          {!isCam && user === "emma" && (
             <div style={fw.actionBtns}>
               {(markPaidBusy || (e.status !== "paid" && !e._optimistic)) && typeof onMarkPaid === "function" && (
                 <button
@@ -1599,6 +3156,7 @@ function ExpandableExpenseRow({ expense: e, user, onDelete, onMarkPaid }) {
                     if (markPaidBusy) return;
                     setMarkPaidBusy(true);
                     const startedAt = Date.now();
+
                     try {
                       await onMarkPaid(e.id);
                     } finally {
@@ -1630,9 +3188,52 @@ function ExpandableExpenseRow({ expense: e, user, onDelete, onMarkPaid }) {
                   </span>
                 </button>
               )}
-              {typeof onDelete === "function" && (
-                <button style={fw.deleteBtn} type="button" onClick={() => onDelete(e.id)}>
-                  🗑 Delete
+
+              {!isCam && typeof onDelete === "function" && (
+                <button
+                  style={{
+                    ...fw.deleteBtn,
+                    opacity: deleteBusy ? 0.8 : 1,
+                    cursor: deleteBusy ? "default" : "pointer",
+                  }}
+                  type="button"
+                  disabled={deleteBusy}
+                  onClick={async () => {
+                    if (deleteBusy) return;
+                    setDeleteBusy(true);
+                    const startedAt = Date.now();
+
+                    try {
+                      await onDelete(e.id);
+                    } finally {
+                      const elapsed = Date.now() - startedAt;
+                      const wait = Math.max(0, 400 - elapsed);
+                      if (wait > 0) {
+                        setTimeout(() => setDeleteBusy(false), wait);
+                      } else {
+                        setDeleteBusy(false);
+                      }
+                    }
+                  }}
+                >
+                  <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+                    {deleteBusy ? (
+                      <span
+                        style={{
+                          width: 12,
+                          height: 12,
+                          borderRadius: 999,
+                          border: "2px solid rgba(224,92,110,0.45)",
+                          borderTopColor: "#E05C6E",
+                          animation: "stSpin 0.8s linear infinite",
+                          display: "inline-block",
+                        }}
+                      />
+                    ) : (
+                      <Icon path={icons.trash} size={16} color="#E05C6E" />
+                    )}
+                    <span>{deleteBusy ? "Deleting…" : "Delete"}</span>
+                  </span>
                 </button>
               )}
             </div>
@@ -1654,10 +3255,16 @@ function InsightsSection({ expenses }) {
     <div style={fw.insightCard}>
       <div style={fw.insightHeader} onClick={() => setOpen((o) => !o)} role="button">
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ fontSize: 18 }}>📊</span>
+          <Icon path={icons.list} size={18} color="#2D1B5E" />
           <span style={fw.insightTitle}>Insights</span>
         </div>
-        <span style={{ ...fw.chevron, transform: open ? "rotate(180deg)" : "rotate(0deg)" }}>▾</span>
+        <span style={fw.chevron}>
+          <Icon
+            path={open ? icons.chevronUp : icons.chevronDown}
+            size={16}
+            color={open ? "#2D1B5E" : "#CCC"}
+          />
+        </span>
       </div>
 
       {open && (
@@ -1705,7 +3312,7 @@ function SearchBar({ expenses, onFilter }) {
         }}
         aria-label={visible ? "Close search" : "Search"}
       >
-        🔍
+        <Icon path={icons.search} size={16} color="#2D1B5E" />
       </button>
 
       {visible && (
@@ -1716,10 +3323,18 @@ function SearchBar({ expenses, onFilter }) {
             value={query}
             onChange={(e) => handleChange(e.target.value)}
             autoFocus
+            onKeyDown={(ev) => {
+              if (ev.key === "Escape") {
+                ev.preventDefault();
+                setVisible(false);
+                setQuery("");
+                onFilter(expenses);
+              }
+            }}
           />
           {query.length > 0 && (
             <button style={fw.searchClear} type="button" onClick={() => { setQuery(""); onFilter(expenses); }}>
-              ✕
+              <Icon path={icons.x} size={14} color="#888" />
             </button>
           )}
         </div>
@@ -1748,7 +3363,13 @@ function MonthlySummaryCard({ expenses }) {
           <p style={fw.summaryMonth}>{month} Summary</p>
           <p style={fw.summaryTotal}>${total.toFixed(2)} total</p>
         </div>
-        <span style={{ ...fw.chevron, fontSize: 18, color: "#fff", transform: open ? "rotate(180deg)" : "rotate(0deg)" }}>▾</span>
+        <span style={fw.chevron}>
+          <Icon
+            path={open ? icons.chevronUp : icons.chevronDown}
+            size={18}
+            color="#fff"
+          />
+        </span>
       </div>
 
       {open && (
@@ -1775,11 +3396,17 @@ function PaymentTimeline({ payments }) {
     <div style={fw.timelineCard}>
       <div style={fw.timelineHeader} onClick={() => setOpen((o) => !o)} role="button">
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ fontSize: 16 }}>💳</span>
+          <Icon path={icons.wallet} size={16} color="#2D1B5E" />
           <span style={fw.insightTitle}>Payment History</span>
           {confirmed.length > 0 && <span style={fw.countBadge}>{confirmed.length}</span>}
         </div>
-        <span style={{ ...fw.chevron, transform: open ? "rotate(180deg)" : "rotate(0deg)" }}>▾</span>
+        <span style={fw.chevron}>
+          <Icon
+            path={open ? icons.chevronUp : icons.chevronDown}
+            size={16}
+            color={open ? "#2D1B5E" : "#CCC"}
+          />
+        </span>
       </div>
 
       {open && (
@@ -1797,7 +3424,7 @@ function PaymentTimeline({ payments }) {
                 </div>
                 <div style={fw.timelineContent}>
                   <p style={fw.timelineAmt}>${Number(p.amount || 0).toFixed(2)}</p>
-                  <p style={fw.timelineMeta}>{p.method} · {formatShortDate(p.date)}</p>
+                  <p style={fw.timelineMeta}>{p.method} · {formatHistoryDate(p.date)}</p>
                   {p.note && <p style={fw.timelineNote}>"{p.note}"</p>}
                 </div>
               </div>
@@ -2066,26 +3693,24 @@ function AddExpenseModal({ onSave, onClose, user }) {
     </div>
   );
 }
-
+//
 // ── LOG PAYMENT MODAL ─────────────────────────────────────────────────
-function LogPaymentModal({ balance, onSave, onClose, user, targets = [], planSummaries, targetSummaries }) {
+function LogPaymentModal({ balance, onSave, onClose, user, targets = [], planSummaries, targetSummaries, initialAppliedToKey }) {
   const [form, setForm] = useState({
-    amount: "",
-    method: "Zelle",
-    date: new Date().toISOString().split("T")[0],
-    note: "",
-    appliedToKey: "general",
-  });
-  const set = (k, v) => setForm(f => ({...f, [k]: v}));
+  amount: "",
+  method: "Zelle",
+  date: new Date().toISOString().split("T")[0],
+  note: "",
+  appliedToKey: defaultAppliedToKey || "general",
+});
 
-  const selectedTarget =
-    targetSummaries && form.appliedToKey && form.appliedToKey !== "general"
-      ? targetSummaries.get(form.appliedToKey)
-      : null;
+useEffect(() => {
+  setForm((f) => ({ ...f, appliedToKey: defaultAppliedToKey || "general" }));
+}, [defaultAppliedToKey]);
 
   const targetRemaining = selectedTarget ? selectedTarget.remaining : null;
   const suggestedAmount = selectedTarget ? selectedTarget.suggested : null;
-
+  const maxForTarget = selectedTarget ? Math.max(0, Math.abs(Number(targetRemaining || 0))) : null;
   return (
     <div style={styles.modalOverlay}>
       <div style={styles.modal}>
@@ -2118,7 +3743,11 @@ function LogPaymentModal({ balance, onSave, onClose, user, targets = [], planSum
               <button
                 type="button"
                 style={{ background: "none", border: "none", color: "#7BBFB0", fontWeight: 700, cursor: "pointer", fontSize: 12 }}
-                onClick={() => set("amount", String(Number(suggestedAmount || 0).toFixed(2)))}
+                onClick={() => {
+                  const s = Math.max(0, Number(suggestedAmount || 0));
+                  const cap = maxForTarget == null ? s : Math.min(s, maxForTarget);
+                  set("amount", String(Number(cap).toFixed(2)));
+                }}
               >
                 Use suggested
               </button>
@@ -2136,7 +3765,9 @@ function LogPaymentModal({ balance, onSave, onClose, user, targets = [], planSum
               if (!form.amount && targetSummaries && key !== "general") {
                 const s = targetSummaries.get(key);
                 if (s && s.suggested != null) {
-                  set("amount", String(s.suggested));
+                  const suggested = Math.max(0, Number(s.suggested || 0));
+                  const cap = Math.max(0, Math.abs(Number(s.remaining || 0)));
+                  set("amount", String(Number(Math.min(suggested, cap)).toFixed(2)));
                 }
               }
             }}
@@ -2272,7 +3903,158 @@ const fw = {
   expenseTotal: { fontSize: 14, fontWeight: 700, color: "#2D1B5E", margin: 0 },
   expenseCam: { fontSize: 11, color: "#E8A0B0", margin: "1px 0 0", fontWeight: 600 },
   splitDot: { width: 8, height: 8, borderRadius: "50%", flexShrink: 0 },
-  chevron: { fontSize: 14, color: "#AAA", display: "block", marginTop: 4, transition: "transform 0.2s" },
+  chevron: { display: "flex", alignItems: "center", justifyContent: "center", marginTop: 4 },
+
+// Payment plan UI (Cam view)
+payPlanCard: {
+  marginTop: 12,
+  background: "#fff",
+  borderRadius: 16,
+  border: "1px solid #F0EAF8",
+  boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
+  padding: "12px 12px",
+},
+payPlanTop: {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 10,
+  marginBottom: 10,
+},
+payPlanPill: {
+  fontSize: 10,
+  fontWeight: 900,
+  color: "#7A1C3E",
+  background: "#FFF0F0",
+  border: "1px solid #E8A0B0",
+  borderRadius: 999,
+  padding: "4px 10px",
+  flexShrink: 0,
+},
+payPlanStepText: {
+  fontSize: 12,
+  fontWeight: 800,
+  color: "#2D1B5E",
+  whiteSpace: "nowrap",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+},
+payPlanCircles: {
+  display: "flex",
+  alignItems: "center",
+  gap: 6,
+  flexShrink: 0,
+},
+payPlanCircle: {
+  width: 10,
+  height: 10,
+  borderRadius: 999,
+  border: "2px solid #E5DFF5",
+  background: "#fff",
+},
+payPlanCircleDone: {
+  border: "2px solid #7BBFB0",
+  background: "#7BBFB0",
+},
+payPlanBarTrack: {
+  height: 8,
+  borderRadius: 999,
+  background: "#F5F0FB",
+  overflow: "hidden",
+},
+payPlanBarFill: {
+  height: "100%",
+  borderRadius: 999,
+  background: "linear-gradient(135deg, #7BBFB0, #5CA89A)",
+},
+payPlanNextRow: {
+  marginTop: 10,
+  display: "flex",
+  alignItems: "flex-end",
+  justifyContent: "space-between",
+  gap: 10,
+},
+payPlanNextLabel: {
+  fontSize: 10,
+  fontWeight: 900,
+  color: "#AAA",
+  textTransform: "uppercase",
+  letterSpacing: 0.6,
+},
+payPlanNextSub: {
+  marginTop: 3,
+  fontSize: 12,
+  fontWeight: 700,
+  color: "#888",
+  whiteSpace: "nowrap",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+},
+payPlanNextRight: {
+  textAlign: "right",
+  flexShrink: 0,
+},
+payPlanNextAmt: {
+  fontSize: 14,
+  fontWeight: 900,
+  color: "#2D1B5E",
+},
+payPlanNextDate: {
+  marginTop: 2,
+  fontSize: 11,
+  fontWeight: 700,
+  color: "#999",
+},
+
+payMetaCard: {
+  marginTop: 10,
+  background: "#fff",
+  borderRadius: 16,
+  border: "1px solid #F0EAF8",
+  boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
+  padding: "12px 12px",
+},
+payMetaRow: {
+  display: "flex",
+  alignItems: "stretch",
+  gap: 0,
+},
+payMetaStat: {
+  flex: 1,
+  minWidth: 0,
+  display: "flex",
+  flexDirection: "column",
+  gap: 3,
+},
+payMetaLabel: {
+  fontSize: 10,
+  fontWeight: 900,
+  color: "#AAA",
+  textTransform: "uppercase",
+  letterSpacing: 0.6,
+},
+payMetaVal: {
+  fontSize: 14,
+  fontWeight: 900,
+  color: "#2D1B5E",
+},
+payMetaDivider: {
+  width: 1,
+  background: "#F0EAF8",
+  margin: "0 10px",
+},
+logPayBtn: {
+  width: "100%",
+  marginTop: 10,
+  border: "none",
+  borderRadius: 14,
+  padding: "12px 12px",
+  fontSize: 13,
+  fontWeight: 900,
+  cursor: "pointer",
+  color: "#fff",
+  background: "linear-gradient(135deg, #C4A8D4, #A88CC0)",
+},
 
   expandPanel: { padding: "14px 16px 16px", borderTop: "1px solid #F5F0FB" },
   detailRow: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: "1px solid #F9F5FF" },
@@ -2331,6 +4113,84 @@ const styles = {
   app: { maxWidth: 430, margin: "0 auto", minHeight: "100vh", background: "#F8F4FF", position: "relative", fontFamily: "'DM Sans', system-ui, sans-serif" },
   screen: { padding: "0 0 20px", overflowY: "auto", maxHeight: "100vh" },
 
+typeFilterRow: {
+  display: "flex",
+  gap: 8,
+  padding: "10px 4px 0",
+  margin: 0,
+  overflowX: "auto",
+  WebkitOverflowScrolling: "touch",
+},
+
+typeFilterChip: {
+  flexShrink: 0,
+  padding: "6px 14px",
+  borderRadius: 999,
+  border: "1.5px solid rgba(255,255,255,0.18)",
+  background: "rgba(255,255,255,0.08)",
+  color: "rgba(255,255,255,0.85)",
+  fontSize: 12,
+  fontWeight: 700,
+  cursor: "pointer",
+  backdropFilter: "blur(8px)",
+},
+
+typeFilterChipActive: {
+  background: "rgba(255,255,255,0.22)",
+  borderColor: "rgba(255,255,255,0.28)",
+  color: "#fff",
+},
+
+  // ---- Dynamic Island (Expenses) ----
+  islandSticky: {
+    position: "sticky",
+    top: 0,
+    zIndex: 60,
+    padding: "46px 16px 10px",
+    background: "linear-gradient(180deg, rgba(248,244,255,0.98), rgba(248,244,255,0.70), rgba(248,244,255,0))",
+    backdropFilter: "blur(8px)",
+  },
+  islandCard: {
+    background: "rgba(255,255,255,0.85)",
+    border: "1.5px solid #F0EAF8",
+    borderRadius: 26,
+    padding: "12px 12px 12px",
+    boxShadow: "0 10px 30px rgba(45,27,94,0.12)",
+  },
+  islandHeaderRow: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  islandTitle: {
+    margin: 0,
+    fontSize: 18,
+    fontWeight: 900,
+    color: "#2D1B5E",
+    textAlign: "center",
+    flex: 1,
+    minWidth: 0,
+  },
+  islandRight: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+  },
+  islandIconBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 14,
+    border: "none",
+    background: "rgba(255,255,255,0.7)",
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    color: "#2D1B5E",
+    flexShrink: 0,
+  },
+
   // Login
   loginWrap: { minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(160deg, #EDE4F5 0%, #EBF2F8 50%, #EBF6F4 100%)", padding: 20 },
   loginCard: { background: "#fff", borderRadius: 28, padding: "40px 28px", textAlign: "center", boxShadow: "0 20px 60px rgba(0,0,0,0.08)", width: "100%", maxWidth: 360 },
@@ -2345,11 +4205,33 @@ const styles = {
 
   // Header
   header: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "52px 20px 16px", background: "linear-gradient(160deg, #EDE4F5, #EBF6F4)" },
-  iconBtn: { width: 36, height: 36, borderRadius: 12, border: "none", cursor: "pointer", background: "rgba(255,255,255,0.7)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14 },
+iconBtn: {
+  width: 42,
+  height: 42,
+  borderRadius: 14,
+  border: "none",
+  cursor: "pointer",
+  background: "rgba(255,255,255,0.85)",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+},  
   searchBar: { margin: "-6px 16px 12px", background: "#fff", borderRadius: 14, border: "1px solid #F0EAF8", display: "flex", alignItems: "center", gap: 8, padding: "10px 12px", boxShadow: "0 2px 10px rgba(0,0,0,0.04)" },
   searchIcon: { fontSize: 14, opacity: 0.7 },
   searchInput: { flex: 1, border: "none", outline: "none", fontSize: 13, background: "transparent", color: "#2D1B5E" },
   clearSearch: { width: 28, height: 28, borderRadius: 10, border: "none", cursor: "pointer", background: "#F5F0FB", color: "#888", display: "flex", alignItems: "center", justifyContent: "center" },
+  expensesSearchRow: { display: "flex", alignItems: "center", gap: 10, padding: "0 16px 12px" },
+  expensesSearchFieldWrap: { flex: 1, position: "relative", display: "flex", alignItems: "center" },
+  expensesSearchIconInner: { position: "absolute", left: 12, display: "flex", alignItems: "center", justifyContent: "center" },
+  expensesSearchInput: { width: "100%", padding: "10px 36px 10px 34px", borderRadius: 12, border: "1.5px solid #E5DFF5", background: "#fff", fontSize: 15, color: "#2D1B5E", outline: "none" },
+  expensesSearchClearBtn: { position: "absolute", right: 10, width: 20, height: 20, borderRadius: 10, border: "none", cursor: "pointer", background: "#CCC", color: "#fff", fontSize: 11, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" },
+  expensesSearchCancel: { background: "none", border: "none", cursor: "pointer", color: "#7BBFB0", fontSize: 14, fontWeight: 700 },
+  expensesResultCount: { padding: "0 16px 8px", fontSize: 12, color: "#AAA", fontWeight: 600 },
+  searchEmptyWrap: { margin: "6px 16px 14px", background: "#fff", border: "1px solid #F0EAF8", borderRadius: 14, padding: "14px 14px", boxShadow: "0 2px 10px rgba(0,0,0,0.04)", textAlign: "center" },
+  searchEmptyTitle: { margin: 0, fontSize: 14, fontWeight: 800, color: "#2D1B5E" },
+  searchEmptySub: { margin: "6px 0 0", fontSize: 12, color: "#888" },
+  searchEmptyCenter: { textAlign: "center", padding: "60px 20px" },
+  searchEmptyEmoji: { fontSize: 48, marginBottom: 12 },
   headerGreet: { fontSize: 22, fontWeight: 800, color: "#2D1B5E", margin: 0 },
   headerSub: { fontSize: 12, color: "#888", margin: "2px 0 0" },
   logoutBtn: { fontSize: 12, color: "#888", background: "rgba(255,255,255,0.7)", border: "none", borderRadius: 20, padding: "6px 14px", cursor: "pointer" },
@@ -2419,6 +4301,39 @@ const styles = {
   filterTab: { flexShrink: 0, padding: "6px 16px", borderRadius: 20, border: "1px solid #E5DFF5", background: "#fff", fontSize: 13, color: "#888", cursor: "pointer" },
   filterTabActive: { background: "#2D1B5E", color: "#fff", borderColor: "#2D1B5E", fontWeight: 700 },
 
+  // ---- Type filter chip styles ----
+  typeFilterRow: {
+    display: "flex",
+    gap: 8,
+    padding: "8px 0 6px",
+    overflowX: "auto",
+    WebkitOverflowScrolling: "touch",
+  },
+  typeChip: {
+    flexShrink: 0,
+    padding: "6px 14px",
+    borderRadius: 999,
+    border: "1px solid #E5DFF5",
+    background: "#fff",
+    fontSize: 12,
+    color: "#888",
+    cursor: "pointer",
+    fontWeight: 700,
+    whiteSpace: "nowrap",
+  },
+  typeChipActive: {
+    background: "#2D1B5E",
+    color: "#fff",
+    borderColor: "#2D1B5E",
+  },
+  typeChipActiveCam: {
+    background: "#FFF0F0",
+    color: "#E05C6E",
+    borderColor: "#E8A0B0",
+  },
+
+
+  
   // History
   historyItem: { display: "flex", gap: 12, padding: "12px 16px", borderBottom: "1px solid #F0EAF8", alignItems: "flex-start" },
   historyIcon: { width: 38, height: 38, borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 },
@@ -2471,6 +4386,8 @@ const styles = {
   saveBtn: { marginTop: 16, padding: "16px", borderRadius: 16, border: "none", background: "linear-gradient(135deg, #C4A8D4, #A88CC0)", color: "#fff", fontSize: 16, fontWeight: 800, cursor: "pointer" },
   formNote: { fontSize: 12, color: "#E8A020", background: "#FBF5E0", borderRadius: 10, padding: "8px 12px", margin: "4px 0 0", textAlign: "center" },
 
+
+  
   // Bottom Nav
   bottomNav: { position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430, background: "#fff", borderTop: "1px solid #F0EAF8", display: "flex", padding: "8px 0 20px", boxShadow: "0 -4px 20px rgba(0,0,0,0.06)", zIndex: 50 },
   navBtn: { flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 3, background: "none", border: "none", cursor: "pointer", padding: "6px 0" },
@@ -2515,11 +4432,28 @@ function TargetDetailsScreen({ user, targetKey, targetSummaries, expenses, payme
   return (
     <div style={styles.screen}>
       <div style={styles.subHeader}>
-        <button style={styles.backBtn} onClick={onBack}>
-          <Icon path={icons.back} size={20} />
+        <button
+          type="button"
+          style={{
+            ...styles.logoutBtn,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "6px 12px",
+            minWidth: 40,
+            height: 32,
+            background: "rgba(255,255,255,0.7)",
+            color: "#2D1B5E",
+          }}
+          onClick={onBack}
+          aria-label="Back"
+        >
+          <Icon path={icons.back} size={18} />
         </button>
-        <h2 style={styles.subTitle}>{title}</h2>
-        <div style={{ width: 36 }} />
+
+        <h2 style={{ ...styles.subTitle, flex: 1, textAlign: "center", minWidth: 0 }}>{title}</h2>
+
+        <div style={{ minWidth: 40, height: 32 }} />
       </div>
 
       {summary && (
