@@ -2229,6 +2229,7 @@ function ExpensesScreen({
   const screenRef = useRef(null);
 
   const [statusFilter, setStatusFilter] = useState("all"); // all | active | unpaid | overdue | fullypaid | paid | installments
+  const [sortBy, setSortBy] = useState("newest");
   const [searchOpen, setSearchOpen] = useState(false);
 
   // ---- CAM SUMMARY CARD DATA (for maroon pill) ----
@@ -2296,9 +2297,36 @@ function ExpensesScreen({
         .sort((a, b) => new Date(b.date) - new Date(a.date))
     : baseFiltered;
 
+  // ---- Sort ----
+  function applySort(list) {
+    const sorted = [...list];
+    if (sortBy === "newest")     return sorted.sort((a, b) => new Date(b.date) - new Date(a.date));
+    if (sortBy === "oldest")     return sorted.sort((a, b) => new Date(a.date) - new Date(b.date));
+    if (sortBy === "amount")     return sorted.sort((a, b) => Number(b.amount || 0) - Number(a.amount || 0));
+    if (sortBy === "dueDate") {
+      return sorted.sort((a, b) => {
+        const da = a.dueDate || a.nextDue || null;
+        const db = b.dueDate || b.nextDue || null;
+        if (!da && !db) return 0;
+        if (!da) return 1;
+        if (!db) return -1;
+        return new Date(da) - new Date(db);
+      });
+    }
+    if (sortBy === "unpaidFirst") {
+      return sorted.sort((a, b) => {
+        const pa = a.status === "paid" ? 1 : 0;
+        const pb = b.status === "paid" ? 1 : 0;
+        if (pa !== pb) return pa - pb;
+        return new Date(b.date) - new Date(a.date);
+      });
+    }
+    return sorted;
+  }
+
   // ---- Search logic ----
   const search = useExpensesSearchLogic(baseFiltered);
-  const listToRender = searchOpen ? search.filteredExpenses : combinedFiltered;
+  const listToRender = searchOpen ? search.filteredExpenses : applySort(combinedFiltered);
 
   // Keep the UI toggle in sync with the hook
   useEffect(() => {
@@ -2580,6 +2608,43 @@ function ExpensesScreen({
                   </button>
                 );
               })}
+            </div>
+          )}
+
+          {/* Sort row */}
+          {!search.searchActive && (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 12px 10px" }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: "#AAA", textTransform: "uppercase", letterSpacing: 0.5, flexShrink: 0 }}>Sort</span>
+              <div style={{ display: "flex", gap: 6, overflowX: "auto", WebkitOverflowScrolling: "touch", scrollbarWidth: "none", msOverflowStyle: "none" }}>
+                {[
+                  ["newest",     "Newest"],
+                  ["oldest",     "Oldest"],
+                  ["amount",     "Highest $"],
+                  ["dueDate",    "Due Date"],
+                  ["unpaidFirst","Unpaid First"],
+                ].map(([val, label]) => (
+                  <button
+                    key={val}
+                    type="button"
+                    onClick={() => setSortBy(val)}
+                    style={{
+                      flexShrink: 0,
+                      padding: "4px 12px",
+                      borderRadius: 999,
+                      border: "1.5px solid",
+                      borderColor: sortBy === val ? (isCam ? "#E05C6E" : "#2D1B5E") : "#E5DFF5",
+                      background: sortBy === val ? (isCam ? "#FFF0F0" : "#F0EAF8") : "transparent",
+                      color: sortBy === val ? (isCam ? "#E05C6E" : "#2D1B5E") : "#AAA",
+                      fontWeight: sortBy === val ? 700 : 500,
+                      fontSize: 11,
+                      cursor: "pointer",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
 
@@ -3045,6 +3110,16 @@ function ExpandableExpenseRow({ expense: e, user, onDelete, onEdit, onMarkPaid, 
               />
             </div>
           )}
+          {(() => {
+            const due = e.nextDue || e.dueDate;
+            if (!due || e.status === "paid") return null;
+            const isOverdue = getUrgencyLevel(e) === "overdue";
+            return (
+              <p style={{ fontSize: 10, fontWeight: 700, margin: "4px 0 0", color: isOverdue ? "#E05C6E" : "#AAA" }}>
+                {isOverdue ? "Overdue · " : "Due · "}{formatShortDate(due)}
+              </p>
+            );
+          })()}
         </div>
 
         <div style={{ ...fw.expenseRight, display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
