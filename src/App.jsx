@@ -2653,7 +2653,7 @@ function HistoryScreen({ expenses, payments, user, targets = [], onBack, onConfi
       </div>
 
       {/* Step 5: Add PaymentTimeline framework component */}
-      <PaymentTimeline payments={payments} />
+      <PaymentTimeline payments={payments} targets={targets} />
 
       {all.map((item, i) => (
         <div key={i} style={styles.historyItem}>
@@ -2699,7 +2699,7 @@ function HistoryScreen({ expenses, payments, user, targets = [], onBack, onConfi
                 onClick={() => onDeleteConfirmedPayment(item.id)}
                 title="Delete confirmed payment"
               >
-                <Icon path={icons.x} size={16} color="#E8A0B0" />
+                <Icon path={icons.x} size={16} color="#C0485A" />
               </button>
             )}
             {item.type === "expense" && item.status === "paid" && user === "emma" && typeof onDeleteExpense === "function" && (
@@ -2708,7 +2708,7 @@ function HistoryScreen({ expenses, payments, user, targets = [], onBack, onConfi
                 onClick={() => onDeleteExpense(item.id)}
                 title="Delete paid expense"
               >
-                <Icon path={icons.x} size={16} color="#E8A0B0" />
+                <Icon path={icons.x} size={16} color="#C0485A" />
               </button>
             )}
           </div>
@@ -3386,9 +3386,15 @@ function MonthlySummaryCard({ expenses }) {
   );
 }
 
-function PaymentTimeline({ payments }) {
+function PaymentTimeline({ payments, targets = [] }) {
   const [open, setOpen] = useState(false);
   const confirmed = (payments || []).filter((p) => p && p.confirmed);
+  const targetLabelByKey = new Map((targets || []).map((t) => [t.key, t.label]));
+  function resolveLabel(p) {
+    const key = p.appliedToKey || (p.appliedToGroupId ? `grp:${p.appliedToGroupId}` : "general");
+    if (!key || key === "general") return "General payment";
+    return targetLabelByKey.get(key) || "Payment";
+  }
 
   return (
     <div style={fw.timelineCard}>
@@ -3422,7 +3428,7 @@ function PaymentTimeline({ payments }) {
                 </div>
                 <div style={fw.timelineContent}>
                   <p style={fw.timelineAmt}>${Number(p.amount || 0).toFixed(2)}</p>
-                  <p style={fw.timelineMeta}>{p.method} · {formatHistoryDate(p.date)}</p>
+                  <p style={fw.timelineMeta}>{resolveLabel(p)} · {p.method} · {formatHistoryDate(p.date)}</p>
                   {p.note && <p style={fw.timelineNote}>"{p.note}"</p>}
                 </div>
               </div>
@@ -3462,7 +3468,7 @@ function AddExpenseModal({ onSave, onClose, user }) {
         <div style={styles.modalHeader}>
           <h3 style={styles.modalTitle}>Add Expense</h3>
           <button style={styles.closeBtn} onClick={onClose}>
-            <Icon path={icons.back} size={18} />
+            <Icon path={icons.x} size={18} color="#C0485A" />
           </button>
         </div>
 
@@ -3719,7 +3725,7 @@ function LogPaymentModal({ balance, onSave, onClose, user, targets = [], planSum
       <div style={styles.modal}>
         <div style={styles.modalHeader}>
           <h3 style={styles.modalTitle}>Log Payment</h3>
-          <button style={styles.closeBtn} onClick={onClose}><Icon path={icons.x} size={18} /></button>
+          <button style={styles.closeBtn} onClick={onClose}><Icon path={icons.x} size={18} color="#C0485A" /></button>
         </div>
         {user === "cam" && (
           <div style={{...styles.alertBox, margin: "0 0 16px", background: "#FBF5E0", borderColor: "#E8C878"}}>
@@ -3907,6 +3913,7 @@ const fw = {
   expenseCam: { fontSize: 11, color: "#E8A0B0", margin: "1px 0 0", fontWeight: 600 },
   splitDot: { width: 8, height: 8, borderRadius: "50%", flexShrink: 0 },
   chevron: { display: "flex", alignItems: "center", justifyContent: "center", marginTop: 4 },
+  deleteBtn: { flex: 1, padding: "9px", borderRadius: 12, border: "none", background: "#FFF0F0", color: "#C0485A", fontWeight: 700, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 },
 
 // Payment plan UI (Cam view)
 payPlanCard: {
@@ -4300,7 +4307,7 @@ iconBtn: {
   expenseAmts: { textAlign: "right", flexShrink: 0 },
   expenseTotal: { fontSize: 14, fontWeight: 700, color: "#2D1B5E", margin: 0 },
   expenseCam: { fontSize: 11, color: "#E8A0B0", margin: "1px 0 0", fontWeight: 600 },
-  deleteBtn: { background: "transparent", border: "none", padding: 0, marginTop: 6, cursor: "pointer" },
+  deleteBtn: { background: "rgba(192,72,90,0.1)", border: "none", padding: 4, marginTop: 6, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", borderRadius: 6, width: 26, height: 26 },
   splitBadge: { borderRadius: 6, padding: "1px 6px", marginLeft: 4, fontSize: 10 },
 
   // Sub screens
@@ -4388,7 +4395,7 @@ iconBtn: {
   catChip: { padding: "6px 14px", borderRadius: 999, border: "1.5px solid #E5DFF5", background: "#F5F0FB", fontSize: 12, fontWeight: 700, cursor: "pointer" },
   modalHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 },
   modalTitle: { fontSize: 20, fontWeight: 800, color: "#2D1B5E", margin: 0 },
-  closeBtn: { background: "#F5F0FB", border: "none", borderRadius: 10, width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" },
+  closeBtn: { background: "#FDE8EB", border: "none", borderRadius: 10, width: 32, height: 32, padding: 0, boxSizing: "border-box", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 },
 
   form: { display: "flex", flexDirection: "column", gap: 8 },
   label: { fontSize: 12, fontWeight: 700, color: "#888", textTransform: "uppercase", letterSpacing: 0.5, marginTop: 8 },
