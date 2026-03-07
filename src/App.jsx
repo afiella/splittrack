@@ -538,6 +538,7 @@ export default function App() {
   const [editingExpense, setEditingExpense] = useState(null);
   
   const [paymentDraftKey, setPaymentDraftKey] = useState("general");
+  const [paymentDraftAmount, setPaymentDraftAmount] = useState(null);
   useEffect(() => {
     // Keep the user signed in across reloads
     setPersistence(auth, browserLocalPersistence).catch((e) => {
@@ -892,12 +893,13 @@ export default function App() {
         <LogPaymentModal
           balance={balance}
           onSave={handleLogPayment}
-          onClose={() => { setModal(null); setPaymentDraftKey("general"); }}
+          onClose={() => { setModal(null); setPaymentDraftKey("general"); setPaymentDraftAmount(null); }}
           user={user}
           targets={paymentTargets}
           planSummaries={planSummaries}
           targetSummaries={targetSummaries}
           initialAppliedToKey={paymentDraftKey}
+          initialAmount={paymentDraftAmount}
         />
       )}
 
@@ -955,9 +957,10 @@ export default function App() {
     onEditExpense={(exp) => setEditingExpense(exp)}
     onMarkPaid={handleMarkPaid}
     targetSummaries={targetSummaries}
-    onLogPaymentForKey={(key) => {
+    onLogPaymentForKey={(key, amount) => {
       const nextKey = key || "general";
       setPaymentDraftKey(nextKey);
+      setPaymentDraftAmount(amount ?? null);
       setModal("logPayment");
     }}
   />
@@ -2785,6 +2788,106 @@ function ExpenseRow({ expense, user, onDelete, onEdit, onMarkPaid, targetSummari
 }
 
 
+// ── QUICK PAY BUTTONS ─────────────────────────────────────────────────
+function QuickPayButtons({ targetKey, myShare, remaining, onLogPaymentForKey }) {
+  const [open, setOpen] = useState(false);
+  const [customMode, setCustomMode] = useState(false);
+  const [customVal, setCustomVal] = useState("");
+
+  function submitCustom() {
+    const amt = parseFloat(customVal);
+    if (!amt || amt <= 0) return;
+    setOpen(false);
+    setCustomMode(false);
+    setCustomVal("");
+    onLogPaymentForKey(targetKey, amt);
+  }
+
+  if (!open) {
+    return (
+      <button type="button" style={fw.logPayBtn} onClick={() => setOpen(true)}>
+        Log a payment
+      </button>
+    );
+  }
+
+  if (customMode) {
+    return (
+      <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+        <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+          <span style={{ position: "absolute", left: 12, fontWeight: 700, color: "#2D1B5E", fontSize: 16, pointerEvents: "none" }}>$</span>
+          <input
+            autoFocus
+            type="number"
+            min="0.01"
+            step="0.01"
+            placeholder="0.00"
+            value={customVal}
+            onChange={(e) => setCustomVal(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") submitCustom();
+              if (e.key === "Escape") { setCustomMode(false); setCustomVal(""); }
+            }}
+            style={{ width: "100%", padding: "12px 80px 12px 28px", borderRadius: 12, border: "1.5px solid #C4A8D4", fontSize: 18, fontWeight: 700, color: "#2D1B5E", outline: "none", boxSizing: "border-box", background: "#FDFBFF" }}
+          />
+          <button
+            type="button"
+            onClick={submitCustom}
+            style={{ position: "absolute", right: 8, padding: "6px 14px", borderRadius: 9, border: "none", background: "linear-gradient(135deg, #C4A8D4, #A88CC0)", color: "#fff", fontWeight: 700, fontSize: 12, cursor: "pointer" }}
+          >
+            Next →
+          </button>
+        </div>
+        <button
+          type="button"
+          style={{ background: "none", border: "none", color: "#AAA", fontSize: 12, cursor: "pointer", padding: "2px 0" }}
+          onClick={() => { setCustomMode(false); setCustomVal(""); }}
+        >
+          ← Back
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+      <div style={{ display: "flex", gap: 8 }}>
+        <button
+          type="button"
+          style={{ flex: 1, padding: "10px 8px", borderRadius: 12, border: "none", background: "linear-gradient(135deg, #7BBFB0, #5CA89A)", color: "#fff", fontWeight: 700, fontSize: 12, cursor: "pointer", lineHeight: 1.2 }}
+          onClick={() => { setOpen(false); onLogPaymentForKey(targetKey, myShare); }}
+        >
+          Pay My Share{"\n"}
+          <span style={{ fontSize: 13, fontWeight: 900 }}>${Number(myShare).toFixed(2)}</span>
+        </button>
+        <button
+          type="button"
+          style={{ flex: 1, padding: "10px 8px", borderRadius: 12, border: "none", background: "linear-gradient(135deg, #C4A8D4, #A88CC0)", color: "#fff", fontWeight: 700, fontSize: 12, cursor: "pointer", lineHeight: 1.2 }}
+          onClick={() => { setOpen(false); onLogPaymentForKey(targetKey, remaining); }}
+        >
+          Pay Remaining{"\n"}
+          <span style={{ fontSize: 13, fontWeight: 900 }}>${Number(remaining).toFixed(2)}</span>
+        </button>
+        <button
+          type="button"
+          style={{ flex: 1, padding: "10px 8px", borderRadius: 12, border: "1.5px solid #E5DFF5", background: "#F5F0FB", color: "#2D1B5E", fontWeight: 700, fontSize: 12, cursor: "pointer", lineHeight: 1.2 }}
+          onClick={() => setCustomMode(true)}
+        >
+          Custom{"\n"}
+          <span style={{ fontSize: 13, fontWeight: 900 }}>Amount</span>
+        </button>
+      </div>
+      <button
+        type="button"
+        style={{ background: "none", border: "none", color: "#AAA", fontSize: 12, cursor: "pointer", padding: "2px 0" }}
+        onClick={() => setOpen(false)}
+      >
+        Cancel
+      </button>
+    </div>
+  );
+}
+
 // ── SPLITTRACK FRAMEWORK COMPONENTS (imported) ───────────────────────
 
 function ExpandableExpenseRow({ expense: e, user, onDelete, onEdit, onMarkPaid, targetSummaries, onLogPaymentForKey }) {
@@ -3069,9 +3172,12 @@ function ExpandableExpenseRow({ expense: e, user, onDelete, onEdit, onMarkPaid, 
                   </div>
 
                   {tRemaining > 0.005 ? (
-                    <button type="button" style={fw.logPayBtn} onClick={() => typeof onLogPaymentForKey === "function" && onLogPaymentForKey(targetKey)}>
-                      Log a payment
-                    </button>
+                    <QuickPayButtons
+                      targetKey={targetKey}
+                      myShare={suggested}
+                      remaining={tRemaining}
+                      onLogPaymentForKey={onLogPaymentForKey}
+                    />
                   ) : (
   <div
     style={{
@@ -3869,9 +3975,9 @@ function EditExpenseModal({ expense, onSave, onClose }) {
 //
 // ★ CHANGE 4: Fixed LogPaymentModal — defaultAppliedToKey → initialAppliedToKey, added set() helper, added selectedTarget
 //
-function LogPaymentModal({ balance, onSave, onClose, user, targets = [], planSummaries, targetSummaries, initialAppliedToKey }) {
+function LogPaymentModal({ balance, onSave, onClose, user, targets = [], planSummaries, targetSummaries, initialAppliedToKey, initialAmount }) {
   const [form, setForm] = useState({
-    amount: "",
+    amount: initialAmount != null ? String(Number(initialAmount).toFixed(2)) : "",
     method: "Zelle",
     date: new Date().toISOString().split("T")[0],
     note: "",
@@ -3889,6 +3995,56 @@ function LogPaymentModal({ balance, onSave, onClose, user, targets = [], planSum
   const targetRemaining = selectedTarget ? selectedTarget.remaining : null;
   const suggestedAmount = selectedTarget ? selectedTarget.suggested : null;
   const maxForTarget = selectedTarget ? Math.max(0, Math.abs(Number(targetRemaining || 0))) : null;
+  // ── Simplified quick-pay flow (amount already chosen) ──────────────
+  if (initialAmount != null) {
+    return (
+      <div style={styles.modalOverlay}>
+        <div style={styles.modal}>
+          <div style={styles.dragHandle} />
+          <div style={styles.modalHeader}>
+            <h3 style={styles.modalTitle}>How did you pay?</h3>
+            <button style={styles.closeBtn} onClick={onClose}><Icon path={icons.x} size={18} color="#C0485A" /></button>
+          </div>
+
+          <div style={{ background: "#F5F0FB", borderRadius: 14, padding: "14px 16px", marginBottom: 20, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span style={{ fontSize: 13, color: "#888", fontWeight: 600 }}>Amount</span>
+            <span style={{ fontSize: 22, fontWeight: 900, color: "#2D1B5E" }}>${Number(initialAmount).toFixed(2)}</span>
+          </div>
+
+          <div style={styles.splitRow}>
+            {["Zelle", "Cash App", "Venmo", "Cash", "Apple Pay"].map(m => (
+              <button key={m} style={{
+                ...styles.splitOption,
+                fontSize: 12,
+                background: form.method === m ? "#7BBFB0" : "#F5F0FB",
+                color: form.method === m ? "#fff" : "#666",
+                fontWeight: form.method === m ? 700 : 400,
+              }} onClick={() => set("method", m)}>{m}</button>
+            ))}
+          </div>
+
+          {user === "cam" && <p style={{...styles.formNote, marginTop: 16}}>⚠️ Emmanuella will confirm once she receives it</p>}
+
+          <button
+            style={{ ...styles.saveBtn, background: "linear-gradient(135deg, #7BBFB0, #5CA89A)", marginTop: 20 }}
+            onClick={() => {
+              const key = form.appliedToKey || "general";
+              const legacyGroupId = key.startsWith("grp:") ? key.slice(4) : undefined;
+              onSave({
+                ...form,
+                amount: Number(initialAmount),
+                appliedToKey: key,
+                ...(legacyGroupId ? { appliedToGroupId: legacyGroupId } : {}),
+              });
+            }}
+          >
+            Done
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={styles.modalOverlay}>
       <div style={styles.modal}>
