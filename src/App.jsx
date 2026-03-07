@@ -138,7 +138,7 @@ function calcTargetSummaries(expenses, payments) {
   return summaries;
 }
 
-// Compute totalPaid from targetSummaries plus any confirmed “general” payments
+// Compute totalPaid from targetSummaries plus any confirmed "general" payments
 function calcTotalPaidFromTargets(payments, targetSummaries) {
   const pays = payments || [];
 
@@ -441,7 +441,7 @@ function calcPlanSummaries(expenses, payments) {
 }
 
 function calcPaidExpenses(expenses) {
-  // Count PAID expenses as “paid” toward the total.
+  // Count PAID expenses as "paid" toward the total.
   return (expenses || [])
     .filter((e) => e.status === "paid")
     .reduce((sum, e) => {
@@ -623,7 +623,7 @@ export default function App() {
       console.error("Failed to add expense:", err);
       // Roll back optimistic item
       setExpenses((prev) => prev.filter((e) => e.id !== tempId));
-      notify("Couldn’t save expense. Check Firestore rules.", "error");
+      notify("Couldn't save expense. Check Firestore rules.", "error");
     }
   }
 
@@ -643,7 +643,7 @@ export default function App() {
       console.error("Failed to log payment:", err);
       // Roll back optimistic item
       setPayments((prev) => prev.filter((p) => p.id !== tempId));
-      notify("Couldn’t save payment. Check Firestore rules.", "error");
+      notify("Couldn't save payment. Check Firestore rules.", "error");
     }
   }
 
@@ -680,7 +680,7 @@ export default function App() {
       notify("Payment confirmed! ✓");
     } catch (err) {
       console.error("Failed to confirm payment:", err);
-      notify("Couldn’t confirm payment. Check Firestore rules.", "error");
+      notify("Couldn't confirm payment. Check Firestore rules.", "error");
     }
   }
 
@@ -705,7 +705,7 @@ export default function App() {
       console.error("Failed to delete payment:", err);
       // Roll back
       setPayments((prev) => [removed, ...prev]);
-      notify("Couldn’t delete payment. Check Firestore rules.", "error");
+      notify("Couldn't delete payment. Check Firestore rules.", "error");
     }
   }
 
@@ -804,7 +804,7 @@ export default function App() {
       if (prevItem) {
         setExpenses((prev) => prev.map((e) => (e.id === id ? prevItem : e)));
       }
-      notify("Couldn’t mark as paid. Check Firestore rules.", "error");
+      notify("Couldn't mark as paid. Check Firestore rules.", "error");
     }
   }
 
@@ -844,7 +844,7 @@ export default function App() {
           return [removed, ...prev];
         });
       }
-      notify("Couldn’t delete expense. Check Firestore rules.", "error");
+      notify("Couldn't delete expense. Check Firestore rules.", "error");
     }
   }
 
@@ -1441,27 +1441,31 @@ function DashboardRecentChargesList({ items = [], onOpenTarget, user }) {
               {user === "cam" && (e.status === "paid" || youAmt !== 0) && (
                 <>
                   <span
-                    style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      padding: "3px 10px",
-                      borderRadius: 999,
-                      fontSize: 10,
-                      fontWeight: 800,
-                      letterSpacing: 0.2,
-                      marginTop: 4,
-                      background: dashStatusBg,
-                      color:
-                        e.status === "paid" || youIsCredit
-                          ? "#1E8449"
-                          : dashUrgency === "overdue"
-                            ? "#E05C6E"
-                            : "#C06A8A",
-                    }}
-                  >
-                    {dashStatusLabel}
-                  </span>
+  style={{
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 4,
+    padding: "3px 10px",
+    borderRadius: 999,
+    fontSize: 10,
+    fontWeight: 800,
+    letterSpacing: 0.2,
+    marginTop: 4,
+    background: dashStatusBg,
+    color:
+      e.status === "paid" || youIsCredit
+        ? "#1E8449"
+        : dashUrgency === "overdue"
+          ? "#E05C6E"
+          : "#C06A8A",
+  }}
+>
+  {dashUrgency === "overdue" && e.status !== "paid" && !youIsCredit && (
+    <Icon path={icons.alert} size={10} color="#E05C6E" />
+  )}
+  {dashStatusLabel}
+</span>
 
                   <div
                     style={{
@@ -1754,7 +1758,7 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
           </div>
           <div style={styles.balanceDivider} />
           <div style={styles.balanceStat}>
-            <span style={styles.balanceStatLabel}>{user === "cam" ? "You’ve paid" : "Total paid"}</span>
+            <span style={styles.balanceStatLabel}>{user === "cam" ? "You've paid" : "Total paid"}</span>
             <span style={{ ...styles.balanceStatVal, color: "#A8EFC4" }}>
               ${totalPaid.toFixed(2)}
             </span>
@@ -2186,50 +2190,52 @@ function ExpensesScreen({
   const isCam = user === "cam";
   const screenRef = useRef(null);
 
-  // Only 3 filters
-  const [statusFilter, setStatusFilter] = useState("all"); // all | unpaid | paid
+  // ★ CHANGE 2: Added "installments" to the filter options
+  const [statusFilter, setStatusFilter] = useState("all"); // all | unpaid | paid | installments
   const [searchOpen, setSearchOpen] = useState(false);
 
   // ---- CAM SUMMARY CARD DATA (for maroon pill) ----
-  const camVisibleExpenses = isCam
+  const allCamCharges = isCam
     ? (expenses || []).filter((e) => ["cam", "split", "ella"].includes(e.split))
     : [];
 
-  const camVisibleTargets = isCam
-    ? Array.from(targetSummaries?.values?.() || []).filter((t) => Number(t.charged || 0) !== 0)
-    : [];
+  const camChargeSummary = allCamCharges.reduce(
+    (acc, e) => {
+      const camShare =
+        e.split === "cam"
+          ? Number(e.amount || 0)
+          : e.split === "split"
+          ? Number(e.amount || 0) / 2
+          : e.split === "ella"
+          ? -Number(e.amount || 0)
+          : 0;
 
-  const camChargeSummary = camVisibleTargets.reduce(
-    (acc, t) => {
-      const charged = Number(t.charged || 0);
-      const paid = Number(t.paid || 0);
-      const remaining = Number(t.remaining || 0);
+      const fallbackTotal = Math.abs(camShare);
+      const itemPaid = Number(e.paid ?? (e.status === "paid" ? fallbackTotal : 0));
+      const remaining = Math.max(fallbackTotal - itemPaid, 0);
+      const isOverdue = e.overdue === true || getUrgencyLevel(e) === "overdue";
 
-      acc.totalCharged += charged;
-      acc.totalPaid += Math.max(0, paid);
       acc.totalOwed += remaining;
+      acc.totalPaid += itemPaid;
+      if (isOverdue) acc.overdueCount += 1;
       return acc;
     },
-    { totalCharged: 0, totalOwed: 0, totalPaid: 0, overdueCount: 0 }
+    { totalOwed: 0, totalPaid: 0, overdueCount: 0 }
   );
 
-  camChargeSummary.overdueCount = camVisibleExpenses.filter(
-    (e) => e.status !== "paid" && getUrgencyLevel(e) === "overdue"
-  ).length;
-
-  const progressBase = Math.max(0, Number(camChargeSummary.totalCharged || 0));
+  const progressBase = camChargeSummary.totalPaid + camChargeSummary.totalOwed;
   const camChargePct =
-    progressBase > 0
-      ? Math.round((Math.max(0, Number(camChargeSummary.totalPaid || 0)) / progressBase) * 100)
-      : 0;
+    progressBase > 0 ? Math.round((camChargeSummary.totalPaid / progressBase) * 100) : 0;
 
-  // ---- Filter helpers ----
+  // ★ CHANGE 2: Updated matchesStatusFilter to handle "installments"
   function matchesStatusFilter(e) {
     const isPaid = e?.status === "paid";
-    const isCredit = e?.split === "ella"; // credits reduce Cam owed
+    const isCredit = e?.split === "ella";
+    const isRecurring = e?.recurring && e.recurring !== "none";
 
     if (statusFilter === "paid") return isPaid;
     if (statusFilter === "unpaid") return !isPaid && !isCredit;
+    if (statusFilter === "installments") return isRecurring;
     return true; // all
   }
 
@@ -2244,7 +2250,7 @@ function ExpensesScreen({
 
   // ---- Search logic ----
   const search = useExpensesSearchLogic(baseFiltered);
-  const listToRender = search.searchActive ? search.filteredExpenses : baseFiltered;
+  const listToRender = searchOpen ? search.filteredExpenses : baseFiltered;
 
   // Keep the UI toggle in sync with the hook
   useEffect(() => {
@@ -2284,14 +2290,17 @@ function ExpensesScreen({
       gap: 10,
     },
     iconBtn: {
-      width: 40,
-      height: 34,
-      borderRadius: 16,
-      border: "none",
-      background: "rgba(255,255,255,0.7)",
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
+      gap: 8,
+      padding: "6px 12px",
+      minWidth: 40,
+      height: 32,
+      borderRadius: 12,
+      border: "none",
+      background: "rgba(255,255,255,0.7)",
+      color: "#2D1B5E",
       cursor: "pointer",
     },
     title: {
@@ -2305,14 +2314,17 @@ function ExpensesScreen({
     },
     rightRow: { display: "flex", gap: 8, alignItems: "center", flexShrink: 0 },
     searchBtn: {
-      width: 40,
-      height: 34,
-      borderRadius: 16,
-      border: "none",
-      background: search.searchActive ? (isCam ? "#E05C6E" : "#2D1B5E") : "rgba(255,255,255,0.7)",
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
+      gap: 8,
+      padding: "6px 12px",
+      minWidth: 40,
+      height: 32,
+      borderRadius: 12,
+      border: "none",
+      background: search.searchActive ? (isCam ? "#E05C6E" : "#2D1B5E") : "rgba(255,255,255,0.7)",
+      color: search.searchActive ? "#fff" : isCam ? "#E05C6E" : "#2D1B5E",
       cursor: "pointer",
     },
     addBtn: {
@@ -2495,14 +2507,13 @@ function ExpensesScreen({
             </div>
           )}
 
-          {/* Filters (All / Unpaid / Paid) */}
+          {/* ★ CHANGE 3: Cam gets "Plans" chip, Emma doesn't */}
           {!search.searchActive && (
             <div style={island.filterRow}>
-              {[
-                ["all", "All"],
-                ["unpaid", "Unpaid"],
-                ["paid", "Paid"],
-              ].map(([val, label]) => {
+              {(isCam
+                ? [["all","All"],["unpaid","Unpaid"],["installments","Plans"],["paid","Paid"]]
+                : [["all","All"],["unpaid","Unpaid"],["paid","Paid"]]
+              ).map(([val, label]) => {
                 const active = statusFilter === val;
                 return (
                   <button
@@ -2876,35 +2887,37 @@ function ExpandableExpenseRow({ expense: e, user, onDelete, onMarkPaid, targetSu
           )}
 
           {isCam && (
-            <span
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                alignSelf: "flex-end",
-                padding: "3px 10px",
-                borderRadius: 999,
-                fontSize: 10,
-                fontWeight: 800,
-                letterSpacing: 0.2,
-                background:
-                  camStatusLabel === "Paid" || camStatusLabel === "Credit"
-                    ? "#EEF5EC"
-                    : camStatusLabel === "Overdue"
-                      ? "#FFF0F0"
-                      : "#FBEFF5",
-                color:
-                  camStatusLabel === "Paid" || camStatusLabel === "Credit"
-                    ? "#1E8449"
-                    : camStatusLabel === "Overdue"
-                      ? "#E05C6E"
-                      : "#C06A8A",
-                marginTop: 2,
-              }}
-            >
-              {camStatusLabel}
-            </span>
-          )}
+  <span
+    style={{
+      display: "inline-flex",
+      alignItems: "center",
+      justifyContent: "center",
+      alignSelf: "flex-end",
+      gap: 4,
+      padding: "3px 10px",
+      borderRadius: 999,
+      fontSize: 10,
+      fontWeight: 800,
+      letterSpacing: 0.2,
+      background:
+        camStatusLabel === "Paid" || camStatusLabel === "Credit"
+          ? "#EEF5EC"
+          : camStatusLabel === "Overdue"
+            ? "#FFF0F0"
+            : "#FBEFF5",
+      color:
+        camStatusLabel === "Paid" || camStatusLabel === "Credit"
+          ? "#1E8449"
+          : camStatusLabel === "Overdue"
+            ? "#E05C6E"
+            : "#C06A8A",
+      marginTop: 2,
+    }}
+  >
+    {camStatusLabel === "Overdue" && <Icon path={icons.alert} size={10} color="#E05C6E" />}
+    {camStatusLabel}
+  </span>
+)}
 
           <div style={fw.chevron}>
             <Icon
@@ -2918,131 +2931,116 @@ function ExpandableExpenseRow({ expense: e, user, onDelete, onMarkPaid, targetSu
 
       {expanded && (
         <div style={fw.expandPanel} onClick={(ev) => ev.stopPropagation()}>
-          <div style={fw.detailRow}>
-            <span style={fw.detailLabel}>Status</span>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span
-                style={{
-                  ...fw.statusBadge,
-                  background: e.status === "paid" ? "#EEF5EC" : "#FFF0F0",
-                  color: e.status === "paid" ? "#1E8449" : "#E05C6E",
-                }}
-              >
-                {e.status === "paid"
-                  ? "✓ Paid"
-                  : isCam
-                    ? (camIsCredit ? "Credit" : "You owe")
-                    : "Unpaid"}
-              </span>
-
-              {e._marking && (
-                <span
-                  style={{
-                    ...fw.statusBadge,
-                    background: "#FBF5E0",
-                    color: "#C8A020",
-                  }}
-                >
-                  Marking…
-                </span>
-              )}
-
-              {e._deleting && (
-                <span
-                  style={{
-                    ...fw.statusBadge,
-                    background: "#FFF0F0",
-                    color: "#E05C6E",
-                  }}
-                >
-                  Deleting…
-                </span>
-              )}
-            </div>
-          </div>
-
           
 
-          {(e.nextDue || e.dueDate) && (
-            <div style={fw.detailRow}>
-              <span style={fw.detailLabel}>Due Date</span>
-              <span style={fw.detailVal}>{formatShortDate(e.nextDue || e.dueDate)}</span>
-            </div>
-          )}
+          {/* ★ CHANGE 1: Payment plan containers wired to real targetSummaries data */}
+          {isCam && (() => {
+            const isRecurring = e.recurring && e.recurring !== "none";
+            const targetKey = isRecurring ? `grp:${e.groupId || e.id}` : `exp:${e.id}`;
+            const s = targetSummaries?.get(targetKey);
+            const tCharged = Number(s?.charged || Math.abs(camShare));
+            const tPaid = Number(s?.paid || 0);
+            const tRemaining = Number(s?.remaining ?? (tCharged - tPaid));
+            const suggested = Number(s?.suggested || Math.abs(camShare));
+            const perOcc = Math.abs(camShare) || 1;
+            const totalOcc = isRecurring && perOcc > 0 ? Math.max(1, Math.round(Math.abs(tCharged) / perOcc)) : null;
+            const paidOcc = isRecurring && perOcc > 0 ? Math.min(totalOcc, Math.round(Math.abs(tPaid) / perOcc)) : null;
+            const nextDue = e.nextDue || e.dueDate || null;
 
-          {/* ---- Payment plan containers (Cam view) ---- */}
-{isCam && (
-  <>
-    {/* Payment plan container: “2 of 4” + progress circles + next payment row */}
-    <div style={fw.payPlanCard}>
-      <div style={fw.payPlanTop}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-          <div style={fw.payPlanPill}>Payment plan</div>
-          <div style={fw.payPlanStepText}>2 of 4 payments</div>
-        </div>
-
-        <div style={fw.payPlanCircles} aria-label="Installment progress">
-          {[0, 1, 2, 3].map((i) => {
-            const done = i < 2;
             return (
-              <div
-                key={i}
-                style={{
-                  ...fw.payPlanCircle,
-                  ...(done ? fw.payPlanCircleDone : {}),
-                }}
-              />
-            );
-          })}
-        </div>
-      </div>
+              <>
+                {isRecurring && totalOcc !== null && (
+                  <div style={fw.payPlanCard}>
+                    <div style={fw.payPlanTop}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                        <div style={fw.payPlanPill}>Payment plan</div>
+                        <div style={fw.payPlanStepText}>{paidOcc} of {totalOcc} payment{totalOcc !== 1 ? "s" : ""}</div>
+                      </div>
 
-      <div style={fw.payPlanBarTrack}>
-        <div style={{ ...fw.payPlanBarFill, width: "50%" }} />
-      </div>
+                      <div style={fw.payPlanCircles} aria-label="Installment progress">
+                        {Array.from({ length: Math.min(totalOcc, 8) }).map((_, i) => {
+                          const done = i < paidOcc;
+                          return (
+                            <div
+                              key={i}
+                              style={{
+                                ...fw.payPlanCircle,
+                                ...(done ? fw.payPlanCircleDone : {}),
+                              }}
+                            >
+                              {done && <Icon path={icons.check} size={8} color="#fff" />}
+                            </div>
+                          );
+                        })}
+                        {totalOcc > 8 && <span style={{ fontSize: 9, color: "#AAA", marginLeft: 2 }}>+{totalOcc - 8}</span>}
+                      </div>
+                    </div>
 
-      <div style={fw.payPlanNextRow}>
-        <div style={{ minWidth: 0 }}>
-          <div style={fw.payPlanNextLabel}>Next payment</div>
-          <div style={fw.payPlanNextSub}>Auto-calculated (wiring next)</div>
-        </div>
+                    <div style={fw.payPlanBarTrack}>
+                      <div style={{ ...fw.payPlanBarFill, width: `${totalOcc > 0 ? Math.round((paidOcc / totalOcc) * 100) : 0}%` }} />
+                    </div>
 
-        <div style={fw.payPlanNextRight}>
-          <div style={fw.payPlanNextAmt}>$0.00</div>
-          <div style={fw.payPlanNextDate}>—</div>
-        </div>
-      </div>
-    </div>
+                    {nextDue && (
+                      <div style={fw.payPlanNextRow}>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={fw.payPlanNextLabel}>Next payment</div>
+                          <div style={fw.payPlanNextSub}>Due {formatShortDate(nextDue)}</div>
+                        </div>
 
-    {/* Breakdown container: paid / remaining / total + log a payment button */}
-    <div style={fw.payMetaCard}>
-      <div style={fw.payMetaRow}>
-        <div style={fw.payMetaStat}>
-          <div style={fw.payMetaLabel}>Paid</div>
-          <div style={{ ...fw.payMetaVal, color: "#1E8449" }}>$0.00</div>
-        </div>
+                        <div style={fw.payPlanNextRight}>
+                          <div style={fw.payPlanNextAmt}>${Number(suggested).toFixed(2)}</div>
+                          <div style={fw.payPlanNextDate}>{formatShortDate(nextDue)}</div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
 
-        <div style={fw.payMetaDivider} />
+                <div style={fw.payMetaCard}>
+                  <div style={fw.payMetaRow}>
+                    <div style={fw.payMetaStat}>
+                      <div style={fw.payMetaLabel}>Paid</div>
+                      <div style={{ ...fw.payMetaVal, color: "#1E8449" }}>${Math.abs(tPaid).toFixed(2)}</div>
+                    </div>
 
-        <div style={fw.payMetaStat}>
-          <div style={fw.payMetaLabel}>Remaining</div>
-          <div style={{ ...fw.payMetaVal, color: "#E05C6E" }}>$0.00</div>
-        </div>
+                    <div style={fw.payMetaDivider} />
 
-        <div style={fw.payMetaDivider} />
+                    <div style={fw.payMetaStat}>
+                      <div style={fw.payMetaLabel}>Remaining</div>
+                      <div style={{ ...fw.payMetaVal, color: tRemaining > 0.005 ? "#E05C6E" : "#1E8449" }}>${Math.max(0, tRemaining).toFixed(2)}</div>
+                    </div>
 
-        <div style={fw.payMetaStat}>
-          <div style={fw.payMetaLabel}>Total</div>
-          <div style={fw.payMetaVal}>$0.00</div>
-        </div>
-      </div>
+                    <div style={fw.payMetaDivider} />
 
-      <button type="button" style={fw.logPayBtn}>
-        Log a payment
-      </button>
-    </div>
-  </>
+                    <div style={fw.payMetaStat}>
+                      <div style={fw.payMetaLabel}>Total</div>
+                      <div style={fw.payMetaVal}>${Math.abs(tCharged).toFixed(2)}</div>
+                    </div>
+                  </div>
+
+                  {tRemaining > 0.005 ? (
+                    <button type="button" style={fw.logPayBtn} onClick={() => typeof onLogPaymentForKey === "function" && onLogPaymentForKey(targetKey)}>
+                      Log a payment
+                    </button>
+                  ) : (
+  <div
+    style={{
+      ...fw.logPayBtn,
+      background: "#EEF5EC",
+      color: "#1E8449",
+      cursor: "default",
+      height: 40,
+      padding: "0 12px",
+      borderRadius: 12,
+    }}
+  >
+    ✓ Fully paid
+  </div>
 )}
+                </div>
+              </>
+            );
+          })()}
 
           <div style={{ marginTop: 8 }}>
             <span style={fw.detailLabel}>Note</span>
@@ -3107,7 +3105,7 @@ function ExpandableExpenseRow({ expense: e, user, onDelete, onMarkPaid, targetSu
                       ? "Saving…"
                       : noteSaveStatus === "saved"
                         ? "Saved ✓"
-                        : "Couldn’t save"}
+                        : "Couldn't save"}
                   </div>
                 )}
               </div>
@@ -3464,7 +3462,7 @@ function AddExpenseModal({ onSave, onClose, user }) {
         <div style={styles.modalHeader}>
           <h3 style={styles.modalTitle}>Add Expense</h3>
           <button style={styles.closeBtn} onClick={onClose}>
-            <Icon path={icons.x} size={18} />
+            <Icon path={icons.back} size={18} />
           </button>
         </div>
 
@@ -3694,19 +3692,24 @@ function AddExpenseModal({ onSave, onClose, user }) {
   );
 }
 //
-// ── LOG PAYMENT MODAL ─────────────────────────────────────────────────
+// ★ CHANGE 4: Fixed LogPaymentModal — defaultAppliedToKey → initialAppliedToKey, added set() helper, added selectedTarget
+//
 function LogPaymentModal({ balance, onSave, onClose, user, targets = [], planSummaries, targetSummaries, initialAppliedToKey }) {
   const [form, setForm] = useState({
-  amount: "",
-  method: "Zelle",
-  date: new Date().toISOString().split("T")[0],
-  note: "",
-  appliedToKey: defaultAppliedToKey || "general",
-});
+    amount: "",
+    method: "Zelle",
+    date: new Date().toISOString().split("T")[0],
+    note: "",
+    appliedToKey: initialAppliedToKey || "general",
+  });
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
-useEffect(() => {
-  setForm((f) => ({ ...f, appliedToKey: defaultAppliedToKey || "general" }));
-}, [defaultAppliedToKey]);
+  // Compute selectedTarget from the current form key
+  const selectedTarget = (() => {
+    const key = form.appliedToKey;
+    if (!key || key === "general" || !targetSummaries) return null;
+    return targetSummaries.get(key) || null;
+  })();
 
   const targetRemaining = selectedTarget ? selectedTarget.remaining : null;
   const suggestedAmount = selectedTarget ? selectedTarget.suggested : null;
@@ -3951,6 +3954,9 @@ payPlanCircle: {
   borderRadius: 999,
   border: "2px solid #E5DFF5",
   background: "#fff",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
 },
 payPlanCircleDone: {
   border: "2px solid #7BBFB0",
@@ -4048,12 +4054,18 @@ logPayBtn: {
   marginTop: 10,
   border: "none",
   borderRadius: 14,
-  padding: "12px 12px",
+  height: 44,
+  padding: "0 12px",
   fontSize: 13,
   fontWeight: 900,
+  lineHeight: 1,
   cursor: "pointer",
   color: "#fff",
   background: "linear-gradient(135deg, #C4A8D4, #A88CC0)",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  boxSizing: "border-box",
 },
 
   expandPanel: { padding: "14px 16px 16px", borderTop: "1px solid #F5F0FB" },
