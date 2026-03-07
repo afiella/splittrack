@@ -505,6 +505,7 @@ const icons = {
   clock: "M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z",
   wallet: "M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z",
   back: "M15 19l-7-7 7-7",
+  edit: "M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z",
   x: "M6 18L18 6M6 6l12 12",
   alert: "M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z",
   fire: "M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z",
@@ -534,6 +535,7 @@ export default function App() {
   const [payments, setPayments] = useState([]);
   const [notification, setNotification] = useState(null);
   const [modal, setModal] = useState(null); // "addExpense" | "logPayment" | "confirmPayment"
+  const [editingExpense, setEditingExpense] = useState(null);
   
   const [paymentDraftKey, setPaymentDraftKey] = useState("general");
   useEffect(() => {
@@ -848,6 +850,17 @@ export default function App() {
     }
   }
 
+  async function handleEditExpense(id, updates) {
+    try {
+      await updateExpenseInDb(id, updates);
+      setEditingExpense(null);
+      notify("Expense updated!");
+    } catch (err) {
+      console.error("Failed to update expense:", err);
+      notify("Couldn't update expense.", "error");
+    }
+  }
+
   if (!firebaseUser) return <LoginScreen />;
 
   return (
@@ -867,6 +880,13 @@ export default function App() {
       {/* Modal */}
       {modal === "addExpense" && (
         <AddExpenseModal onSave={handleAddExpense} onClose={() => setModal(null)} user={user} />
+      )}
+      {editingExpense && (
+        <EditExpenseModal
+          expense={editingExpense}
+          onSave={handleEditExpense}
+          onClose={() => setEditingExpense(null)}
+        />
       )}
       {modal === "logPayment" && (
         <LogPaymentModal
@@ -932,6 +952,7 @@ export default function App() {
     user={user}
     onBack={() => setScreen("dashboard")}
     onDeleteExpense={handleDeleteExpense}
+    onEditExpense={(exp) => setEditingExpense(exp)}
     onMarkPaid={handleMarkPaid}
     targetSummaries={targetSummaries}
     onLogPaymentForKey={(key) => {
@@ -2185,6 +2206,7 @@ function ExpensesScreen({
   user,
   onBack,
   onDeleteExpense,
+  onEditExpense,
   onMarkPaid,
   targetSummaries,
   onLogPaymentForKey,
@@ -2606,6 +2628,7 @@ function ExpensesScreen({
               expense={e}
               user={user}
               onDelete={onDeleteExpense}
+              onEdit={onEditExpense}
               onMarkPaid={onMarkPaid}
               targetSummaries={targetSummaries}
               onLogPaymentForKey={onLogPaymentForKey}
@@ -2747,12 +2770,13 @@ function HistoryScreen({ expenses, payments, user, targets = [], onBack, onConfi
 
 
 // ── EXPENSE ROW ───────────────────────────────────────────────────────
-function ExpenseRow({ expense, user, onDelete, onMarkPaid, targetSummaries, onLogPaymentForKey }) {
+function ExpenseRow({ expense, user, onDelete, onEdit, onMarkPaid, targetSummaries, onLogPaymentForKey }) {
   return (
     <ExpandableExpenseRow
       expense={expense}
       user={user}
       onDelete={onDelete}
+      onEdit={onEdit}
       onMarkPaid={onMarkPaid}
       targetSummaries={targetSummaries}
       onLogPaymentForKey={onLogPaymentForKey}
@@ -2763,7 +2787,7 @@ function ExpenseRow({ expense, user, onDelete, onMarkPaid, targetSummaries, onLo
 
 // ── SPLITTRACK FRAMEWORK COMPONENTS (imported) ───────────────────────
 
-function ExpandableExpenseRow({ expense: e, user, onDelete, onMarkPaid, targetSummaries, onLogPaymentForKey }) {
+function ExpandableExpenseRow({ expense: e, user, onDelete, onEdit, onMarkPaid, targetSummaries, onLogPaymentForKey }) {
   const [expanded, setExpanded] = useState(false);
   const [note, setNote] = useState(e.note || "");
   const [editingNote, setEditingNote] = useState(false);
@@ -3164,6 +3188,17 @@ function ExpandableExpenseRow({ expense: e, user, onDelete, onMarkPaid, targetSu
               </>
             )}
           </div>
+
+          {!isCam && user === "emma" && typeof onEdit === "function" && (
+            <button
+              type="button"
+              style={{ width: "100%", marginTop: 8, padding: "9px", borderRadius: 12, border: "1.5px solid #E5DFF5", background: "#F5F0FB", color: "#2D1B5E", fontWeight: 700, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}
+              onClick={() => onEdit(e)}
+            >
+              <Icon path={icons.edit} size={15} color="#2D1B5E" />
+              Edit Expense
+            </button>
+          )}
 
           {!isCam && user === "emma" && (
             <div style={fw.actionBtns}>
@@ -3723,6 +3758,114 @@ function AddExpenseModal({ onSave, onClose, user }) {
     </div>
   );
 }
+// ── EDIT EXPENSE MODAL ────────────────────────────────────────────────
+function EditExpenseModal({ expense, onSave, onClose }) {
+  const [form, setForm] = useState({
+    description: expense.description || "",
+    amount: expense.amount != null ? String(expense.amount) : "",
+    dueDate: expense.dueDate || expense.nextDue || "",
+    referenceNum: expense.referenceNum || "",
+    account: expense.account || "Navy Platinum",
+    note: expense.note || "",
+  });
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  return (
+    <div style={styles.modalOverlay}>
+      <div style={styles.modal}>
+        <div style={styles.dragHandle} />
+
+        <div style={styles.modalHeader}>
+          <h3 style={styles.modalTitle}>Edit Expense</h3>
+          <button style={styles.closeBtn} onClick={onClose}>
+            <Icon path={icons.x} size={18} color="#C0485A" />
+          </button>
+        </div>
+
+        <div style={styles.form}>
+          <label style={styles.fieldLabel}>Name</label>
+          <input
+            style={styles.input}
+            placeholder="e.g. Netflix, Wegmans…"
+            value={form.description}
+            onChange={(e) => set("description", e.target.value)}
+          />
+
+          <label style={styles.fieldLabel}>Amount ($)</label>
+          <div style={{ position: "relative" }}>
+            <span style={styles.dollarSign}>$</span>
+            <input
+              style={{ ...styles.input, paddingLeft: 28, fontSize: 20, fontWeight: 700 }}
+              type="number"
+              placeholder="0.00"
+              value={form.amount}
+              onChange={(e) => set("amount", e.target.value)}
+            />
+          </div>
+
+          <label style={styles.fieldLabel}>Due date</label>
+          <input
+            style={styles.input}
+            type="date"
+            value={form.dueDate}
+            onChange={(e) => set("dueDate", e.target.value)}
+          />
+
+          <div style={styles.twoCol}>
+            <div style={{ flex: 1 }}>
+              <label style={styles.fieldLabel}>Reference # (optional)</label>
+              <input
+                style={styles.input}
+                placeholder="TXN-4821"
+                value={form.referenceNum}
+                onChange={(e) => set("referenceNum", e.target.value)}
+              />
+            </div>
+            <div style={{ flex: 1 }}>
+              <label style={styles.fieldLabel}>Source of payment</label>
+              <select style={styles.input} value={form.account} onChange={(e) => set("account", e.target.value)}>
+                {["Navy Platinum", "Best Buy Visa", "Klarna", "Affirm", "Cash", "Zelle"].map((a) => (
+                  <option key={a}>{a}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <label style={styles.fieldLabel}>Description / Notes</label>
+          <textarea
+            style={{ ...styles.input, minHeight: 72, resize: "vertical", lineHeight: 1.4 }}
+            placeholder="Any extra details…"
+            value={form.note}
+            onChange={(e) => set("note", e.target.value)}
+          />
+
+          <button
+            style={styles.saveBtn}
+            type="button"
+            onClick={() => {
+              if (!form.description || !form.amount) return;
+              const updates = {
+                description: form.description,
+                amount: parseFloat(form.amount),
+                referenceNum: form.referenceNum || null,
+                account: form.account,
+                note: form.note,
+              };
+              if (form.dueDate) {
+                updates.dueDate = form.dueDate;
+                updates.nextDue = form.dueDate;
+              }
+              onSave(expense.id, updates);
+            }}
+          >
+            Save Changes
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 //
 // ★ CHANGE 4: Fixed LogPaymentModal — defaultAppliedToKey → initialAppliedToKey, added set() helper, added selectedTarget
 //
