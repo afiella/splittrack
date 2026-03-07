@@ -928,6 +928,7 @@ export default function App() {
       {screen === "expenses" && (
   <ExpensesScreen
     expenses={expenses}
+    payments={payments}
     user={user}
     onBack={() => setScreen("dashboard")}
     onDeleteExpense={handleDeleteExpense}
@@ -2180,6 +2181,7 @@ function UrgentScreen({ expenses, user, onBack, onMarkPaid }) {
 // Sticky Dynamic Island = Header + (Cam Summary Pill) + Search + Filters (All / Unpaid / Paid)
 function ExpensesScreen({
   expenses,
+  payments,
   user,
   onBack,
   onDeleteExpense,
@@ -2248,9 +2250,19 @@ function ExpensesScreen({
 
   const baseFiltered = baseList.filter(matchesStatusFilter);
 
+  // ---- Confirmed payments (shown under "Paid" filter) ----
+  const confirmedPayments = statusFilter === "paid"
+    ? (payments || []).filter((p) => p && p.confirmed).map((p) => ({ ...p, _isPayment: true }))
+    : [];
+
+  const combinedFiltered = statusFilter === "paid"
+    ? [...baseFiltered.map((e) => ({ ...e, _isPayment: false })), ...confirmedPayments]
+        .sort((a, b) => new Date(b.date) - new Date(a.date))
+    : baseFiltered;
+
   // ---- Search logic ----
   const search = useExpensesSearchLogic(baseFiltered);
-  const listToRender = searchOpen ? search.filteredExpenses : baseFiltered;
+  const listToRender = searchOpen ? search.filteredExpenses : combinedFiltered;
 
   // Keep the UI toggle in sync with the hook
   useEffect(() => {
@@ -2574,17 +2586,31 @@ function ExpensesScreen({
         </div>
       ) : (
         <div style={{ padding: "0 16px" }}>
-          {listToRender.map((e) => (
-  <ExpenseRow
-    key={e.id}
-    expense={e}
-    user={user}
-    onDelete={onDeleteExpense}
-    onMarkPaid={onMarkPaid}
-    targetSummaries={targetSummaries}
-    onLogPaymentForKey={onLogPaymentForKey}
-  />
-))}
+          {listToRender.map((e) => e._isPayment ? (
+            <div key={e.id} style={{ ...styles.historyItem, margin: "0 0 2px", borderRadius: 14, background: "#fff", boxShadow: "0 1px 4px rgba(0,0,0,0.05)", borderBottom: "none" }}>
+              <div style={{ ...styles.historyIcon, background: "#EEF5EC" }}>
+                <Icon path={icons.wallet} size={18} color="#1E8449" />
+              </div>
+              <div style={styles.historyInfo}>
+                <p style={styles.historyDesc}>Payment via {e.method}{e.appliedToKey && e.appliedToKey !== "general" ? ` · toward ${e.appliedToKey}` : ""}</p>
+                <p style={styles.historyMeta}>{formatHistoryDate(e.date)} <span style={styles.confirmedBadge}>confirmed</span></p>
+                {e.note && <p style={styles.historyNote}>"{e.note}"</p>}
+              </div>
+              <div style={styles.historyAmt}>
+                <p style={{ ...styles.historyAmtText, color: "#1E8449" }}>-${Number(e.amount || 0).toFixed(2)}</p>
+              </div>
+            </div>
+          ) : (
+            <ExpenseRow
+              key={e.id}
+              expense={e}
+              user={user}
+              onDelete={onDeleteExpense}
+              onMarkPaid={onMarkPaid}
+              targetSummaries={targetSummaries}
+              onLogPaymentForKey={onLogPaymentForKey}
+            />
+          ))}
         </div>
       )}
 
