@@ -19,6 +19,17 @@ const SPLIT_LABELS = { mine: "I pay", cam: "Cam pays", ella: "Emmanuella pays", 
 const SPLIT_COLORS = { mine: "#7BBFB0", cam: "#E8A0B0", ella: "#7BBFB0", split: "#C4A8D4" };
 const CATEGORIES = ["Groceries", "Household", "Insurance", "Subscriptions", "Utilities", "Entertainment", "Other"];
 
+const EXPENSE_TEMPLATES = [
+  { label: "Rent",             description: "Rent",             category: "Household",     recurring: "monthly", split: "split" },
+  { label: "Internet",         description: "Internet",         category: "Utilities",     recurring: "monthly", split: "split" },
+  { label: "Electric",         description: "Electric",         category: "Utilities",     recurring: "monthly", split: "split" },
+  { label: "YouTube Premium",  description: "YouTube Premium",  category: "Subscriptions", recurring: "monthly", split: "cam",   amount: "8.50" },
+  { label: "DoorDash",         description: "DoorDash",         category: "Other",         recurring: "monthly", split: "split" },
+  { label: "Shipt",            description: "Shipt Membership", category: "Subscriptions", recurring: "monthly", split: "split" },
+  { label: "Instacart",        description: "Instacart",        category: "Subscriptions", recurring: "monthly", split: "split" },
+  { label: "Uber Eats",        description: "Uber Eats",        category: "Other",         recurring: "monthly", split: "split" },
+];
+
 // ── AUTH ROLE MAPPING ─────────────────────────────────────────────────
 // TODO: Replace these with your real Gmail addresses
 const EMMA_EMAILS = ["ellabellosei@gmail.com"]; // full access
@@ -3646,6 +3657,23 @@ function AddExpenseModal({ onSave, onClose, user }) {
         </div>
 
         <div style={styles.form}>
+          {/* Templates */}
+          <div style={styles.sectionLabelRow}>
+            <span style={styles.sectionLabel}>Templates</span>
+          </div>
+          <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4, WebkitOverflowScrolling: "touch", scrollbarWidth: "none", msOverflowStyle: "none" }}>
+            {EXPENSE_TEMPLATES.map((t) => (
+              <button
+                key={t.label}
+                type="button"
+                style={{ flexShrink: 0, padding: "6px 14px", borderRadius: 999, border: "1.5px solid #E5DFF5", background: "#F5F0FB", fontSize: 12, fontWeight: 700, color: "#2D1B5E", cursor: "pointer", whiteSpace: "nowrap" }}
+                onClick={() => setForm(f => ({ ...f, description: t.description, category: t.category, recurring: t.recurring, split: t.split, ...(t.amount ? { amount: t.amount } : {}) }))}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+
           {/* Transaction Details */}
           <div style={styles.sectionLabelRow}>
             <span style={styles.sectionLabel}>Transaction details</span>
@@ -3810,7 +3838,7 @@ function AddExpenseModal({ onSave, onClose, user }) {
 
           <label style={styles.fieldLabel}>Account</label>
           <select style={styles.input} value={form.account} onChange={(e) => set("account", e.target.value)}>
-            {["Navy Platinum", "Best Buy Visa", "Klarna", "Affirm", "Cash", "Zelle"].map((a) => (
+            {["Navy Platinum", "Best Buy Visa", "Debit Card", "Klarna", "Affirm", "Cash", "Zelle"].map((a) => (
               <option key={a}>{a}</option>
             ))}
           </select>
@@ -3936,7 +3964,7 @@ function EditExpenseModal({ expense, onSave, onClose }) {
             <div style={{ flex: 1 }}>
               <label style={styles.fieldLabel}>Source of payment</label>
               <select style={styles.input} value={form.account} onChange={(e) => set("account", e.target.value)}>
-                {["Navy Platinum", "Best Buy Visa", "Klarna", "Affirm", "Cash", "Zelle"].map((a) => (
+                {["Navy Platinum", "Best Buy Visa", "Debit Card", "Klarna", "Affirm", "Cash", "Zelle"].map((a) => (
                   <option key={a}>{a}</option>
                 ))}
               </select>
