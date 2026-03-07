@@ -2693,25 +2693,25 @@ function HistoryScreen({ expenses, payments, user, targets = [], onBack, onConfi
             {item.type === "payment" && !item.confirmed && user === "emma" && (
               <button style={styles.miniConfirm} onClick={() => onConfirm(item.id)}>Confirm</button>
             )}
-            {item.type === "payment" && item.confirmed && user === "emma" && (
-              <button
-                style={styles.deleteBtn}
-                onClick={() => onDeleteConfirmedPayment(item.id)}
-                title="Delete confirmed payment"
-              >
-                <Icon path={icons.x} size={16} color="#C0485A" />
-              </button>
-            )}
-            {item.type === "expense" && item.status === "paid" && user === "emma" && typeof onDeleteExpense === "function" && (
-              <button
-                style={styles.deleteBtn}
-                onClick={() => onDeleteExpense(item.id)}
-                title="Delete paid expense"
-              >
-                <Icon path={icons.x} size={16} color="#C0485A" />
-              </button>
-            )}
           </div>
+          {item.type === "payment" && item.confirmed && user === "emma" && (
+            <button
+              style={styles.deleteBtn}
+              onClick={() => onDeleteConfirmedPayment(item.id)}
+              title="Delete confirmed payment"
+            >
+              <Icon path={icons.x} size={16} color="#C0485A" />
+            </button>
+          )}
+          {item.type === "expense" && item.status === "paid" && user === "emma" && typeof onDeleteExpense === "function" && (
+            <button
+              style={styles.deleteBtn}
+              onClick={() => onDeleteExpense(item.id)}
+              title="Delete paid expense"
+            >
+              <Icon path={icons.x} size={16} color="#C0485A" />
+            </button>
+          )}
         </div>
       ))}
       <div style={{height: 80}} />
@@ -4354,7 +4354,7 @@ iconBtn: {
 
   
   // History
-  historyItem: { display: "flex", gap: 12, padding: "12px 16px", borderBottom: "1px solid #F0EAF8", alignItems: "flex-start" },
+  historyItem: { display: "flex", gap: 12, padding: "12px 16px", borderBottom: "1px solid #F0EAF8", alignItems: "center" },
   historyIcon: { width: 38, height: 38, borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 },
   historyInfo: { flex: 1 },
   historyDesc: { fontSize: 13, fontWeight: 600, color: "#2D1B5E", margin: 0 },
