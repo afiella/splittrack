@@ -2217,8 +2217,7 @@ function ExpensesScreen({
   const isCam = user === "cam";
   const screenRef = useRef(null);
 
-  // ★ CHANGE 2: Added "installments" to the filter options
-  const [statusFilter, setStatusFilter] = useState("all"); // all | unpaid | paid | installments
+  const [statusFilter, setStatusFilter] = useState("all"); // all | active | unpaid | overdue | fullypaid | paid | installments
   const [searchOpen, setSearchOpen] = useState(false);
 
   // ---- CAM SUMMARY CARD DATA (for maroon pill) ----
@@ -2254,14 +2253,15 @@ function ExpensesScreen({
   const camChargePct =
     progressBase > 0 ? Math.round((camChargeSummary.totalPaid / progressBase) * 100) : 0;
 
-  // ★ CHANGE 2: Updated matchesStatusFilter to handle "installments"
   function matchesStatusFilter(e) {
     const isPaid = e?.status === "paid";
     const isCredit = e?.split === "ella";
     const isRecurring = e?.recurring && e.recurring !== "none";
+    const isOverdue = getUrgencyLevel(e) === "overdue";
 
-    if (statusFilter === "paid") return isPaid;
-    if (statusFilter === "unpaid") return !isPaid && !isCredit;
+    if (statusFilter === "paid")     return isPaid;
+    if (statusFilter === "unpaid")   return !isPaid && !isCredit;
+    if (statusFilter === "overdue")  return isOverdue && !isPaid;
     if (statusFilter === "installments") return isRecurring;
     return true; // all
   }
@@ -2546,18 +2546,24 @@ function ExpensesScreen({
 
           {/* ★ CHANGE 3: Cam gets "Plans" chip, Emma doesn't */}
           {!search.searchActive && (
-            <div style={island.filterRow}>
+            <div style={{ ...island.filterRow, WebkitOverflowScrolling: "touch", scrollbarWidth: "none", msOverflowStyle: "none" }}>
               {(isCam
-                ? [["all","All"],["unpaid","Unpaid"],["installments","Plans"],["paid","Paid"]]
-                : [["all","All"],["unpaid","Unpaid"],["paid","Paid"]]
+                ? [["all","All"],["unpaid","Unpaid"],["overdue","Overdue"],["installments","Plans"],["paid","Paid"]]
+                : [["all","All"],["unpaid","Unpaid"],["overdue","Overdue"],["paid","Paid"]]
               ).map(([val, label]) => {
-                const active = statusFilter === val;
+                const isActive = statusFilter === val;
+                const accentColor =
+                  val === "overdue" ? { background: "#E05C6E", borderColor: "#E05C6E", color: "#fff" } :
+                  null;
                 return (
                   <button
                     key={val}
                     type="button"
                     onClick={() => setStatusFilter(val)}
-                    style={{ ...island.chip, ...(active ? island.chipActive : {}) }}
+                    style={{
+                      ...island.chip,
+                      ...(isActive ? { ...island.chipActive, ...(accentColor || {}) } : {}),
+                    }}
                   >
                     {label}
                   </button>
