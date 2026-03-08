@@ -1023,6 +1023,7 @@ export default function App() {
     onEditExpense={(exp) => setEditingExpense(exp)}
     onMarkPaid={handleMarkPaid}
     targetSummaries={targetSummaries}
+    onQuickAdd={handleAddExpense}
     onLogPaymentForKey={(key, amount) => {
       const nextKey = key || "general";
       setPaymentDraftKey(nextKey);
@@ -2303,6 +2304,7 @@ function ExpensesScreen({
   onEditExpense,
   onMarkPaid,
   targetSummaries,
+  onQuickAdd,
   onLogPaymentForKey,
 }) {
   const isCam = user === "cam";
@@ -2311,6 +2313,7 @@ function ExpensesScreen({
   const [statusFilter, setStatusFilter] = useState("all"); // all | active | unpaid | overdue | fullypaid | paid | installments
   const [sortBy, setSortBy] = useState("newest");
   const [searchOpen, setSearchOpen] = useState(false);
+  const [quickAddOpen, setQuickAddOpen] = useState(false);
 
   // ---- CAM SUMMARY CARD DATA (for maroon pill) ----
   const allCamCharges = isCam
@@ -2505,8 +2508,8 @@ function ExpensesScreen({
     },
     addBtn: {
       width: 40,
-      height: 34,
-      borderRadius: 16,
+      height: 40,
+      borderRadius: 14,
       border: "none",
       background: "linear-gradient(135deg, #7BBFB0, #5CA89A)",
       display: "flex",
@@ -2612,10 +2615,10 @@ function ExpensesScreen({
                 <button
                   type="button"
                   style={island.addBtn}
-                  onClick={() => (typeof onAddExpense === "function" ? onAddExpense() : null)}
-                  aria-label="Add expense"
+                  onClick={() => setQuickAddOpen(true)}
+                  aria-label="Quick add expense"
                 >
-                  <Icon path={icons.plusCircle} size={18} color="#fff" />
+                  <span style={{ fontSize: 24, fontWeight: 300, color: "#fff", lineHeight: 1, marginTop: -1 }}>+</span>
                 </button>
               )}
             </div>
@@ -2820,6 +2823,17 @@ function ExpensesScreen({
       )}
 
       <div style={{ height: 80 }} />
+
+      {quickAddOpen && (
+        <QuickAddModal
+          user={user}
+          onSave={(exp) => {
+            if (typeof onQuickAdd === "function") onQuickAdd(exp);
+            setQuickAddOpen(false);
+          }}
+          onClose={() => setQuickAddOpen(false)}
+        />
+      )}
     </div>
   );
 }
@@ -4203,6 +4217,92 @@ function AddExpenseModal({ onSave, onClose, user }) {
     </div>
   );
 }
+// ── QUICK ADD MODAL ───────────────────────────────────────────────────
+function QuickAddModal({ user, onSave, onClose }) {
+  const isCam = user === "cam";
+  const [amount, setAmount] = useState("");
+  const [description, setDescription] = useState("");
+  const [split, setSplit] = useState("split");
+
+  const splitOptions = isCam
+    ? [["cam", "I pay"], ["ella", "Emmanuella pays"], ["split", "Split"]]
+    : [["mine", "I pay"], ["cam", "Cam pays"], ["split", "Split"]];
+
+  function handleSave() {
+    const amt = parseFloat(amount);
+    if (!amt || !description.trim()) return;
+    onSave({
+      description: description.trim(),
+      amount: amt,
+      split,
+      date: new Date().toISOString().split("T")[0],
+      recurring: "none",
+      category: "Other",
+      account: "Navy Platinum",
+    });
+  }
+
+  return (
+    <div
+      style={{ position: "fixed", inset: 0, zIndex: 1000, background: "rgba(20,10,40,0.45)", display: "flex", flexDirection: "column", justifyContent: "flex-end" }}
+      onClick={(ev) => { if (ev.target === ev.currentTarget) onClose(); }}
+    >
+      <div style={{ background: "#fff", borderRadius: "24px 24px 0 0", padding: "20px 20px 36px", boxShadow: "0 -8px 40px rgba(0,0,0,0.18)" }}>
+        <div style={{ width: 36, height: 4, borderRadius: 99, background: "#E0D8F0", margin: "0 auto 20px" }} />
+
+        {/* Amount — big, keyboard-first */}
+        <div style={{ position: "relative", marginBottom: 12 }}>
+          <span style={{ position: "absolute", left: 16, top: "50%", transform: "translateY(-50%)", fontSize: 28, fontWeight: 800, color: "#C4A8D4", pointerEvents: "none" }}>$</span>
+          <input
+            autoFocus
+            inputMode="decimal"
+            type="number"
+            placeholder="0.00"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && document.getElementById("qa-desc")?.focus()}
+            style={{ width: "100%", boxSizing: "border-box", paddingLeft: 44, paddingRight: 16, height: 64, borderRadius: 16, border: "2px solid #E5DFF5", background: "#FDFBFF", fontSize: 32, fontWeight: 800, color: "#2D1B5E", fontFamily: "inherit", outline: "none" }}
+          />
+        </div>
+
+        {/* Description */}
+        <input
+          id="qa-desc"
+          placeholder="What's this for?"
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && handleSave()}
+          style={{ width: "100%", boxSizing: "border-box", padding: "14px 16px", borderRadius: 14, border: "1.5px solid #E5DFF5", background: "#FDFBFF", fontSize: 16, fontWeight: 600, color: "#2D1B5E", fontFamily: "inherit", outline: "none", marginBottom: 14 }}
+        />
+
+        {/* Split chips */}
+        <div style={{ display: "flex", gap: 8, marginBottom: 18 }}>
+          {splitOptions.map(([val, label]) => (
+            <button
+              key={val}
+              type="button"
+              onClick={() => setSplit(val)}
+              style={{ flex: 1, padding: "10px 6px", borderRadius: 12, border: "1.5px solid", borderColor: split === val ? "#2D1B5E" : "#E5DFF5", background: split === val ? "#2D1B5E" : "#FDFBFF", color: split === val ? "#fff" : "#888", fontWeight: 700, fontSize: 12, fontFamily: "inherit", cursor: "pointer" }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {/* Save */}
+        <button
+          type="button"
+          disabled={!amount || !description.trim()}
+          onClick={handleSave}
+          style={{ width: "100%", padding: "16px", borderRadius: 16, border: "none", background: amount && description.trim() ? "linear-gradient(135deg, #7BBFB0, #5CA89A)" : "#E5DFF5", color: amount && description.trim() ? "#fff" : "#BBB", fontWeight: 800, fontSize: 16, fontFamily: "inherit", cursor: amount && description.trim() ? "pointer" : "default", transition: "background 0.15s" }}
+        >
+          Add Expense
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── EDIT EXPENSE MODAL ────────────────────────────────────────────────
 function EditExpenseModal({ expense, onSave, onClose }) {
   const isRecurring = expense.recurring && expense.recurring !== "none";
