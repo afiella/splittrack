@@ -997,6 +997,7 @@ export default function App() {
           expenses={expenses}
           payments={payments}
           onBack={() => { setScreen("dashboard"); setActiveTargetKey(null); }}
+          onEditExpense={(exp) => setEditingExpense(exp)}
         />
       )}
       {screen === "history" && (
@@ -2405,6 +2406,25 @@ function ExpensesScreen({
   const search = useExpensesSearchLogic(baseFiltered);
   const listToRender = searchOpen ? search.filteredExpenses : applySort(combinedFiltered);
 
+  // ---- Group recurring expenses by groupId ----
+  const groupedList = (() => {
+    const result = [];
+    const seen = new Map(); // gid → index in result
+    for (const e of listToRender) {
+      const isRecurring = e.recurring && e.recurring !== "none";
+      const gid = isRecurring ? (e.groupId || e.id) : null;
+      if (gid && seen.has(gid)) {
+        result[seen.get(gid)].items.push(e);
+      } else if (gid) {
+        seen.set(gid, result.length);
+        result.push({ _isGroup: true, gid, items: [e] });
+      } else {
+        result.push(e);
+      }
+    }
+    return result;
+  })();
+
 
   // Keep the UI toggle in sync with the hook
   useEffect(() => {
@@ -2771,10 +2791,20 @@ function ExpensesScreen({
         </div>
       ) : (
         <div style={{ padding: "0 16px" }}>
-          {listToRender.map((e) => (
+          {groupedList.map((item) => item._isGroup ? (
+            <GroupExpenseRow
+              key={`grp:${item.gid}`}
+              gid={item.gid}
+              items={item.items}
+              user={user}
+              targetSummaries={targetSummaries}
+              onMarkPaid={onMarkPaid}
+              onEdit={onEditExpense}
+            />
+          ) : (
             <ExpenseRow
-              key={e.id}
-              expense={e}
+              key={item.id}
+              expense={item}
               user={user}
               onDelete={onDeleteExpense}
               onEdit={onEditExpense}
@@ -2918,6 +2948,113 @@ function HistoryScreen({ expenses, payments, user, targets = [], onBack, onConfi
   );
 }
 
+
+// ── GROUP EXPENSE ROW ─────────────────────────────────────────────────
+function GroupSubRow({ expense: e, user, onMarkPaid, onEdit, isLast }) {
+  const isCam = user === "cam";
+  const camShare = e.split === "cam" ? Number(e.amount) : e.split === "split" ? Number(e.amount) / 2 : e.split === "ella" ? -Number(e.amount) : 0;
+  const amt = isCam ? Math.abs(camShare) : Number(e.amount);
+  const isPaid = e.status === "paid";
+  const isOverdue = getUrgencyLevel(e) === "overdue";
+  const statusLabel = isPaid ? "Paid" : isOverdue ? "Overdue" : "Unpaid";
+  const statusColor = isPaid ? "#1E8449" : isOverdue ? "#E05C6E" : "#888";
+  const statusBg = isPaid ? "#EEF5EC" : isOverdue ? "#FFF0F0" : "#F5F5F5";
+  const displayDate = e.nextDue || e.dueDate || e.date;
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 0", borderBottom: isLast ? "none" : "1px solid #F5F0FB" }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <p style={{ fontSize: 12, fontWeight: 600, color: "#2D1B5E", margin: 0 }}>{formatShortDate(displayDate)}</p>
+      </div>
+      <span style={{ fontSize: 10, fontWeight: 700, color: statusColor, background: statusBg, borderRadius: 6, padding: "2px 7px", flexShrink: 0 }}>{statusLabel}</span>
+      <p style={{ fontSize: 13, fontWeight: 700, color: "#2D1B5E", margin: 0, minWidth: 52, textAlign: "right" }}>${amt.toFixed(2)}</p>
+      {user === "emma" && !isPaid && typeof onMarkPaid === "function" && (
+        <button
+          style={{ fontSize: 11, fontWeight: 700, background: "#7BBFB0", color: "#fff", border: "none", borderRadius: 8, padding: "4px 10px", cursor: "pointer", flexShrink: 0 }}
+          onClick={(ev) => { ev.stopPropagation(); onMarkPaid(e.id); }}
+        >
+          Mark paid
+        </button>
+      )}
+      {typeof onEdit === "function" && (
+        <button
+          style={{ background: "none", border: "none", padding: 4, cursor: "pointer", flexShrink: 0, display: "flex", alignItems: "center" }}
+          onClick={(ev) => { ev.stopPropagation(); onEdit(e); }}
+          aria-label="Edit"
+        >
+          <Icon path={icons.edit} size={14} color="#AAA" />
+        </button>
+      )}
+    </div>
+  );
+}
+
+function GroupExpenseRow({ gid, items, user, targetSummaries, onMarkPaid, onEdit }) {
+  const [expanded, setExpanded] = useState(false);
+  const isCam = user === "cam";
+  const targetKey = `grp:${gid}`;
+  const summary = targetSummaries?.get(targetKey);
+
+  const totalCharged = summary
+    ? Math.abs(Number(summary.charged || 0))
+    : items.reduce((s, e) => {
+        const share = e.split === "cam" ? Number(e.amount) : e.split === "split" ? Number(e.amount) / 2 : Number(e.amount);
+        return s + (isCam ? share : Number(e.amount));
+      }, 0);
+  const totalPaid = summary ? Math.abs(Number(summary.paid || 0)) : 0;
+  const remaining = summary ? Math.max(0, Math.abs(Number(summary.remaining || 0))) : Math.max(0, totalCharged - totalPaid);
+  const pct = totalCharged > 0 ? Math.min(1, totalPaid / totalCharged) : 0;
+
+  const paidCount = items.filter((e) => e.status === "paid").length;
+  const allPaid = paidCount === items.length;
+  const anyOverdue = items.some((e) => getUrgencyLevel(e) === "overdue");
+  const description = items[0]?.description || "Group";
+  const split = items[0]?.split;
+
+  return (
+    <div style={{ ...fw.expenseCard, marginBottom: 8 }}>
+      <div style={{ ...fw.expenseTop, alignItems: "flex-start" }} onClick={() => setExpanded((o) => !o)} role="button">
+        <div style={{ ...fw.splitDot, background: SPLIT_COLORS[split], marginTop: 5 }} />
+        <div style={{ ...fw.expenseInfo }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+            <p style={{ ...fw.expenseDesc, margin: 0 }}>{description}</p>
+            <span style={{ fontSize: 10, fontWeight: 700, color: "#7B5EA7", background: "#F0EAF8", borderRadius: 6, padding: "2px 6px", flexShrink: 0 }}>
+              {items.length} installment{items.length !== 1 ? "s" : ""}
+            </span>
+          </div>
+          <p style={{ ...fw.expenseMeta, marginTop: 3 }}>{paidCount}/{items.length} paid</p>
+          <div style={{ width: "100%", height: 4, borderRadius: 999, background: "#F3EDF8", marginTop: 6, overflow: "hidden" }}>
+            <div style={{ width: `${Math.round(pct * 100)}%`, height: "100%", background: allPaid ? "#7BBFB0" : anyOverdue ? "#E05C6E" : "#9B7ED4", borderRadius: 999, transition: "width 0.3s" }} />
+          </div>
+        </div>
+        <div style={{ textAlign: "right", flexShrink: 0 }}>
+          <p style={{ ...fw.expenseTotal, margin: 0 }}>${totalCharged.toFixed(2)}</p>
+          {!allPaid && remaining > 0.005 && (
+            <p style={{ fontSize: 10, color: "#E05C6E", fontWeight: 700, margin: "3px 0 0" }}>${remaining.toFixed(2)} left</p>
+          )}
+          {allPaid && (
+            <span style={{ fontSize: 10, fontWeight: 700, color: "#1E8449", background: "#EEF5EC", borderRadius: 6, padding: "2px 6px", marginTop: 3, display: "inline-block" }}>✓ Done</span>
+          )}
+        </div>
+      </div>
+
+      {expanded && (
+        <div style={{ borderTop: "1px solid #F5F0FB", padding: "2px 14px 10px" }}>
+          {items.map((e, i) => (
+            <GroupSubRow
+              key={e.id}
+              expense={e}
+              user={user}
+              onMarkPaid={onMarkPaid}
+              onEdit={onEdit}
+              isLast={i === items.length - 1}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ── EXPENSE ROW ───────────────────────────────────────────────────────
 function ExpenseRow({ expense, user, onDelete, onEdit, onMarkPaid, targetSummaries, payments, onLogPaymentForKey }) {
@@ -3478,7 +3615,7 @@ function ExpandableExpenseRow({ expense: e, user, onDelete, onEdit, onMarkPaid, 
             )}
           </div>
 
-          {!isCam && user === "emma" && typeof onEdit === "function" && (
+          {typeof onEdit === "function" && (
             <button
               type="button"
               style={{ width: "100%", marginTop: 8, padding: "9px", borderRadius: 12, border: "1.5px solid #E5DFF5", background: "#F5F0FB", color: "#2D1B5E", fontWeight: 700, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}
@@ -4066,15 +4203,20 @@ function AddExpenseModal({ onSave, onClose, user }) {
 }
 // ── EDIT EXPENSE MODAL ────────────────────────────────────────────────
 function EditExpenseModal({ expense, onSave, onClose }) {
+  const isRecurring = expense.recurring && expense.recurring !== "none";
   const [form, setForm] = useState({
     description: expense.description || "",
     amount: expense.amount != null ? String(expense.amount) : "",
+    date: expense.date || new Date().toISOString().split("T")[0],
     dueDate: expense.dueDate || expense.nextDue || "",
+    endDate: expense.endDate || "",
+    recurring: expense.recurring || "none",
     referenceNum: expense.referenceNum || "",
     account: expense.account || "Navy Platinum",
     note: expense.note || "",
   });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const recurring = form.recurring && form.recurring !== "none";
 
   return (
     <div style={styles.modalOverlay}>
@@ -4109,13 +4251,64 @@ function EditExpenseModal({ expense, onSave, onClose }) {
             />
           </div>
 
-          <label style={styles.fieldLabel}>Due date</label>
+          <label style={styles.fieldLabel}>Transaction date</label>
           <input
             style={styles.input}
             type="date"
-            value={form.dueDate}
-            onChange={(e) => set("dueDate", e.target.value)}
+            value={form.date}
+            onChange={(e) => set("date", e.target.value)}
           />
+
+          <label style={styles.fieldLabel}>Frequency</label>
+          <div style={styles.chipRow}>
+            {[["none", "One-time"], ["weekly", "Weekly"], ["biweekly", "Biweekly"], ["monthly", "Monthly"]].map(([val, label]) => (
+              <button
+                key={val}
+                type="button"
+                style={{ ...styles.freqBtn, ...(form.recurring === val ? styles.freqBtnActive : {}) }}
+                onClick={() => set("recurring", val)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {!recurring ? (
+            <>
+              <label style={styles.fieldLabel}>Due date (optional)</label>
+              <input
+                style={styles.input}
+                type="date"
+                value={form.dueDate}
+                onChange={(e) => set("dueDate", e.target.value)}
+              />
+            </>
+          ) : (
+            <div style={styles.dueDateBox}>
+              <div style={styles.twoCol}>
+                <div style={{ flex: 1 }}>
+                  <label style={styles.fieldLabel}>{isRecurring ? "Next due date" : "First due date"}</label>
+                  <input
+                    style={styles.input}
+                    type="date"
+                    value={form.dueDate}
+                    onChange={(e) => set("dueDate", e.target.value)}
+                  />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <label style={styles.fieldLabel}>End date (optional)</label>
+                  <input
+                    style={styles.input}
+                    type="date"
+                    value={form.endDate}
+                    min={form.dueDate || undefined}
+                    onChange={(e) => set("endDate", e.target.value)}
+                  />
+                </div>
+              </div>
+              <p style={styles.hintText}>Stops repeating when end date is reached.</p>
+            </div>
+          )}
 
           <div style={styles.twoCol}>
             <div style={{ flex: 1 }}>
@@ -4137,9 +4330,9 @@ function EditExpenseModal({ expense, onSave, onClose }) {
             </div>
           </div>
 
-          <label style={styles.fieldLabel}>Description / Notes</label>
+          <label style={styles.fieldLabel}>Notes</label>
           <textarea
-            style={{ ...styles.input, minHeight: 72, resize: "vertical", lineHeight: 1.4 }}
+            style={{ ...styles.input, minHeight: 60, resize: "vertical", lineHeight: 1.4 }}
             placeholder="Any extra details…"
             value={form.note}
             onChange={(e) => set("note", e.target.value)}
@@ -4153,9 +4346,12 @@ function EditExpenseModal({ expense, onSave, onClose }) {
               const updates = {
                 description: form.description,
                 amount: parseFloat(form.amount),
+                date: form.date || null,
+                recurring: form.recurring,
                 referenceNum: form.referenceNum || null,
                 account: form.account,
                 note: form.note,
+                endDate: recurring ? (form.endDate || null) : null,
               };
               if (form.dueDate) {
                 updates.dueDate = form.dueDate;
@@ -4941,7 +5137,7 @@ iconBtn: {
 };
 // ── TARGET DETAILS SCREEN ────────────────────────────────────────────
 
-function TargetDetailsScreen({ user, targetKey, targetSummaries, expenses, payments, onBack }) {
+function TargetDetailsScreen({ user, targetKey, targetSummaries, expenses, payments, onBack, onEditExpense }) {
   const summary = targetSummaries && targetKey ? targetSummaries.get(targetKey) : null;
 
   const title = summary?.label || "Details";
@@ -5029,7 +5225,7 @@ function TargetDetailsScreen({ user, targetKey, targetSummaries, expenses, payme
             .slice()
             .sort((a, b) => new Date(b.date) - new Date(a.date))
             .map((e) => (
-              <ExpenseRow key={e.id} expense={e} detailed user={user} />
+              <ExpenseRow key={e.id} expense={e} detailed user={user} onEdit={onEditExpense} />
             ))
         )}
       </div>
