@@ -223,7 +223,8 @@ function useExpensesSearchLogic(expenses) {
         const a = String(e.account || "").toLowerCase();
         const amt = String(e.amount ?? "").toLowerCase();
         const due = String(e.nextDue || e.dueDate || "").toLowerCase();
-        return d.includes(q) || c.includes(q) || a.includes(q) || amt.includes(q) || due.includes(q);
+        const ref = String(e.referenceNum || "").toLowerCase();
+        return d.includes(q) || c.includes(q) || a.includes(q) || amt.includes(q) || due.includes(q) || ref.includes(q);
       })
     );
   }, [expenses, searchActive, searchQuery]);
@@ -1724,7 +1725,8 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
         const a = String(e.account || "").toLowerCase();
         const amt = String(e.amount ?? "").toLowerCase();
         const due = String(e.nextDue || e.dueDate || "").toLowerCase();
-        return d.includes(q) || c.includes(q) || a.includes(q) || amt.includes(q) || due.includes(q);
+        const ref = String(e.referenceNum || "").toLowerCase();
+        return d.includes(q) || c.includes(q) || a.includes(q) || amt.includes(q) || due.includes(q) || ref.includes(q);
       })
     : sortedByDate;
 
