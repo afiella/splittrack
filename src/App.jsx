@@ -1,7 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signInWithCredential, signOut, setPersistence, browserLocalPersistence } from "firebase/auth";
-import { Capacitor } from "@capacitor/core";
-import { FirebaseAuthentication } from "@capacitor-firebase/authentication";
+import { onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut, setPersistence, browserLocalPersistence } from "firebase/auth";
 import { listenExpenses, listenPayments, addExpense, addPayment, confirmPayment as confirmPaymentInDb, deleteExpense as deleteExpenseInDb, deletePayment as deletePaymentInDb, updateExpense as updateExpenseInDb, } from "./data";
 import { auth } from "./firebase";
 // ── MOCK DATA ─────────────────────────────────────────────────────────
@@ -995,19 +993,20 @@ export default function App() {
 
 // ── LOGIN SCREEN ──────────────────────────────────────────────────────
 function LoginScreen() {
+  const [errMsg, setErrMsg] = useState("");
+  const [loading, setLoading] = useState(false);
+
   async function handleGoogleSignIn() {
+    setErrMsg("");
+    setLoading(true);
     try {
-      if (Capacitor.isNativePlatform()) {
-        const result = await FirebaseAuthentication.signInWithGoogle();
-        const credential = GoogleAuthProvider.credential(result.credential?.idToken);
-        await signInWithCredential(auth, credential);
-      } else {
-        const provider = new GoogleAuthProvider();
-        provider.setCustomParameters({ prompt: "select_account" });
-        await signInWithPopup(auth, provider);
-      }
+      const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: "select_account" });
+      await signInWithPopup(auth, provider);
     } catch (err) {
-      alert("Sign-in error: " + (err?.message || JSON.stringify(err)));
+      setErrMsg(err?.message || JSON.stringify(err));
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -1019,17 +1018,22 @@ function LoginScreen() {
         <p style={styles.loginSubtitle}>Sign in to continue</p>
         <div style={styles.loginBtns}>
           <button
-            style={{ ...styles.loginBtn, background: "linear-gradient(135deg, #7BBFB0, #5CA89A)" }}
+            style={{ ...styles.loginBtn, background: "linear-gradient(135deg, #7BBFB0, #5CA89A)", opacity: loading ? 0.6 : 1 }}
             onClick={handleGoogleSignIn}
+            disabled={loading}
           >
             <span style={styles.loginBtnIcon}>🔐</span>
-            <span>Sign in with Google</span>
+            <span>{loading ? "Signing in…" : "Sign in with Google"}</span>
             <span style={styles.loginBtnSub}>Secure</span>
           </button>
         </div>
-        <p style={styles.loginNote}>
-          After signing in, access level is based on your email.
-        </p>
+        {errMsg ? (
+          <p style={{ color: "#C0485A", fontSize: 13, marginTop: 12, wordBreak: "break-word", maxWidth: 280, textAlign: "center" }}>
+            {errMsg}
+          </p>
+        ) : (
+          <p style={styles.loginNote}>After signing in, access level is based on your email.</p>
+        )}
       </div>
     </div>
   );
