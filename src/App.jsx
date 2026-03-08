@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
-import { onAuthStateChanged, GoogleAuthProvider, signInWithRedirect, getRedirectResult, signInWithCredential, signOut, setPersistence, browserLocalPersistence } from "firebase/auth";
+import { onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signInWithCredential, signOut, setPersistence, browserLocalPersistence } from "firebase/auth";
 import { Capacitor } from "@capacitor/core";
+import { FirebaseAuthentication } from "@capacitor-firebase/authentication";
 import { listenExpenses, listenPayments, addExpense, addPayment, confirmPayment as confirmPaymentInDb, deleteExpense as deleteExpenseInDb, deletePayment as deletePaymentInDb, updateExpense as updateExpenseInDb, } from "./data";
 import { auth } from "./firebase";
 // ── MOCK DATA ─────────────────────────────────────────────────────────
@@ -557,8 +558,6 @@ export default function App() {
       console.warn("Auth persistence not set:", e);
     });
 
-    getRedirectResult(auth).catch(() => {});
-
     const unsub = onAuthStateChanged(auth, (u) => setFirebaseUser(u));
     return () => unsub();
   }, []);
@@ -999,14 +998,13 @@ function LoginScreen() {
   async function handleGoogleSignIn() {
     try {
       if (Capacitor.isNativePlatform()) {
-        const { FirebaseAuthentication } = await import(/* @vite-ignore */ "@capacitor-firebase/authentication");
         const result = await FirebaseAuthentication.signInWithGoogle();
         const credential = GoogleAuthProvider.credential(result.credential?.idToken);
         await signInWithCredential(auth, credential);
       } else {
         const provider = new GoogleAuthProvider();
         provider.setCustomParameters({ prompt: "select_account" });
-        await signInWithRedirect(auth, provider);
+        await signInWithPopup(auth, provider);
       }
     } catch (err) {
       alert("Sign-in error: " + (err?.message || JSON.stringify(err)));
