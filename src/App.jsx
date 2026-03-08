@@ -176,6 +176,28 @@ function calcTotalPaidFromTargets(payments, targetSummaries) {
   return generalPaid + targetedPaid;
 }
 
+// Renders a note string with bullet-point support.
+// Lines starting with "• " are rendered as list items.
+function renderNote(text, style = {}) {
+  if (!text) return null;
+  const lines = text.split("\n");
+  return (
+    <div style={{ fontSize: 13, lineHeight: 1.5, color: "#666", ...style }}>
+      {lines.map((line, i) => {
+        const isBullet = line.startsWith("• ");
+        const content = isBullet ? line.slice(2) : line;
+        if (!content && i < lines.length - 1) return <div key={i} style={{ height: 4 }} />;
+        return (
+          <div key={i} style={{ display: "flex", gap: 6, alignItems: "flex-start" }}>
+            {isBullet && <span style={{ flexShrink: 0, fontWeight: 700, color: "#9B7ED4", marginTop: 1 }}>•</span>}
+            <span>{content}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function formatShortDate(iso) {
   if (!iso) return "";
   const d = new Date(iso);
@@ -2926,7 +2948,7 @@ function HistoryScreen({ expenses, payments, user, targets = [], onBack, onConfi
               {item.type === "payment" && item.confirmed && <span style={styles.confirmedBadge}>confirmed</span>}
               {item.type === "expense" && item.status === "paid" && <span style={styles.confirmedBadge}>paid</span>}
             </p>
-            {item.note && <p style={styles.historyNote}>"{item.note}"</p>}
+            {item.note && renderNote(item.note, { marginTop: 4 })}
           </div>
           <div style={styles.historyAmt}>
             <p style={{
@@ -3209,6 +3231,14 @@ function ExpandableExpenseRow({ expense: e, user, onDelete, onEdit, onMarkPaid, 
       if (noteFadeTimerRef.current) clearTimeout(noteFadeTimerRef.current);
     };
   }, []);
+
+  // Sync local note state when the expense prop updates from Firestore
+  useEffect(() => {
+    if (!editingNote) {
+      setNote(e.note || "");
+      setNoteDraft(e.note || "");
+    }
+  }, [e.note]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const isCam = user === "cam";
   const camShare =
@@ -3525,7 +3555,8 @@ function ExpandableExpenseRow({ expense: e, user, onDelete, onEdit, onMarkPaid, 
                   <div key={p.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: i > 0 ? 6 : 0, borderTop: i > 0 ? "1px solid #E0F0E8" : "none" }}>
                     <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
                       <span style={{ fontSize: 13, fontWeight: 600, color: "#222" }}>via {p.method}</span>
-                      <span style={{ fontSize: 11, color: "#888" }}>{formatShortDate(p.date)}{p.note ? ` · "${p.note}"` : ""}</span>
+                      <span style={{ fontSize: 11, color: "#888" }}>{formatShortDate(p.date)}</span>
+                      {p.note && renderNote(p.note, { fontSize: 11, color: "#888", marginTop: 1 })}
                     </div>
                     <span style={{ fontSize: 14, fontWeight: 700, color: "#1E8449" }}>-${Number(p.amount || 0).toFixed(2)}</span>
                   </div>
@@ -3542,16 +3573,34 @@ function ExpandableExpenseRow({ expense: e, user, onDelete, onEdit, onMarkPaid, 
                 <textarea
                   style={fw.noteTextarea}
                   value={noteDraft}
-                  onChange={(ev) => setNoteDraft(ev.target.value)}
-                  placeholder="Add a note…"
+                  onChange={(ev) => {
+                    // Auto-convert "- " at start of a line to a bullet
+                    const val = ev.target.value.replace(/(^|\n)- /g, "$1• ");
+                    setNoteDraft(val);
+                  }}
+                  placeholder={"Add a note…\n• Start a line with - for bullets"}
                   rows={3}
                   autoFocus
                   onKeyDown={(ev) => {
                     const isSave = (ev.ctrlKey || ev.metaKey) && ev.key === "Enter";
                     if (isSave) {
                       ev.preventDefault();
-                      const trimmed = String(noteDraft || "");
-                      handleSaveNote(trimmed);
+                      handleSaveNote(String(noteDraft || ""));
+                    }
+                    // Continue bullet on Enter if current line starts with •
+                    if (ev.key === "Enter") {
+                      const ta = ev.target;
+                      const before = noteDraft.slice(0, ta.selectionStart);
+                      const currentLine = before.split("\n").pop();
+                      if (currentLine.startsWith("• ")) {
+                        ev.preventDefault();
+                        const after = noteDraft.slice(ta.selectionEnd);
+                        const next = before + "\n• " + after;
+                        setNoteDraft(next);
+                        requestAnimationFrame(() => {
+                          ta.selectionStart = ta.selectionEnd = before.length + 3;
+                        });
+                      }
                     }
                   }}
                 />
@@ -3603,15 +3652,15 @@ function ExpandableExpenseRow({ expense: e, user, onDelete, onEdit, onMarkPaid, 
               </div>
             ) : (
               <>
-                <p
-                  style={fw.noteTap}
+                <div
+                  style={{ ...fw.noteTap, fontStyle: note ? "normal" : "italic" }}
                   onClick={() => {
                     setNoteDraft(note);
                     setEditingNote(true);
                   }}
                 >
-                  {note || "Tap to add a note…"}
-                </p>
+                  {note ? renderNote(note) : "Tap to add a note…"}
+                </div>
 
                 {noteSaveStatus === "saved" && (
                   <div
@@ -3932,7 +3981,7 @@ function PaymentTimeline({ payments, targets = [] }) {
                 <div style={fw.timelineContent}>
                   <p style={fw.timelineAmt}>${Number(p.amount || 0).toFixed(2)}</p>
                   <p style={fw.timelineMeta}>{resolveLabel(p)} · {p.method} · {formatHistoryDate(p.date)}</p>
-                  {p.note && <p style={fw.timelineNote}>"{p.note}"</p>}
+                  {p.note && renderNote(p.note, { marginTop: 2, fontSize: 11, color: "#888" })}
                 </div>
               </div>
             ))
