@@ -970,6 +970,7 @@ export default function App() {
     onEditExpense={(exp) => setEditingExpense(exp)}
     onMarkPaid={handleMarkPaid}
     targetSummaries={targetSummaries}
+    targets={paymentTargets}
     onLogPaymentForKey={(key, amount) => {
       const nextKey = key || "general";
       setPaymentDraftKey(nextKey);
@@ -2240,6 +2241,7 @@ function ExpensesScreen({
   onEditExpense,
   onMarkPaid,
   targetSummaries,
+  targets = [],
   onLogPaymentForKey,
 }) {
   const isCam = user === "cam";
@@ -2344,6 +2346,13 @@ function ExpensesScreen({
   // ---- Search logic ----
   const search = useExpensesSearchLogic(baseFiltered);
   const listToRender = searchOpen ? search.filteredExpenses : applySort(combinedFiltered);
+
+  const targetLabelByKey = new Map((targets || []).map((t) => [t.key, t.label]));
+  function paymentTargetLabel(p) {
+    const key = p.appliedToKey || (p.appliedToGroupId ? `grp:${p.appliedToGroupId}` : "general");
+    if (!key || key === "general") return null;
+    return targetLabelByKey.get(key) || null;
+  }
 
   // Keep the UI toggle in sync with the hook
   useEffect(() => {
@@ -2716,7 +2725,7 @@ function ExpensesScreen({
                 <Icon path={icons.wallet} size={18} color="#1E8449" />
               </div>
               <div style={styles.historyInfo}>
-                <p style={styles.historyDesc}>Payment via {e.method}{e.appliedToKey && e.appliedToKey !== "general" ? ` · toward ${e.appliedToKey}` : ""}</p>
+                <p style={styles.historyDesc}>{(() => { const lbl = paymentTargetLabel(e); return lbl ? `Payment via ${e.method} · toward ${lbl}` : `Payment via ${e.method}`; })()}</p>
                 <p style={styles.historyMeta}>{formatHistoryDate(e.date)} <span style={styles.confirmedBadge}>confirmed</span></p>
                 {e.note && <p style={styles.historyNote}>"{e.note}"</p>}
               </div>
