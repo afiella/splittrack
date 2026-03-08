@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
-import { onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut, setPersistence, browserLocalPersistence } from "firebase/auth";
+import { onAuthStateChanged, GoogleAuthProvider, signInWithRedirect, getRedirectResult, signInWithCredential, signOut, setPersistence, browserLocalPersistence } from "firebase/auth";
+import { Capacitor } from "@capacitor/core";
 import { listenExpenses, listenPayments, addExpense, addPayment, confirmPayment as confirmPaymentInDb, deleteExpense as deleteExpenseInDb, deletePayment as deletePaymentInDb, updateExpense as updateExpenseInDb, } from "./data";
 import { auth } from "./firebase";
 // ── MOCK DATA ─────────────────────────────────────────────────────────
@@ -556,6 +557,8 @@ export default function App() {
       console.warn("Auth persistence not set:", e);
     });
 
+    getRedirectResult(auth).catch(() => {});
+
     const unsub = onAuthStateChanged(auth, (u) => setFirebaseUser(u));
     return () => unsub();
   }, []);
@@ -994,10 +997,20 @@ export default function App() {
 // ── LOGIN SCREEN ──────────────────────────────────────────────────────
 function LoginScreen() {
   async function handleGoogleSignIn() {
-    const provider = new GoogleAuthProvider();
-    // Show the Google account picker, then sign in.
-    provider.setCustomParameters({ prompt: "select_account" });
-    await signInWithPopup(auth, provider);
+    try {
+      if (Capacitor.isNativePlatform()) {
+        const { FirebaseAuthentication } = await import(/* @vite-ignore */ "@capacitor-firebase/authentication");
+        const result = await FirebaseAuthentication.signInWithGoogle();
+        const credential = GoogleAuthProvider.credential(result.credential?.idToken);
+        await signInWithCredential(auth, credential);
+      } else {
+        const provider = new GoogleAuthProvider();
+        provider.setCustomParameters({ prompt: "select_account" });
+        await signInWithRedirect(auth, provider);
+      }
+    } catch (err) {
+      alert("Sign-in error: " + (err?.message || JSON.stringify(err)));
+    }
   }
 
   return (
