@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { onAuthStateChanged, GoogleAuthProvider, signInWithRedirect, getRedirectResult, signOut, setPersistence, browserLocalPersistence } from "firebase/auth";
+import { onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut, setPersistence, browserLocalPersistence } from "firebase/auth";
 import { listenExpenses, listenPayments, addExpense, addPayment, confirmPayment as confirmPaymentInDb, deleteExpense as deleteExpenseInDb, deletePayment as deletePaymentInDb, updateExpense as updateExpenseInDb, } from "./data";
 import { auth } from "./firebase";
 // ── MOCK DATA ─────────────────────────────────────────────────────────
@@ -539,7 +539,9 @@ function Icon({ path, size = 20, color = "currentColor" }) {
 // ── MAIN APP ──────────────────────────────────────────────────────────
 export default function App() {
   const [firebaseUser, setFirebaseUser] = useState(null);
-  const user = roleFromEmail(firebaseUser?.email); // "emma" | "cam"
+  const realUser = roleFromEmail(firebaseUser?.email); // "emma" | "cam"
+  const [viewAs, setViewAs] = useState(null); // null | "cam" — Emma can preview as Cameron
+  const user = (realUser === "emma" && viewAs) ? viewAs : realUser;
   const [screen, setScreen] = useState("dashboard");
   const [activeTargetKey, setActiveTargetKey] = useState(null);
   const [expenses, setExpenses] = useState([]);
@@ -555,8 +557,6 @@ export default function App() {
     setPersistence(auth, browserLocalPersistence).catch((e) => {
       console.warn("Auth persistence not set:", e);
     });
-
-    getRedirectResult(auth).catch(() => {});
 
     const unsub = onAuthStateChanged(auth, (u) => setFirebaseUser(u));
     return () => unsub();
@@ -714,13 +714,35 @@ export default function App() {
     const removed = payment;
     setPayments((prev) => prev.filter((p) => p.id !== id));
 
+    // If this payment auto-marked an expense as paid, revert that status
+    const pmtKey = payment.appliedToKey || (payment.appliedToGroupId ? `grp:${payment.appliedToGroupId}` : "general");
+    let revertExpense = null;
+    if (pmtKey && pmtKey.startsWith("exp:")) {
+      const expId = pmtKey.slice(4);
+      const exp = expenses.find((e) => e.id === expId);
+      if (exp && exp.status === "paid") {
+        // Check if any other confirmed payment still covers this expense
+        const otherConfirmed = payments.filter((p) => p.id !== id && p?.confirmed && (p.appliedToKey === pmtKey || (p.appliedToGroupId && `grp:${p.appliedToGroupId}` === pmtKey)));
+        if (otherConfirmed.length === 0) {
+          revertExpense = exp;
+          setExpenses((prev) => prev.map((e) => e.id === expId ? { ...e, status: "unpaid", paidAt: null } : e));
+        }
+      }
+    }
+
     try {
       await deletePaymentInDb(id);
+      if (revertExpense) {
+        await updateExpenseInDb(revertExpense.id, { status: "unpaid", paidAt: null });
+      }
       notify("Payment deleted.");
     } catch (err) {
       console.error("Failed to delete payment:", err);
       // Roll back
       setPayments((prev) => [removed, ...prev]);
+      if (revertExpense) {
+        setExpenses((prev) => prev.map((e) => e.id === revertExpense.id ? revertExpense : e));
+      }
       notify("Couldn't delete payment. Check Firestore rules.", "error");
     }
   }
@@ -878,8 +900,35 @@ export default function App() {
   if (!firebaseUser) return <LoginScreen />;
 
   return (
-    <div style={styles.app}>
+    <div style={{ ...styles.app, paddingTop: (realUser === "emma" && viewAs === "cam") ? 36 : 0 }}>
       <style>{`@keyframes stSpin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}`}</style>
+      {/* Cameron view banner — shown when Emma is previewing as Cam */}
+      {realUser === "emma" && (
+        <div style={{
+          position: "fixed", top: 0, left: 0, right: 0, zIndex: 9999,
+          background: viewAs === "cam" ? "#2D1B5E" : "transparent",
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          padding: viewAs === "cam" ? "8px 16px" : "0",
+          height: viewAs === "cam" ? "auto" : 0,
+          overflow: "hidden",
+          transition: "all 0.2s ease",
+        }}>
+          {viewAs === "cam" && (
+            <>
+              <span style={{ fontSize: 12, fontWeight: 700, color: "#C4B5FD", letterSpacing: 0.3 }}>
+                Viewing as Cameron
+              </span>
+              <button
+                onClick={() => setViewAs(null)}
+                style={{ fontSize: 12, fontWeight: 700, color: "#fff", background: "rgba(255,255,255,0.15)", border: "none", borderRadius: 8, padding: "4px 12px", cursor: "pointer" }}
+              >
+                Back to my view
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
       {/* Notification */}
       {notification && (
         <div style={{
@@ -936,6 +985,8 @@ export default function App() {
           onMarkPaid={handleMarkPaid}
           onNavigate={setScreen}
           onLogout={async () => { await signOut(auth); setScreen("dashboard"); }}
+          onSwitchView={realUser === "emma" ? () => setViewAs(v => v === "cam" ? null : "cam") : null}
+          viewingAsCam={viewAs === "cam"}
         />
       )}
       {screen === "target" && (
@@ -1004,7 +1055,7 @@ function LoginScreen() {
     try {
       const provider = new GoogleAuthProvider();
       provider.setCustomParameters({ prompt: "select_account" });
-      await signInWithRedirect(auth, provider);
+      await signInWithPopup(auth, provider);
     } catch (err) {
       setErrMsg(err?.message || JSON.stringify(err));
     } finally {
@@ -1651,7 +1702,7 @@ function DashboardActionChips({ onAddExpense, onLogPayment }) {
 }
 
 // ── DASHBOARD ─────────────────────────────────────────────────────────
-function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, payments, syncingPayments, urgentCount, targetSummaries, onOpenTarget, onAddExpense, onLogPayment, onConfirm, onDeleteExpense, onMarkPaid, onNavigate, onLogout }) {
+function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, payments, syncingPayments, urgentCount, targetSummaries, onOpenTarget, onAddExpense, onLogPayment, onConfirm, onDeleteExpense, onMarkPaid, onNavigate, onLogout, onSwitchView, viewingAsCam }) {
   const pending = payments.filter((p) => !p.confirmed);
   // Cam dashboard urgent banner improvement: Step 3
   const urgentList = (expenses || []).filter((e) => getUrgencyLevel(e) !== null);
@@ -1754,7 +1805,16 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
               <Icon path={icons.search} size={18} color="#888" />
             )}
           </button>
-          <button style={styles.logoutBtn} onClick={onLogout}>Switch</button>
+          {onSwitchView ? (
+            <button
+              style={{ ...styles.logoutBtn, background: viewingAsCam ? "#2D1B5E" : "rgba(255,255,255,0.7)", color: viewingAsCam ? "#C4B5FD" : "#888", fontWeight: 700 }}
+              onClick={onSwitchView}
+            >
+              {viewingAsCam ? "My view" : "Cam's view"}
+            </button>
+          ) : (
+            <button style={styles.logoutBtn} onClick={onLogout}>Sign out</button>
+          )}
         </div>
       </div>
 
