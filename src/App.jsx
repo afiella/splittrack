@@ -970,7 +970,6 @@ export default function App() {
     onEditExpense={(exp) => setEditingExpense(exp)}
     onMarkPaid={handleMarkPaid}
     targetSummaries={targetSummaries}
-    targets={paymentTargets}
     onLogPaymentForKey={(key, amount) => {
       const nextKey = key || "general";
       setPaymentDraftKey(nextKey);
@@ -2241,7 +2240,6 @@ function ExpensesScreen({
   onEditExpense,
   onMarkPaid,
   targetSummaries,
-  targets = [],
   onLogPaymentForKey,
 }) {
   const isCam = user === "cam";
@@ -2290,7 +2288,15 @@ function ExpensesScreen({
     const isRecurring = e?.recurring && e.recurring !== "none";
     const isOverdue = getUrgencyLevel(e) === "overdue";
 
-    if (statusFilter === "paid")     return isPaid;
+    if (statusFilter === "paid") {
+      if (isPaid) return true;
+      const expKey = isRecurring ? `grp:${e.groupId || e.id}` : `exp:${e.id}`;
+      return (payments || []).some(p => {
+        if (!p?.confirmed) return false;
+        const key = p.appliedToKey || (p.appliedToGroupId ? `grp:${p.appliedToGroupId}` : "general");
+        return key === expKey;
+      });
+    }
     if (statusFilter === "unpaid")   return !isPaid && !isCredit;
     if (statusFilter === "overdue")  return isOverdue && !isPaid;
     if (statusFilter === "installments") return isRecurring;
@@ -2306,15 +2312,7 @@ function ExpensesScreen({
 
   const baseFiltered = baseList.filter(matchesStatusFilter);
 
-  // ---- Confirmed payments (shown under "Paid" filter) ----
-  const confirmedPayments = statusFilter === "paid"
-    ? (payments || []).filter((p) => p && p.confirmed).map((p) => ({ ...p, _isPayment: true }))
-    : [];
-
-  const combinedFiltered = statusFilter === "paid"
-    ? [...baseFiltered.map((e) => ({ ...e, _isPayment: false })), ...confirmedPayments]
-        .sort((a, b) => new Date(b.date) - new Date(a.date))
-    : baseFiltered;
+  const combinedFiltered = baseFiltered;
 
   // ---- Sort ----
   function applySort(list) {
@@ -2347,12 +2345,6 @@ function ExpensesScreen({
   const search = useExpensesSearchLogic(baseFiltered);
   const listToRender = searchOpen ? search.filteredExpenses : applySort(combinedFiltered);
 
-  const targetLabelByKey = new Map((targets || []).map((t) => [t.key, t.label]));
-  function paymentTargetLabel(p) {
-    const key = p.appliedToKey || (p.appliedToGroupId ? `grp:${p.appliedToGroupId}` : "general");
-    if (!key || key === "general") return null;
-    return targetLabelByKey.get(key) || null;
-  }
 
   // Keep the UI toggle in sync with the hook
   useEffect(() => {
@@ -2719,21 +2711,7 @@ function ExpensesScreen({
         </div>
       ) : (
         <div style={{ padding: "0 16px" }}>
-          {listToRender.map((e) => e._isPayment ? (
-            <div key={e.id} style={{ ...styles.historyItem, margin: "0 0 2px", borderRadius: 14, background: "#fff", boxShadow: "0 1px 4px rgba(0,0,0,0.05)", borderBottom: "none" }}>
-              <div style={{ ...styles.historyIcon, background: "#EEF5EC" }}>
-                <Icon path={icons.wallet} size={18} color="#1E8449" />
-              </div>
-              <div style={styles.historyInfo}>
-                <p style={styles.historyDesc}>{(() => { const lbl = paymentTargetLabel(e); return lbl ? `Payment via ${e.method} · toward ${lbl}` : `Payment via ${e.method}`; })()}</p>
-                <p style={styles.historyMeta}>{formatHistoryDate(e.date)} <span style={styles.confirmedBadge}>confirmed</span></p>
-                {e.note && <p style={styles.historyNote}>"{e.note}"</p>}
-              </div>
-              <div style={styles.historyAmt}>
-                <p style={{ ...styles.historyAmtText, color: "#1E8449" }}>-${Number(e.amount || 0).toFixed(2)}</p>
-              </div>
-            </div>
-          ) : (
+          {listToRender.map((e) => (
             <ExpenseRow
               key={e.id}
               expense={e}
@@ -2742,6 +2720,7 @@ function ExpensesScreen({
               onEdit={onEditExpense}
               onMarkPaid={onMarkPaid}
               targetSummaries={targetSummaries}
+              payments={payments}
               onLogPaymentForKey={onLogPaymentForKey}
             />
           ))}
@@ -2881,7 +2860,7 @@ function HistoryScreen({ expenses, payments, user, targets = [], onBack, onConfi
 
 
 // ── EXPENSE ROW ───────────────────────────────────────────────────────
-function ExpenseRow({ expense, user, onDelete, onEdit, onMarkPaid, targetSummaries, onLogPaymentForKey }) {
+function ExpenseRow({ expense, user, onDelete, onEdit, onMarkPaid, targetSummaries, payments, onLogPaymentForKey }) {
   return (
     <ExpandableExpenseRow
       expense={expense}
@@ -2890,6 +2869,7 @@ function ExpenseRow({ expense, user, onDelete, onEdit, onMarkPaid, targetSummari
       onEdit={onEdit}
       onMarkPaid={onMarkPaid}
       targetSummaries={targetSummaries}
+      payments={payments}
       onLogPaymentForKey={onLogPaymentForKey}
     />
   );
@@ -2998,7 +2978,7 @@ function QuickPayButtons({ targetKey, myShare, remaining, onLogPaymentForKey }) 
 
 // ── SPLITTRACK FRAMEWORK COMPONENTS (imported) ───────────────────────
 
-function ExpandableExpenseRow({ expense: e, user, onDelete, onEdit, onMarkPaid, targetSummaries, onLogPaymentForKey }) {
+function ExpandableExpenseRow({ expense: e, user, onDelete, onEdit, onMarkPaid, targetSummaries, payments, onLogPaymentForKey }) {
   const [expanded, setExpanded] = useState(false);
   const [note, setNote] = useState(e.note || "");
   const [editingNote, setEditingNote] = useState(false);
@@ -3313,6 +3293,31 @@ function ExpandableExpenseRow({ expense: e, user, onDelete, onEdit, onMarkPaid, 
 )}
                 </div>
               </>
+            );
+          })()}
+
+          {(() => {
+            const isRecurring = e.recurring && e.recurring !== "none";
+            const targetKey = isRecurring ? `grp:${e.groupId || e.id}` : `exp:${e.id}`;
+            const confirmed = (payments || []).filter(p => {
+              if (!p?.confirmed) return false;
+              const key = p.appliedToKey || (p.appliedToGroupId ? `grp:${p.appliedToGroupId}` : "general");
+              return key === targetKey;
+            }).sort((a, b) => new Date(b.date) - new Date(a.date));
+            if (!confirmed.length) return null;
+            return (
+              <div style={{ marginTop: 10, background: "#F4FBF7", borderRadius: 12, padding: "10px 12px" }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#1E8449", marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.5 }}>Confirmed Payments</div>
+                {confirmed.map((p, i) => (
+                  <div key={p.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: i > 0 ? 6 : 0, borderTop: i > 0 ? "1px solid #E0F0E8" : "none" }}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: "#222" }}>via {p.method}</span>
+                      <span style={{ fontSize: 11, color: "#888" }}>{formatShortDate(p.date)}{p.note ? ` · "${p.note}"` : ""}</span>
+                    </div>
+                    <span style={{ fontSize: 14, fontWeight: 700, color: "#1E8449" }}>-${Number(p.amount || 0).toFixed(2)}</span>
+                  </div>
+                ))}
+              </div>
             );
           })()}
 
