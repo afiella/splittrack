@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut, setPersistence, browserLocalPersistence } from "firebase/auth";
+import { onAuthStateChanged, GoogleAuthProvider, signInWithRedirect, getRedirectResult, signOut, setPersistence, browserLocalPersistence } from "firebase/auth";
 import { listenExpenses, listenPayments, addExpense, addPayment, confirmPayment as confirmPaymentInDb, deleteExpense as deleteExpenseInDb, deletePayment as deletePaymentInDb, updateExpense as updateExpenseInDb, } from "./data";
 import { auth } from "./firebase";
 // ── MOCK DATA ─────────────────────────────────────────────────────────
@@ -556,6 +556,8 @@ export default function App() {
       console.warn("Auth persistence not set:", e);
     });
 
+    getRedirectResult(auth).catch(() => {});
+
     const unsub = onAuthStateChanged(auth, (u) => setFirebaseUser(u));
     return () => unsub();
   }, []);
@@ -1002,7 +1004,7 @@ function LoginScreen() {
     try {
       const provider = new GoogleAuthProvider();
       provider.setCustomParameters({ prompt: "select_account" });
-      await signInWithPopup(auth, provider);
+      await signInWithRedirect(auth, provider);
     } catch (err) {
       setErrMsg(err?.message || JSON.stringify(err));
     } finally {
