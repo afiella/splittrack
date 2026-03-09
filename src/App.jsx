@@ -2465,6 +2465,18 @@ function ExpensesScreen({
   const search = useExpensesSearchLogic(baseFiltered);
   const listToRender = searchOpen ? search.filteredExpenses : applySort(combinedFiltered);
 
+  // ---- Due date summary (shown beneath sort bar) ----
+  const dueDateSummary = (() => {
+    const today = new Date(); today.setHours(0,0,0,0);
+    const withDue = combinedFiltered.filter(e => e.status !== "paid" && (e.nextDue || e.dueDate));
+    const overdueItems = withDue.filter(e => getUrgencyLevel(e) === "overdue");
+    const upcomingItems = withDue.filter(e => getUrgencyLevel(e) !== "overdue").sort((a,b) => {
+      const da = a.nextDue || a.dueDate, db = b.nextDue || b.dueDate;
+      return new Date(da) - new Date(db);
+    });
+    return { overdueCount: overdueItems.length, next: upcomingItems[0] || null };
+  })();
+
   // ---- Group recurring expenses by groupId ----
   const groupedList = (() => {
     const result = [];
@@ -2805,6 +2817,22 @@ function ExpensesScreen({
             </div>
           )}
 
+          {/* Due date summary strip */}
+          {!search.searchActive && (dueDateSummary.overdueCount > 0 || dueDateSummary.next) && (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 14px 10px", flexWrap: "wrap" }}>
+              {dueDateSummary.overdueCount > 0 && (
+                <span style={{ fontSize: 11, fontWeight: 700, color: "#E05C6E", background: "#FFF0F0", borderRadius: 8, padding: "3px 10px" }}>
+                  {dueDateSummary.overdueCount} overdue
+                </span>
+              )}
+              {dueDateSummary.next && (
+                <span style={{ fontSize: 11, fontWeight: 600, color: "#9B7ED4", background: "#F5F0FB", borderRadius: 8, padding: "3px 10px" }}>
+                  Next due · {formatShortDate(dueDateSummary.next.nextDue || dueDateSummary.next.dueDate)} · {dueDateSummary.next.description}
+                </span>
+              )}
+            </div>
+          )}
+
           {/* Search input (when active) */}
           {search.searchActive && (
             <div style={island.searchRow}>
@@ -3081,6 +3109,13 @@ function GroupExpenseRow({ gid, items, user, targetSummaries, onMarkPaid, onEdit
   const description = items[0]?.description || "Group";
   const split = items[0]?.split;
 
+  // Next unpaid installment due date
+  const nextDueItem = items
+    .filter((e) => e.status !== "paid" && (e.nextDue || e.dueDate))
+    .sort((a, b) => new Date(a.nextDue || a.dueDate) - new Date(b.nextDue || b.dueDate))[0] || null;
+  const nextDueDate = nextDueItem ? (nextDueItem.nextDue || nextDueItem.dueDate) : null;
+  const nextDueOverdue = nextDueItem ? getUrgencyLevel(nextDueItem) === "overdue" : false;
+
   return (
     <div style={{ ...fw.expenseCard, marginBottom: 8 }}>
       <div style={{ ...fw.expenseTop, alignItems: "flex-start" }} onClick={() => setExpanded((o) => !o)} role="button">
@@ -3096,6 +3131,11 @@ function GroupExpenseRow({ gid, items, user, targetSummaries, onMarkPaid, onEdit
           <div style={{ width: "100%", height: 4, borderRadius: 999, background: "#F3EDF8", marginTop: 6, overflow: "hidden" }}>
             <div style={{ width: `${Math.round(pct * 100)}%`, height: "100%", background: allPaid ? "#7BBFB0" : anyOverdue ? "#E05C6E" : "#9B7ED4", borderRadius: 999, transition: "width 0.3s" }} />
           </div>
+          {nextDueDate && !allPaid && (
+            <p style={{ fontSize: 10, fontWeight: 700, margin: "4px 0 0", color: nextDueOverdue ? "#E05C6E" : "#9B7ED4" }}>
+              {nextDueOverdue ? "Overdue · " : "Next due · "}{formatShortDate(nextDueDate)}
+            </p>
+          )}
         </div>
         <div style={{ textAlign: "right", flexShrink: 0 }}>
           <p style={{ ...fw.expenseTotal, margin: 0 }}>${totalCharged.toFixed(2)}</p>
@@ -3393,11 +3433,12 @@ function ExpandableExpenseRow({ expense: e, user, onDelete, onEdit, onMarkPaid, 
           )}
           {(() => {
             const due = e.nextDue || e.dueDate;
-            if (!due || e.status === "paid") return null;
+            if (!due) return null;
             const isOverdue = getUrgencyLevel(e) === "overdue";
+            const isPaid = e.status === "paid";
             return (
-              <p style={{ fontSize: 10, fontWeight: 700, margin: "4px 0 0", color: isOverdue ? "#E05C6E" : "#AAA" }}>
-                {isOverdue ? "Overdue · " : "Due · "}{formatShortDate(due)}
+              <p style={{ fontSize: 10, fontWeight: 700, margin: "4px 0 0", color: isOverdue ? "#E05C6E" : isPaid ? "#B0B0B0" : "#9B7ED4" }}>
+                {isOverdue ? "Overdue · " : isPaid ? "Was due · " : "Due · "}{formatShortDate(due)}
               </p>
             );
           })()}
