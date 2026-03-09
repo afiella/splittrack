@@ -1949,6 +1949,37 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
       )}
 
       <MonthlySummaryCard expenses={expenses} />
+
+      {/* Cam overdue charges banner — only when something is actually overdue */}
+      {user === "cam" && overdueCount > 0 && (
+        <div
+          style={{
+            ...styles.urgentBanner,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 12,
+            background: "#FFF0F0",
+            borderColor: "#E8A0B0",
+          }}
+          onClick={() => onNavigate("urgent")}
+          role="button"
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+            <div style={{ width: 38, height: 38, borderRadius: 14, background: "rgba(224,92,110,0.12)", border: "1.5px solid #E8A0B0", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              <Icon path={icons.fire} size={18} color="#E05C6E" />
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <p style={styles.urgentBannerTitle}>
+                {overdueCount} charge{overdueCount === 1 ? "" : "s"} overdue
+              </p>
+              <p style={styles.urgentBannerSub}>Tap to review your charges</p>
+            </div>
+          </div>
+          <Icon path={icons.forward} size={20} color="#E05C6E" />
+        </div>
+      )}
+
       <InsightsSection expenses={expenses} />
 
       {/* Progress */}
@@ -2013,8 +2044,8 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
         </div>
       )}
 
-      {/* Urgent banner */}
-      {urgentCount > 0 && (
+      {/* Urgent banner — Emma only */}
+      {user !== "cam" && urgentCount > 0 && (
         <div
           style={{
             ...styles.urgentBanner,
