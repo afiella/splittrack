@@ -1061,6 +1061,11 @@ export default function App() {
     user={user}
     onBack={() => setScreen("dashboard")}
     onMarkPaid={handleMarkPaid}
+    onLogPaymentForKey={(key, amount) => {
+      setPaymentDraftKey(key || "general");
+      setPaymentDraftAmount(amount ?? null);
+      setModal("logPayment");
+    }}
   />
 )}
 
@@ -2218,7 +2223,10 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
 }
 
 // ── URGENT SCREEN ────────────────────────────────────────────────────
-function UrgentScreen({ expenses, user, onBack, onMarkPaid }) {
+function UrgentScreen({ expenses, user, onBack, onMarkPaid, onLogPaymentForKey }) {
+  const isCam = user === "cam";
+  const [expandedId, setExpandedId] = useState(null);
+
   const sorted = [...expenses].sort(
     (a, b) => (getDaysUntilDue(a.nextDue || a.dueDate) ?? 999) - (getDaysUntilDue(b.nextDue || b.dueDate) ?? 999)
   );
@@ -2268,6 +2276,7 @@ function UrgentScreen({ expenses, user, onBack, onMarkPaid }) {
             const level = getUrgencyLevel(e);
             const u = URGENCY[level];
             const days = getDaysUntilDue(e.nextDue || e.dueDate);
+            const isExpanded = expandedId === e.id;
 
             const dueLabel =
               days < 0
@@ -2278,20 +2287,23 @@ function UrgentScreen({ expenses, user, onBack, onMarkPaid }) {
                 ? "Due TOMORROW"
                 : `Due in ${days} days`;
 
-            const camAmt = e.split === "cam" ? e.amount : e.split === "split" ? e.amount / 2 : 0;
+            const camAmt = e.split === "cam" ? Number(e.amount) : e.split === "split" ? Number(e.amount) / 2 : 0;
 
             return (
               <div
                 key={e.id}
                 style={{
                   background: u.bg,
-                  border: `1.5px solid ${u.border}`,
+                  border: `1.5px solid ${isExpanded ? u.badge : u.border}`,
                   borderRadius: 16,
-                  padding: "16px",
                   marginBottom: 10,
+                  overflow: "hidden",
+                  cursor: "pointer",
                 }}
+                onClick={() => setExpandedId(isExpanded ? null : e.id)}
               >
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+                {/* Header row */}
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: 16 }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
                       <span
@@ -2325,16 +2337,61 @@ function UrgentScreen({ expenses, user, onBack, onMarkPaid }) {
                     </p>
                     {camAmt > 0 && (
                       <p style={{ fontSize: 12, color: "#E8A0B0", fontWeight: 700, margin: "2px 0 0" }}>
-                        Cam owes: ${camAmt.toFixed(2)}
+                        {isCam ? "You owe:" : "Cam owes:"} ${camAmt.toFixed(2)}
                       </p>
                     )}
                     {user === "emma" && !e._optimistic && (
-  <button style={styles.markPaidBtn} onClick={() => onMarkPaid(e.id)}>
-    Mark paid
-  </button>
-)}
+                      <button
+                        style={styles.markPaidBtn}
+                        onClick={(ev) => { ev.stopPropagation(); onMarkPaid(e.id); }}
+                      >
+                        Mark paid
+                      </button>
+                    )}
                   </div>
                 </div>
+
+                {/* Expanded section */}
+                {isExpanded && (
+                  <div
+                    style={{ borderTop: `1px solid ${u.border}`, padding: "12px 16px 14px", background: "rgba(255,255,255,0.55)" }}
+                    onClick={(ev) => ev.stopPropagation()}
+                  >
+                    {e.referenceNum && (
+                      <p style={{ fontSize: 12, color: "#888", margin: "0 0 6px" }}>
+                        <span style={{ fontWeight: 700, color: "#2D1B5E" }}>Ref #</span> {e.referenceNum}
+                      </p>
+                    )}
+                    {e.note && (
+                      <div style={{ marginBottom: isCam ? 12 : 0 }}>
+                        <p style={{ fontSize: 11, fontWeight: 700, color: "#9B7ED4", margin: "0 0 4px", textTransform: "uppercase", letterSpacing: 0.4 }}>Note</p>
+                        {renderNote(e.note)}
+                      </div>
+                    )}
+                    {!e.referenceNum && !e.note && (
+                      <p style={{ fontSize: 12, color: "#BBB", margin: "0 0 8px", fontStyle: "italic" }}>No notes or reference number.</p>
+                    )}
+                    {isCam && typeof onLogPaymentForKey === "function" && (
+                      <button
+                        style={{
+                          marginTop: 8,
+                          width: "100%",
+                          padding: "11px",
+                          borderRadius: 12,
+                          border: "none",
+                          background: u.badge,
+                          color: "#fff",
+                          fontSize: 13,
+                          fontWeight: 700,
+                          cursor: "pointer",
+                        }}
+                        onClick={() => onLogPaymentForKey(`exp:${e.id}`, camAmt > 0 ? camAmt : Number(e.amount))}
+                      >
+                        Log Payment
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
             );
           })
