@@ -1065,7 +1065,7 @@ export default function App() {
 )}
 
       {/* Bottom Nav */}
-      <BottomNav screen={screen} onNavigate={setScreen} urgentCount={urgentCount} />
+      <BottomNav screen={screen} onNavigate={setScreen} urgentCount={urgentCount} hidden={modal !== null || editingExpense !== null} />
     </div>
   );
 }
@@ -4749,13 +4749,14 @@ function LogPaymentModal({ balance, onSave, onClose, user, targets = [], planSum
 }
 
 // ── BOTTOM NAV ────────────────────────────────────────────────────────
-function BottomNav({ screen, onNavigate, urgentCount = 0 }) {
+function BottomNav({ screen, onNavigate, urgentCount = 0, hidden = false }) {
   const tabs = [
     { id: "dashboard", icon: icons.home, label: "Home" },
     { id: "expenses", icon: icons.list, label: "Expenses" },
     { id: "urgent", icon: icons.fire, label: "Urgent" },
     { id: "history", icon: icons.clock, label: "History" },
   ];
+  if (hidden) return null;
   return (
     <div style={styles.bottomNav}>
       {tabs.map(t => (
