@@ -971,6 +971,7 @@ export default function App() {
         <EditExpenseModal
           expense={editingExpense}
           onSave={handleEditExpense}
+          onDelete={realUser === "emma" ? (id) => { handleDeleteExpense(id); setEditingExpense(null); } : undefined}
           onClose={() => setEditingExpense(null)}
         />
       )}
@@ -4384,7 +4385,7 @@ function QuickAddModal({ user, onSave, onClose }) {
 }
 
 // ── EDIT EXPENSE MODAL ────────────────────────────────────────────────
-function EditExpenseModal({ expense, onSave, onClose }) {
+function EditExpenseModal({ expense, onSave, onDelete, onClose }) {
   const isRecurring = expense.recurring && expense.recurring !== "none";
   const [form, setForm] = useState({
     description: expense.description || "",
@@ -4544,6 +4545,16 @@ function EditExpenseModal({ expense, onSave, onClose }) {
           >
             Save Changes
           </button>
+
+          {typeof onDelete === "function" && (
+            <button
+              type="button"
+              style={{ width: "100%", marginTop: 8, padding: "12px", borderRadius: 14, border: "1.5px solid #F5D0D6", background: "#FFF5F6", color: "#C0485A", fontWeight: 700, fontSize: 14, cursor: "pointer", fontFamily: "inherit" }}
+              onClick={() => onDelete(expense.id)}
+            >
+              Delete Expense
+            </button>
+          )}
         </div>
       </div>
     </div>
