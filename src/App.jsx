@@ -5085,8 +5085,8 @@ logPayBtn: {
 
 // ── STYLES ────────────────────────────────────────────────────────────
 const styles = {
-  app: { maxWidth: 430, margin: "0 auto", minHeight: "100vh", background: "#F8F4FF", position: "relative", fontFamily: "'DM Sans', system-ui, sans-serif" },
-  screen: { padding: "0 0 20px", overflowY: "auto", maxHeight: "100vh" },
+  app: { maxWidth: 430, margin: "0 auto", minHeight: "100%", background: "#F8F4FF", position: "relative", fontFamily: "'DM Sans', system-ui, sans-serif", paddingTop: "env(safe-area-inset-top)" },
+  screen: { padding: "0 0 20px" },
 
 typeFilterRow: {
   display: "flex",
