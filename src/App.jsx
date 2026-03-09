@@ -5322,7 +5322,7 @@ iconBtn: {
 
   
   // Bottom Nav
-  bottomNav: { position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430, background: "#fff", borderTop: "1px solid #F0EAF8", display: "flex", padding: "8px 0 20px", boxShadow: "0 -4px 20px rgba(0,0,0,0.06)", zIndex: 50 },
+  bottomNav: { position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430, background: "#fff", borderTop: "1px solid #F0EAF8", display: "flex", padding: "8px 0 max(20px, env(safe-area-inset-bottom))", boxShadow: "0 -4px 20px rgba(0,0,0,0.06)", zIndex: 200 },
   navBtn: { flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 3, background: "none", border: "none", cursor: "pointer", padding: "6px 0" },
   navBtnActive: {},
 
