@@ -1579,20 +1579,39 @@ function DashboardRecentChargesList({ items = [], onOpenTarget, user, searching 
 function getScheduleExpenses(expenses) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  return (expenses || [])
-    .filter(e => {
-      if (e.status === "paid") return false;
-      if (!["cam", "split"].includes(e.split)) return false;
-      return !!(e.nextDue || e.dueDate);
-    })
-    .map(e => {
-      const due = e.nextDue || e.dueDate;
-      const d = new Date(due + "T12:00:00");
-      const amount = e.split === "split" ? Number(e.amount || 0) / 2 : Number(e.amount || 0);
-      return { ...e, _dueDate: d, _amount: amount };
-    })
-    .filter(e => e._dueDate >= today)
-    .sort((a, b) => a._dueDate - b._dueDate);
+  const horizonDate = new Date(today);
+  horizonDate.setMonth(horizonDate.getMonth() + 6); // show 6 months ahead
+
+  const results = [];
+
+  (expenses || []).forEach(e => {
+    if (e.status === "paid") return;
+    if (!["cam", "split"].includes(e.split)) return;
+    const baseDue = e.nextDue || e.dueDate;
+    if (!baseDue) return;
+
+    const amount = e.split === "split" ? Number(e.amount || 0) / 2 : Number(e.amount || 0);
+    const isRecurring = e.recurring && e.recurring !== "none";
+
+    // Always include the base upcoming date
+    const baseDate = new Date(baseDue + "T12:00:00");
+    if (baseDate >= today) {
+      results.push({ ...e, _dueDate: baseDate, _amount: amount });
+    }
+
+    // For recurring expenses, project future occurrences within horizon
+    if (isRecurring) {
+      let nextDueStr = getNextDueDate(baseDue, e.recurring);
+      for (let i = 0; i < 24; i++) {
+        const d = new Date(nextDueStr + "T12:00:00");
+        if (d > horizonDate) break;
+        results.push({ ...e, _dueDate: d, _amount: amount, _projected: true });
+        nextDueStr = getNextDueDate(nextDueStr, e.recurring);
+      }
+    }
+  });
+
+  return results.sort((a, b) => a._dueDate - b._dueDate);
 }
 
 function ScheduleMiniPreview({ expenses, onViewFull, accentColor = "#A8EFC4" }) {
@@ -1756,8 +1775,11 @@ function FullCalendarSheet({ expenses, onClose }) {
               <div style={{ margin: "14px 16px 0", background: "#F8F4FF", borderRadius: 16, padding: "16px" }}>
                 <p style={{ margin: "0 0 12px", fontSize: 15, fontWeight: 800, color: "#2D1B5E" }}>{selectedDisplay}</p>
                 {selectedExps.map((e, i) => (
-                  <div key={e.id || i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: i > 0 ? 10 : 0, borderTop: i > 0 ? "1px solid #EDE4F5" : "none" }}>
-                    <span style={{ fontSize: 13, color: "#444", fontWeight: 600 }}>{e.description}</span>
+                  <div key={(e.id || i) + String(e._dueDate)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: i > 0 ? 10 : 0, borderTop: i > 0 ? "1px solid #EDE4F5" : "none" }}>
+                    <div>
+                      <span style={{ fontSize: 13, color: "#444", fontWeight: 600 }}>{e.description}</span>
+                      {e._projected && <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, color: "#9B7ED4", background: "#EDE4F5", borderRadius: 4, padding: "1px 5px" }}>recurring</span>}
+                    </div>
                     <span style={{ fontSize: 14, fontWeight: 800, color: "#2D1B5E" }}>${e._amount.toFixed(2)}</span>
                   </div>
                 ))}
