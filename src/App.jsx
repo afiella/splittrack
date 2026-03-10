@@ -550,6 +550,7 @@ const icons = {
   search:      "M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z",
   trash:       "M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16",
   flag:        "M3 3v18M3 7l9-4 9 4v8l-9 4-9-4V7z",
+  bell:        "M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9",
 };
 
 function Icon({ path, size = 20, color = "currentColor" }) {
@@ -571,7 +572,7 @@ export default function App() {
   const [expenses, setExpenses] = useState([]);
   const [payments, setPayments] = useState([]);
   const [notification, setNotification] = useState(null);
-  const [modal, setModal] = useState(null); // "addExpense" | "logPayment" | "confirmPayment"
+  const [modal, setModal] = useState(null); // "addExpense" | "logPayment" | "confirmPayment" | "camQuickPay"
   const [editingExpense, setEditingExpense] = useState(null);
   
   const [paymentDraftKey, setPaymentDraftKey] = useState("general");
@@ -990,6 +991,15 @@ export default function App() {
         />
       )}
 
+      {modal === "camQuickPay" && (
+        <CamQuickPayModal
+          expenses={expenses}
+          targetSummaries={targetSummaries}
+          onSubmit={handleLogPayment}
+          onClose={() => setModal(null)}
+        />
+      )}
+
       {/* Screen */}
       {screen === "dashboard" && (
         <DashboardScreen
@@ -1005,6 +1015,7 @@ export default function App() {
           onOpenTarget={(key) => { setActiveTargetKey(key); setScreen("target"); }}
           onAddExpense={() => setModal("addExpense")}
           onLogPayment={() => setModal("logPayment")}
+          onQuickPay={() => setModal("camQuickPay")}
           onConfirm={handleConfirm}
           onDeleteExpense={handleDeleteExpense}
           onMarkPaid={handleMarkPaid}
@@ -1612,7 +1623,7 @@ function DashboardActionChips({ onAddExpense, onLogPayment }) {
 }
 
 // ── CAM BALANCE BANNER ────────────────────────────────────────────────
-function CamBalanceBanner({ balance, totalOwed, totalPaid, camOwesThisMonth, camPaidThisMonth, overdueCount = 0, expenses = [], payments = [], onLogPayment, onAddExpense, onNavigate }) {
+function CamBalanceBanner({ balance, totalOwed, totalPaid, camOwesThisMonth, camPaidThisMonth, overdueCount = 0, expenses = [], payments = [], onLogPayment, onQuickPay, onAddExpense, onNavigate }) {
   const [expanded, setExpanded] = useState(false);
   const [disputeOpen, setDisputeOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -1636,7 +1647,7 @@ function CamBalanceBanner({ balance, totalOwed, totalPaid, camOwesThisMonth, cam
       label: "Quick\nPayment",
       icon: icons.wallet,
       bg: "rgba(255,255,255,0.18)",
-      onTap: onLogPayment,
+      onTap: onQuickPay || onLogPayment,
     },
     {
       label: "Dispute",
@@ -1664,8 +1675,8 @@ function CamBalanceBanner({ balance, totalOwed, totalPaid, camOwesThisMonth, cam
         style={{
           margin: "0 16px",
           borderRadius: 24,
-          background: "linear-gradient(145deg, #5A1030 0%, #A02040 45%, #E05C6E 100%)",
-          boxShadow: "0 14px 40px rgba(160,32,64,0.32)",
+          background: "linear-gradient(145deg, #1a4a70 0%, #3279a8 45%, #5ba3d4 100%)",
+          boxShadow: "0 14px 40px rgba(50,121,168,0.35)",
           overflow: "hidden",
           cursor: "pointer",
         }}
@@ -1854,8 +1865,530 @@ function CamBalanceBanner({ balance, totalOwed, totalPaid, camOwesThisMonth, cam
   );
 }
 
+// ── CAM QUICK PAY MODAL ───────────────────────────────────────────────
+const PAYMENT_METHODS = ["Zelle", "Venmo", "Cash App", "Cash", "Apple Pay", "Other"];
+const PRESET_AMOUNTS = [20, 50];
+
+function CamQuickPayModal({ expenses = [], targetSummaries, onSubmit, onClose }) {
+  const [step, setStep] = useState("amount"); // "amount" | "target" | "confirm"
+  const [selectedAmt, setSelectedAmt] = useState(null); // 20 | 50 | "custom"
+  const [customVal, setCustomVal] = useState("");
+  const [targetMode, setTargetMode] = useState(null); // "overdue" | "specific"
+  const [selectedExp, setSelectedExp] = useState(null);
+  const [method, setMethod] = useState("Zelle");
+
+  const finalAmount = selectedAmt === "custom" ? parseFloat(customVal) || 0 : (selectedAmt || 0);
+
+  // Cameron's unpaid expenses he owes on
+  const camUnpaid = (expenses || []).filter(e =>
+    e.status !== "paid" && (e.split === "cam" || e.split === "split")
+  );
+
+  function camShare(e) {
+    const amt = Number(e.amount || 0);
+    return e.split === "cam" ? amt : amt / 2;
+  }
+
+  // Overdue sorted by cam's share ascending (clear smallest first)
+  const overdueExps = camUnpaid
+    .filter(e => getUrgencyLevel(e) === "overdue")
+    .sort((a, b) => camShare(a) - camShare(b));
+
+  // Preview: how the payment clears overdue balances
+  function getOverduePlan(amt) {
+    const plan = [];
+    let left = amt;
+    for (const e of overdueExps) {
+      if (left <= 0.004) break;
+      const share = camShare(e);
+      const tKey = `exp:${e.id}`;
+      const s = targetSummaries?.get(tKey);
+      const tRem = s ? Math.max(0, Number(s.remaining ?? share)) : share;
+      const pay = Math.min(tRem, left);
+      if (pay > 0.004) { plan.push({ e, pay, tKey }); left -= pay; }
+    }
+    return plan;
+  }
+
+  const overduePlan = targetMode === "overdue" && finalAmount > 0 ? getOverduePlan(finalAmount) : [];
+  const canProceedAmount = finalAmount > 0;
+  const canConfirm = targetMode === "overdue"
+    ? overduePlan.length > 0
+    : targetMode === "specific" && selectedExp != null;
+
+  function handleConfirm() {
+    const today = new Date().toISOString().slice(0, 10);
+    if (targetMode === "overdue") {
+      overduePlan.forEach(({ e, pay, tKey }) => {
+        onSubmit({ amount: pay, date: today, method, appliedToKey: tKey, note: `Quick pay — clears overdue: ${e.description}` });
+      });
+    } else if (targetMode === "specific" && selectedExp) {
+      const isRec = selectedExp.recurring && selectedExp.recurring !== "none";
+      const tKey = isRec ? `grp:${selectedExp.groupId || selectedExp.id}` : `exp:${selectedExp.id}`;
+      onSubmit({ amount: finalAmount, date: today, method, appliedToKey: tKey });
+    }
+    onClose();
+  }
+
+  const sheetStyle = {
+    position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)",
+    width: "100%", maxWidth: 430, background: "#fff", borderRadius: "24px 24px 0 0",
+    zIndex: 901, paddingBottom: "max(28px, env(safe-area-inset-bottom))",
+    maxHeight: "88vh", overflowY: "auto", boxShadow: "0 -8px 40px rgba(45,27,94,0.18)",
+  };
+
+  return (
+    <>
+      <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 900 }} />
+      <div style={sheetStyle}>
+        {/* Handle */}
+        <div style={{ display: "flex", justifyContent: "center", padding: "12px 0 4px" }}>
+          <div style={{ width: 40, height: 4, borderRadius: 2, background: "#E5DFF5" }} />
+        </div>
+
+        {/* Header */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 20px 16px" }}>
+          <div>
+            {step !== "amount" && (
+              <button onClick={() => { if (step === "confirm") setStep("target"); else if (step === "target") setStep("amount"); }}
+                style={{ background: "none", border: "none", color: "#9B7ED4", fontSize: 13, fontWeight: 700, cursor: "pointer", padding: 0, marginBottom: 2 }}>
+                ← Back
+              </button>
+            )}
+            <p style={{ margin: 0, fontSize: 20, fontWeight: 900, color: "#1A1030" }}>Quick Payment</p>
+            <p style={{ margin: "2px 0 0", fontSize: 12, color: "#999" }}>
+              {step === "amount" ? "How much are you paying?" : step === "target" ? "Where should it go?" : "Review & confirm"}
+            </p>
+          </div>
+          <button onClick={onClose} type="button"
+            style={{ background: "#E8E0F4", border: "none", borderRadius: 10, width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", fontSize: 18, fontWeight: 700, color: "#6B5B8E", lineHeight: 1 }}>
+            ✕
+          </button>
+        </div>
+
+        {/* ── STEP 1: Amount ── */}
+        {step === "amount" && (
+          <div style={{ padding: "0 20px 24px" }}>
+            {/* Preset chips */}
+            <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
+              {PRESET_AMOUNTS.map(amt => (
+                <button key={amt} type="button"
+                  onClick={() => { setSelectedAmt(amt); setCustomVal(""); }}
+                  style={{
+                    flex: 1, padding: "18px 0", borderRadius: 16, border: "2px solid",
+                    borderColor: selectedAmt === amt ? "#2D1B5E" : "#E5DFF5",
+                    background: selectedAmt === amt ? "#2D1B5E" : "#FDFBFF",
+                    color: selectedAmt === amt ? "#fff" : "#2D1B5E",
+                    fontSize: 22, fontWeight: 900, cursor: "pointer", transition: "all 0.15s",
+                  }}>
+                  ${amt}
+                </button>
+              ))}
+              <button type="button"
+                onClick={() => setSelectedAmt("custom")}
+                style={{
+                  flex: 1, padding: "18px 0", borderRadius: 16, border: "2px solid",
+                  borderColor: selectedAmt === "custom" ? "#9B7ED4" : "#E5DFF5",
+                  background: selectedAmt === "custom" ? "#F5F0FB" : "#FDFBFF",
+                  color: selectedAmt === "custom" ? "#9B7ED4" : "#888",
+                  fontSize: 15, fontWeight: 800, cursor: "pointer", transition: "all 0.15s",
+                }}>
+                Custom
+              </button>
+            </div>
+
+            {/* Custom amount input */}
+            {selectedAmt === "custom" && (
+              <div style={{ position: "relative", display: "flex", alignItems: "center", marginBottom: 16 }}>
+                <span style={{ position: "absolute", left: 16, fontSize: 22, fontWeight: 900, color: "#2D1B5E", pointerEvents: "none" }}>$</span>
+                <input
+                  autoFocus type="number" min="0.01" step="0.01" placeholder="0.00"
+                  value={customVal}
+                  onChange={e => setCustomVal(e.target.value)}
+                  style={{ width: "100%", padding: "16px 16px 16px 36px", borderRadius: 14, border: "2px solid #C4A8D4", fontSize: 22, fontWeight: 900, color: "#2D1B5E", outline: "none", boxSizing: "border-box", background: "#FDFBFF" }}
+                />
+              </div>
+            )}
+
+            {/* Payment method */}
+            <p style={{ fontSize: 12, fontWeight: 700, color: "#999", textTransform: "uppercase", letterSpacing: 0.8, margin: "0 0 10px" }}>Payment Method</p>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 24 }}>
+              {PAYMENT_METHODS.map(m => (
+                <button key={m} type="button"
+                  onClick={() => setMethod(m)}
+                  style={{
+                    padding: "7px 14px", borderRadius: 999, border: "1.5px solid",
+                    borderColor: method === m ? "#2D1B5E" : "#E5DFF5",
+                    background: method === m ? "#2D1B5E" : "#fff",
+                    color: method === m ? "#fff" : "#888",
+                    fontSize: 12, fontWeight: 700, cursor: "pointer",
+                  }}>
+                  {m}
+                </button>
+              ))}
+            </div>
+
+            <button type="button"
+              disabled={!canProceedAmount}
+              onClick={() => setStep("target")}
+              style={{
+                width: "100%", padding: "16px", borderRadius: 16, border: "none",
+                background: canProceedAmount ? "linear-gradient(135deg, #2D1B5E, #6B3FA0)" : "#E5DFF5",
+                color: canProceedAmount ? "#fff" : "#AAA",
+                fontSize: 16, fontWeight: 800, cursor: canProceedAmount ? "pointer" : "default",
+              }}>
+              Next →
+            </button>
+          </div>
+        )}
+
+        {/* ── STEP 2: Target ── */}
+        {step === "target" && (
+          <div style={{ padding: "0 20px 24px" }}>
+            <div style={{ background: "#F5F0FB", borderRadius: 14, padding: "12px 16px", marginBottom: 20, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ fontSize: 13, color: "#888", fontWeight: 600 }}>Paying</span>
+              <span style={{ fontSize: 20, fontWeight: 900, color: "#2D1B5E" }}>${finalAmount.toFixed(2)} via {method}</span>
+            </div>
+
+            {/* Option A: Clear overdue */}
+            <button type="button"
+              onClick={() => { setTargetMode("overdue"); setSelectedExp(null); }}
+              style={{
+                width: "100%", marginBottom: 12, padding: "16px", borderRadius: 16,
+                border: "2px solid", borderColor: targetMode === "overdue" ? "#E05C6E" : "#E5DFF5",
+                background: targetMode === "overdue" ? "#FFF5F6" : "#fff",
+                textAlign: "left", cursor: "pointer",
+              }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div style={{ width: 36, height: 36, borderRadius: 12, background: targetMode === "overdue" ? "#E05C6E" : "#F5F0FB", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <Icon path={icons.fire} size={18} color={targetMode === "overdue" ? "#fff" : "#E05C6E"} />
+                </div>
+                <div>
+                  <p style={{ margin: 0, fontSize: 14, fontWeight: 800, color: "#1A1030" }}>Clear overdue balances</p>
+                  <p style={{ margin: "2px 0 0", fontSize: 11, color: "#888" }}>
+                    {overdueExps.length > 0
+                      ? `Clears ${overdueExps.length} overdue charge${overdueExps.length !== 1 ? "s" : ""}, smallest first`
+                      : "No overdue charges right now"}
+                  </p>
+                </div>
+              </div>
+              {/* Preview breakdown */}
+              {targetMode === "overdue" && overduePlan.length > 0 && (
+                <div style={{ marginTop: 12, borderTop: "1px solid #F8E8EA", paddingTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
+                  {overduePlan.map(({ e, pay }) => (
+                    <div key={e.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span style={{ fontSize: 12, color: "#E05C6E", fontWeight: 600, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "70%" }}>{e.description}</span>
+                      <span style={{ fontSize: 12, fontWeight: 800, color: "#E05C6E" }}>${pay.toFixed(2)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {targetMode === "overdue" && overdueExps.length === 0 && (
+                <p style={{ margin: "8px 0 0", fontSize: 11, color: "#E05C6E", fontWeight: 600 }}>No overdue charges to clear.</p>
+              )}
+            </button>
+
+            {/* Option B: Specific transaction */}
+            <button type="button"
+              onClick={() => setTargetMode("specific")}
+              style={{
+                width: "100%", padding: "16px", borderRadius: 16,
+                border: "2px solid", borderColor: targetMode === "specific" ? "#9B7ED4" : "#E5DFF5",
+                background: targetMode === "specific" ? "#F5F0FB" : "#fff",
+                textAlign: "left", cursor: "pointer", marginBottom: 16,
+              }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div style={{ width: 36, height: 36, borderRadius: 12, background: targetMode === "specific" ? "#9B7ED4" : "#F5F0FB", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <Icon path={icons.list} size={18} color={targetMode === "specific" ? "#fff" : "#9B7ED4"} />
+                </div>
+                <div>
+                  <p style={{ margin: 0, fontSize: 14, fontWeight: 800, color: "#1A1030" }}>Specific transaction</p>
+                  <p style={{ margin: "2px 0 0", fontSize: 11, color: "#888" }}>Choose which charge this goes toward</p>
+                </div>
+              </div>
+            </button>
+
+            {/* Transaction picker */}
+            {targetMode === "specific" && (
+              <div style={{ marginBottom: 16 }}>
+                <p style={{ fontSize: 11, fontWeight: 800, color: "#999", textTransform: "uppercase", letterSpacing: 0.8, margin: "0 0 8px" }}>Select a charge</p>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {camUnpaid.length === 0 && (
+                    <p style={{ fontSize: 13, color: "#AAA", textAlign: "center", padding: "16px 0" }}>No unpaid charges found.</p>
+                  )}
+                  {camUnpaid.map(e => {
+                    const share = camShare(e);
+                    const isOverdue = getUrgencyLevel(e) === "overdue";
+                    const isSelected = selectedExp?.id === e.id;
+                    return (
+                      <button key={e.id} type="button"
+                        onClick={() => setSelectedExp(isSelected ? null : e)}
+                        style={{
+                          display: "flex", alignItems: "center", justifyContent: "space-between",
+                          padding: "12px 14px", borderRadius: 14, border: "2px solid",
+                          borderColor: isSelected ? "#9B7ED4" : isOverdue ? "#F8C4CD" : "#E5DFF5",
+                          background: isSelected ? "#F0EBF9" : isOverdue ? "#FFF8F8" : "#FDFBFF",
+                          cursor: "pointer", textAlign: "left",
+                        }}>
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                          <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: "#1A1030", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.description}</p>
+                          <p style={{ margin: "2px 0 0", fontSize: 11, color: isOverdue ? "#E05C6E" : "#999", fontWeight: 600 }}>
+                            {isOverdue ? "Overdue · " : ""}{formatShortDate(e.nextDue || e.dueDate || e.date)}
+                          </p>
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0, marginLeft: 10 }}>
+                          <span style={{ fontSize: 14, fontWeight: 800, color: isOverdue ? "#E05C6E" : "#2D1B5E" }}>${share.toFixed(2)}</span>
+                          {isSelected && <Icon path={icons.check} size={16} color="#9B7ED4" />}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            <button type="button"
+              disabled={!canConfirm}
+              onClick={() => canConfirm && setStep("confirm")}
+              style={{
+                width: "100%", padding: "16px", borderRadius: 16, border: "none",
+                background: canConfirm ? "linear-gradient(135deg, #2D1B5E, #6B3FA0)" : "#E5DFF5",
+                color: canConfirm ? "#fff" : "#AAA",
+                fontSize: 16, fontWeight: 800, cursor: canConfirm ? "pointer" : "default",
+              }}>
+              Review Payment →
+            </button>
+          </div>
+        )}
+
+        {/* ── STEP 3: Confirm ── */}
+        {step === "confirm" && (
+          <div style={{ padding: "0 20px 24px" }}>
+            {/* Summary card */}
+            <div style={{ background: "linear-gradient(135deg, #2D1B5E, #6B3FA0)", borderRadius: 20, padding: "20px", marginBottom: 20, color: "#fff" }}>
+              <p style={{ margin: "0 0 4px", fontSize: 12, fontWeight: 700, opacity: 0.7, textTransform: "uppercase", letterSpacing: 0.8 }}>You're paying</p>
+              <p style={{ margin: "0 0 16px", fontSize: 34, fontWeight: 900 }}>${finalAmount.toFixed(2)}</p>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, opacity: 0.85 }}>
+                <span>via {method}</span>
+                <span>{targetMode === "overdue" ? `Clears ${overduePlan.length} overdue charge${overduePlan.length !== 1 ? "s" : ""}` : selectedExp?.description}</span>
+              </div>
+            </div>
+
+            {/* Breakdown */}
+            {targetMode === "overdue" && overduePlan.length > 0 && (
+              <div style={{ background: "#FFF5F6", borderRadius: 14, padding: "12px 16px", marginBottom: 20 }}>
+                <p style={{ margin: "0 0 10px", fontSize: 11, fontWeight: 800, color: "#E05C6E", textTransform: "uppercase", letterSpacing: 0.8 }}>Breakdown</p>
+                {overduePlan.map(({ e, pay }) => (
+                  <div key={e.id} style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                    <span style={{ fontSize: 13, color: "#1A1030", fontWeight: 600 }}>{e.description}</span>
+                    <span style={{ fontSize: 13, fontWeight: 800, color: "#E05C6E" }}>${pay.toFixed(2)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {targetMode === "specific" && selectedExp && (
+              <div style={{ background: "#F5F0FB", borderRadius: 14, padding: "12px 16px", marginBottom: 20 }}>
+                <p style={{ margin: "0 0 6px", fontSize: 11, fontWeight: 800, color: "#9B7ED4", textTransform: "uppercase", letterSpacing: 0.8 }}>Applied to</p>
+                <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#1A1030" }}>{selectedExp.description}</p>
+                <p style={{ margin: "2px 0 0", fontSize: 12, color: "#999" }}>{formatShortDate(selectedExp.nextDue || selectedExp.dueDate || selectedExp.date)}</p>
+              </div>
+            )}
+
+            <p style={{ fontSize: 12, color: "#AAA", textAlign: "center", margin: "0 0 16px", lineHeight: 1.5 }}>
+              This payment will be pending until Emmanuella confirms it.
+            </p>
+
+            <button type="button" onClick={handleConfirm}
+              style={{ width: "100%", padding: "16px", borderRadius: 16, border: "none", background: "linear-gradient(135deg, #7BBFB0, #5CA89A)", color: "#fff", fontSize: 16, fontWeight: 800, cursor: "pointer" }}>
+              Confirm Payment ✓
+            </button>
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
+// ── CAM NOTIFICATIONS PANEL ───────────────────────────────────────────
+function CamNotificationsPanel({ expenses = [], payments = [], onClose, onNavigate }) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  // Upcoming: Cameron's unpaid charges due within 14 days
+  const upcoming = (expenses || [])
+    .filter((e) => {
+      if (e.status === "paid") return false;
+      const camOwes = e.split === "cam" || e.split === "split";
+      if (!camOwes) return false;
+      const due = e.nextDue || e.dueDate;
+      if (!due) return false;
+      const dueD = new Date(due + "T12:00:00");
+      const diffDays = Math.ceil((dueD - today) / 86400000);
+      return diffDays <= 14;
+    })
+    .sort((a, b) => {
+      const da = a.nextDue || a.dueDate;
+      const db = b.nextDue || b.dueDate;
+      return new Date(da) - new Date(db);
+    });
+
+  // Recently confirmed payments (last 7 days)
+  const recentlyConfirmed = (payments || [])
+    .filter((p) => {
+      if (!p.confirmed) return false;
+      const pDate = new Date((p.date || "") + "T12:00:00");
+      const diffDays = Math.ceil((today - pDate) / 86400000);
+      return diffDays <= 7;
+    })
+    .sort((a, b) => new Date(b.date) - new Date(a.date));
+
+  // Pending: payments awaiting confirmation
+  const pending = (payments || []).filter((p) => !p.confirmed);
+
+  const hasAny = upcoming.length > 0 || recentlyConfirmed.length > 0 || pending.length > 0;
+
+  function camAmt(e) {
+    const amt = Number(e.amount || 0);
+    if (e.split === "cam") return amt;
+    if (e.split === "split") return amt / 2;
+    return 0;
+  }
+
+  function dueLabel(e) {
+    const due = e.nextDue || e.dueDate;
+    if (!due) return "";
+    const dueD = new Date(due + "T12:00:00");
+    dueD.setHours(0, 0, 0, 0);
+    const diffDays = Math.ceil((dueD - today) / 86400000);
+    const isOverdue = getUrgencyLevel(e) === "overdue";
+    if (isOverdue) return "Overdue";
+    if (diffDays === 0) return "Due today";
+    if (diffDays === 1) return "Due tomorrow";
+    return `Due in ${diffDays}d`;
+  }
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div
+        onClick={onClose}
+        style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", zIndex: 800 }}
+      />
+      {/* Sheet */}
+      <div style={{
+        position: "fixed",
+        bottom: 0,
+        left: "50%",
+        transform: "translateX(-50%)",
+        width: "100%",
+        maxWidth: 430,
+        background: "#fff",
+        borderRadius: "22px 22px 0 0",
+        zIndex: 801,
+        paddingBottom: "max(24px, env(safe-area-inset-bottom))",
+        maxHeight: "75vh",
+        overflowY: "auto",
+      }}>
+        {/* Handle */}
+        <div style={{ display: "flex", justifyContent: "center", padding: "10px 0 6px" }}>
+          <div style={{ width: 36, height: 4, borderRadius: 2, background: "#E5DFF5" }} />
+        </div>
+
+        {/* Header */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 18px 14px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <Icon path={icons.bell} size={18} color="#E05C6E" />
+            <span style={{ fontSize: 16, fontWeight: 800, color: "#1A1030" }}>Notifications</span>
+          </div>
+          <button
+            onClick={onClose}
+            type="button"
+            style={{ background: "#F5F0FB", border: "none", borderRadius: 10, width: 30, height: 30, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
+          >
+            <Icon path={icons.x} size={16} color="#888" />
+          </button>
+        </div>
+
+        {!hasAny && (
+          <div style={{ padding: "32px 24px", textAlign: "center" }}>
+            <div style={{ fontSize: 32, marginBottom: 8 }}>🎉</div>
+            <p style={{ fontSize: 15, fontWeight: 700, color: "#2D1B5E", margin: "0 0 4px" }}>You're all caught up!</p>
+            <p style={{ fontSize: 13, color: "#999", margin: 0 }}>No upcoming payments or pending activity.</p>
+          </div>
+        )}
+
+        {/* Overdue / Upcoming */}
+        {upcoming.length > 0 && (
+          <div style={{ padding: "0 16px 4px" }}>
+            <p style={{ fontSize: 11, fontWeight: 800, color: "#999", textTransform: "uppercase", letterSpacing: 0.8, margin: "0 0 8px" }}>Upcoming Payments</p>
+            {upcoming.map((e) => {
+              const overdue = getUrgencyLevel(e) === "overdue";
+              const accentColor = overdue ? "#E05C6E" : "#9B7ED4";
+              const bgColor = overdue ? "#FFF5F6" : "#F8F4FF";
+              return (
+                <div
+                  key={e.id}
+                  style={{ background: bgColor, borderRadius: 14, padding: "12px 14px", marginBottom: 8, border: `1.5px solid ${overdue ? "#F8C4CD" : "#EDE5FA"}`, cursor: "pointer" }}
+                  onClick={() => { onNavigate("urgent"); onClose(); }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#1A1030", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.description}</p>
+                      <p style={{ margin: "3px 0 0", fontSize: 11, fontWeight: 700, color: accentColor }}>{dueLabel(e)}</p>
+                    </div>
+                    <span style={{ fontSize: 15, fontWeight: 800, color: accentColor, flexShrink: 0, marginLeft: 10 }}>${camAmt(e).toFixed(2)}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Pending confirmation */}
+        {pending.length > 0 && (
+          <div style={{ padding: "8px 16px 4px" }}>
+            <p style={{ fontSize: 11, fontWeight: 800, color: "#999", textTransform: "uppercase", letterSpacing: 0.8, margin: "0 0 8px" }}>Awaiting Confirmation</p>
+            {pending.map((p, i) => (
+              <div key={p.id || i} style={{ background: "#FFFBF0", borderRadius: 14, padding: "12px 14px", marginBottom: 8, border: "1.5px solid #F5E6B0" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div>
+                    <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#1A1030" }}>Payment via {p.method || "—"}</p>
+                    <p style={{ margin: "3px 0 0", fontSize: 11, fontWeight: 600, color: "#C48A00" }}>Pending · waiting for confirmation</p>
+                  </div>
+                  <span style={{ fontSize: 15, fontWeight: 800, color: "#C48A00" }}>${Number(p.amount || 0).toFixed(2)}</span>
+                </div>
+                {p.note && <p style={{ margin: "6px 0 0", fontSize: 12, color: "#888" }}>{p.note}</p>}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Recently confirmed */}
+        {recentlyConfirmed.length > 0 && (
+          <div style={{ padding: "8px 16px 4px" }}>
+            <p style={{ fontSize: 11, fontWeight: 800, color: "#999", textTransform: "uppercase", letterSpacing: 0.8, margin: "0 0 8px" }}>Recently Confirmed</p>
+            {recentlyConfirmed.map((p, i) => (
+              <div key={p.id || i} style={{ background: "#F0FFF6", borderRadius: 14, padding: "12px 14px", marginBottom: 8, border: "1.5px solid #A8EFC4" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div>
+                    <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#1A1030" }}>Payment confirmed</p>
+                    <p style={{ margin: "3px 0 0", fontSize: 11, fontWeight: 600, color: "#2E9E60" }}>via {p.method || "—"} · {formatShortDate(p.date)}</p>
+                  </div>
+                  <span style={{ fontSize: 15, fontWeight: 800, color: "#2E9E60" }}>${Number(p.amount || 0).toFixed(2)}</span>
+                </div>
+                {p.note && <p style={{ margin: "6px 0 0", fontSize: 12, color: "#888" }}>{p.note}</p>}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
 // ── DASHBOARD ─────────────────────────────────────────────────────────
-function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, payments, syncingPayments, urgentCount, targetSummaries, onOpenTarget, onAddExpense, onLogPayment, onConfirm, onDeleteExpense, onMarkPaid, onNavigate, onLogout, onSwitchView, viewingAsCam }) {
+function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, payments, syncingPayments, urgentCount, targetSummaries, onOpenTarget, onAddExpense, onLogPayment, onQuickPay, onConfirm, onDeleteExpense, onMarkPaid, onNavigate, onLogout, onSwitchView, viewingAsCam }) {
   const pending = payments.filter((p) => !p.confirmed);
   // Cam dashboard urgent banner improvement: Step 3
   const urgentList = (expenses || []).filter((e) => getUrgencyLevel(e) !== null);
@@ -1863,6 +2396,7 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchVal, setSearchVal] = useState("");
   const [balanceOpen, setBalanceOpen] = useState(false);
+  const [notifOpen, setNotifOpen] = useState(false);
 
   const sortedByDate = (expenses || [])
     .slice()
@@ -1953,32 +2487,88 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
           <p style={styles.headerSub}>{new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}</p>
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <button
-            style={{
-              ...styles.logoutBtn,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 8,
-              padding: "6px 12px",
-              minWidth: 40,
-              height: 32,
-              background: searchOpen ? "#2D1B5E" : "rgba(255,255,255,0.7)",
-              color: searchOpen ? "#fff" : "#888",
-            }}
-            onClick={() => {
-              setSearchOpen((o) => !o);
-              setSearchVal("");
-            }}
-            aria-label={searchOpen ? "Close search" : "Search"}
-            type="button"
-          >
-            {searchOpen ? (
-              <Icon path={icons.x} size={18} color="#fff" />
-            ) : (
-              <Icon path={icons.search} size={18} color="#888" />
-            )}
-          </button>
+          {user === "cam" ? (
+            /* Bell notification icon — Cameron only */
+            (() => {
+              const today = new Date(); today.setHours(0,0,0,0);
+              const upcomingCount = (expenses || []).filter((e) => {
+                if (e.status === "paid") return false;
+                const camOwes = e.split === "cam" || e.split === "split";
+                if (!camOwes) return false;
+                const due = e.nextDue || e.dueDate;
+                if (!due) return false;
+                const dueD = new Date(due + "T12:00:00");
+                return Math.ceil((dueD - today) / 86400000) <= 14;
+              }).length;
+              const pendingCount = (payments || []).filter((p) => !p.confirmed).length;
+              const badgeCount = upcomingCount + pendingCount;
+              return (
+                <button
+                  type="button"
+                  style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center", width: 38, height: 38, borderRadius: "50%", border: "none", background: notifOpen ? "#E05C6E" : "#2D1B5E", cursor: "pointer", boxShadow: "0 3px 10px rgba(45,27,94,0.3)" }}
+                  onClick={() => setNotifOpen((o) => !o)}
+                  aria-label="Notifications"
+                >
+                  {/* Filled bell icon */}
+                  <svg width={22} height={22} viewBox="0 0 24 24" fill="#fff">
+                    <path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6V11c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/>
+                  </svg>
+                  {badgeCount > 0 && !notifOpen && (
+                    <span style={{
+                      position: "absolute",
+                      top: -4,
+                      right: -4,
+                      minWidth: 18,
+                      height: 18,
+                      borderRadius: 9,
+                      background: "#FF3B30",
+                      border: "none",
+                      fontSize: 10,
+                      fontWeight: 800,
+                      color: "#fff",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      lineHeight: 1,
+                      padding: "0 4px",
+                      fontFamily: "-apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif",
+                      letterSpacing: -0.3,
+                    }}>
+                      {badgeCount > 9 ? "9+" : badgeCount}
+                    </span>
+                  )}
+                </button>
+              );
+            })()
+          ) : (
+            /* Search button — Emma only */
+            <button
+              style={{
+                ...styles.logoutBtn,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 8,
+                padding: "6px 12px",
+                minWidth: 40,
+                height: 32,
+                background: searchOpen ? "#2D1B5E" : "rgba(255,255,255,0.7)",
+                color: searchOpen ? "#fff" : "#888",
+              }}
+              onClick={() => {
+                setSearchOpen((o) => !o);
+                setSearchVal("");
+              }}
+              aria-label={searchOpen ? "Close search" : "Search"}
+              type="button"
+            >
+              {searchOpen ? (
+                <Icon path={icons.x} size={18} color="#fff" />
+              ) : (
+                <Icon path={icons.search} size={18} color="#888" />
+              )}
+            </button>
+          )}
           {onSwitchView ? (
             <button
               style={{ ...styles.logoutBtn, background: viewingAsCam ? "#2D1B5E" : "rgba(255,255,255,0.7)", color: viewingAsCam ? "#C4B5FD" : "#888", fontWeight: 700 }}
@@ -2076,6 +2666,7 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
           expenses={expenses}
           payments={payments}
           onLogPayment={onLogPayment}
+          onQuickPay={onQuickPay}
           onAddExpense={onAddExpense}
           onNavigate={onNavigate}
         />
@@ -2329,6 +2920,16 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
       </div>
 
       <div style={{height: 80}} />
+
+      {/* Notifications Panel — Cameron */}
+      {notifOpen && (
+        <CamNotificationsPanel
+          expenses={expenses}
+          payments={payments}
+          onClose={() => setNotifOpen(false)}
+          onNavigate={onNavigate}
+        />
+      )}
     </div>
   );
 }
@@ -2753,7 +3354,7 @@ function ExpensesScreen({
     },
     pillWrap: { padding: "0 12px 12px" },
     maroonPill: {
-      background: "linear-gradient(135deg, #3a0f1a, #802040)",
+      background: "linear-gradient(135deg, #1a4a70, #3279a8)",
       borderRadius: 22,
       padding: "14px 16px",
       color: "#fff",
@@ -3055,6 +3656,7 @@ function ExpensesScreen({
               targetSummaries={targetSummaries}
               onMarkPaid={onMarkPaid}
               onEdit={onEditExpense}
+              onLogPaymentForKey={onLogPaymentForKey}
             />
           ) : (
             <ExpenseRow
@@ -3242,7 +3844,7 @@ function GroupSubRow({ expense: e, user, onMarkPaid, onEdit, isLast }) {
           Mark paid
         </button>
       )}
-      {typeof onEdit === "function" && (
+      {typeof onEdit === "function" && user !== "cam" && (
         <button
           style={{ background: "none", border: "none", padding: 4, cursor: "pointer", flexShrink: 0, display: "flex", alignItems: "center" }}
           onClick={(ev) => { ev.stopPropagation(); onEdit(e); }}
@@ -3255,7 +3857,7 @@ function GroupSubRow({ expense: e, user, onMarkPaid, onEdit, isLast }) {
   );
 }
 
-function GroupExpenseRow({ gid, items, user, targetSummaries, onMarkPaid, onEdit }) {
+function GroupExpenseRow({ gid, items, user, targetSummaries, onMarkPaid, onEdit, onLogPaymentForKey }) {
   const [expanded, setExpanded] = useState(false);
   const isCam = user === "cam";
   const targetKey = `grp:${gid}`;
@@ -3328,6 +3930,16 @@ function GroupExpenseRow({ gid, items, user, targetSummaries, onMarkPaid, onEdit
               isLast={i === items.length - 1}
             />
           ))}
+          {isCam && !allPaid && remaining > 0.005 && typeof onLogPaymentForKey === "function" && (
+            <div style={{ marginTop: 10 }}>
+              <QuickPayButtons
+                targetKey={`grp:${gid}`}
+                myShare={remaining}
+                remaining={remaining}
+                onLogPaymentForKey={onLogPaymentForKey}
+              />
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -3921,7 +4533,7 @@ function ExpandableExpenseRow({ expense: e, user, onDelete, onEdit, onMarkPaid, 
             )}
           </div>
 
-          {typeof onEdit === "function" && (
+          {typeof onEdit === "function" && user !== "cam" && (
             <button
               type="button"
               style={{ width: "100%", marginTop: 8, padding: "9px", borderRadius: 12, border: "1.5px solid #E5DFF5", background: "#F5F0FB", color: "#2D1B5E", fontWeight: 700, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}
