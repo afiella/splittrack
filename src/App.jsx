@@ -599,9 +599,47 @@ function Icon({ path, size = 20, color = "currentColor" }) {
   );
 }
 
+// ── UPDATE BANNER ─────────────────────────────────────────────────────
+function UpdateBanner({ onTap }) {
+  return (
+    <motion.div
+      initial={{ y: -72, opacity: 0 }}
+      animate={{ y: 0, opacity: 1 }}
+      exit={{ y: -72, opacity: 0 }}
+      transition={{ type: "spring", stiffness: 320, damping: 28 }}
+      onClick={onTap}
+      style={{
+        position: "fixed",
+        top: 0,
+        left: 0,
+        right: 0,
+        zIndex: 99999,
+        background: "linear-gradient(90deg, #2D1B5E 0%, #5B3FA6 100%)",
+        color: "#fff",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 8,
+        cursor: "pointer",
+        paddingTop: "calc(env(safe-area-inset-top, 0px) + 12px)",
+        paddingBottom: 12,
+        boxShadow: "0 4px 24px rgba(45,27,94,0.4)",
+      }}
+    >
+      <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="#A8EFC4" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+        <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1M16 8l-4-4-4 4M12 4v12" />
+      </svg>
+      <span style={{ fontSize: 13, fontWeight: 700, letterSpacing: 0.2 }}>
+        SplitTrack updated — Tap to refresh
+      </span>
+    </motion.div>
+  );
+}
+
 // ── MAIN APP ──────────────────────────────────────────────────────────
 export default function App() {
   const [firebaseUser, setFirebaseUser] = useState(null);
+  const [updateAvailable, setUpdateAvailable] = useState(false);
   const realUser = roleFromEmail(firebaseUser?.email); // "emma" | "cam"
   const [viewAs, setViewAs] = useState(null); // null | "cam" — Emma can preview as Cameron
   const user = (realUser === "emma" && viewAs) ? viewAs : realUser;
@@ -633,6 +671,23 @@ export default function App() {
       unsubExpenses();
       unsubPayments();
     };
+  }, []);
+
+  useEffect(() => {
+    /* global __BUILD_VERSION__ */
+    const current = typeof __BUILD_VERSION__ !== "undefined" ? __BUILD_VERSION__ : "dev";
+    const check = async () => {
+      try {
+        const res = await fetch(`/version.json?t=${Date.now()}`);
+        if (!res.ok) return;
+        const { version } = await res.json();
+        if (version && current !== "dev" && version !== current) setUpdateAvailable(true);
+      } catch {}
+    };
+    check();
+    const onVisible = () => { if (document.visibilityState === "visible") check(); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
   }, []);
 
   const planSummaries = calcPlanSummaries(expenses, payments);
@@ -977,6 +1032,9 @@ export default function App() {
   return (
     <div style={{ ...styles.app, paddingTop: (realUser === "emma" && viewAs === "cam") ? 36 : 0 }}>
       <style>{`@keyframes stSpin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}`}</style>
+      <AnimatePresence>
+        {updateAvailable && <UpdateBanner onTap={() => window.location.reload()} />}
+      </AnimatePresence>
       {/* Cameron view banner — shown when Emma is previewing as Cam */}
       {realUser === "emma" && (
         <div style={{
