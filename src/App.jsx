@@ -1575,10 +1575,210 @@ function DashboardRecentChargesList({ items = [], onOpenTarget, user, searching 
   );
 }
 
+// ── PAYMENT SCHEDULE HELPERS & COMPONENTS ─────────────────────────────
+function getScheduleExpenses(expenses) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return (expenses || [])
+    .filter(e => {
+      if (e.status === "paid") return false;
+      if (!["cam", "split"].includes(e.split)) return false;
+      return !!(e.nextDue || e.dueDate);
+    })
+    .map(e => {
+      const due = e.nextDue || e.dueDate;
+      const d = new Date(due + "T12:00:00");
+      const amount = e.split === "split" ? Number(e.amount || 0) / 2 : Number(e.amount || 0);
+      return { ...e, _dueDate: d, _amount: amount };
+    })
+    .filter(e => e._dueDate >= today)
+    .sort((a, b) => a._dueDate - b._dueDate);
+}
+
+function ScheduleMiniPreview({ expenses, onViewFull, accentColor = "#A8EFC4" }) {
+  const scheduled = getScheduleExpenses(expenses);
+  if (!scheduled.length) return null;
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const todayKey = today.toISOString().split("T")[0];
+
+  const days = Array.from({ length: 10 }, (_, i) => {
+    const d = new Date(today);
+    d.setDate(today.getDate() + i);
+    const key = d.toISOString().split("T")[0];
+    const total = scheduled.filter(e => e._dueDate.toISOString().split("T")[0] === key).reduce((s, e) => s + e._amount, 0);
+    return { date: d, key, total };
+  });
+
+  const next = scheduled[0];
+  const nextDateLabel = next._dueDate.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+
+  return (
+    <div style={{ padding: "0 20px 4px" }} onClick={(ev) => ev.stopPropagation()}>
+      {/* Next Payment */}
+      <p style={{ margin: "14px 0 8px", fontSize: 10, fontWeight: 800, color: "rgba(255,255,255,0.5)", textTransform: "uppercase", letterSpacing: 0.6 }}>Next Payment</p>
+      <div style={{ background: "rgba(255,255,255,0.1)", borderRadius: 12, padding: "11px 14px", marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div>
+          <p style={{ margin: 0, fontSize: 14, fontWeight: 800, color: "#fff" }}>{nextDateLabel} · ${next._amount % 1 === 0 ? next._amount.toFixed(0) : next._amount.toFixed(2)}</p>
+          <p style={{ margin: "3px 0 0", fontSize: 12, color: "rgba(255,255,255,0.6)", fontWeight: 500 }}>{next.description}</p>
+        </div>
+        <div style={{ width: 8, height: 8, borderRadius: 999, background: accentColor, flexShrink: 0 }} />
+      </div>
+
+      {/* Mini day strip */}
+      <div style={{ display: "flex", gap: 5, overflowX: "auto", paddingBottom: 6, scrollbarWidth: "none", msOverflowStyle: "none", WebkitOverflowScrolling: "touch" }}>
+        {days.map(({ date, key, total }) => {
+          const isToday = key === todayKey;
+          const has = total > 0;
+          return (
+            <div key={key} style={{ flexShrink: 0, width: 42, minHeight: 54, borderRadius: 10, padding: "7px 4px 5px", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, background: has ? "rgba(255,255,255,0.16)" : "rgba(255,255,255,0.07)", border: isToday ? "1.5px solid rgba(255,255,255,0.45)" : "1px solid transparent", transition: "background 0.2s" }}>
+              <span style={{ fontSize: 13, fontWeight: isToday ? 900 : 600, color: isToday ? "#fff" : "rgba(255,255,255,0.65)" }}>{date.getDate()}</span>
+              {has && <span style={{ fontSize: 9, fontWeight: 800, color: accentColor, lineHeight: 1 }}>${total >= 100 ? Math.round(total) : total.toFixed(0)}</span>}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* View full */}
+      <button type="button" onClick={onViewFull} style={{ marginTop: 10, width: "100%", background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.18)", borderRadius: 10, padding: "9px", fontSize: 12, fontWeight: 700, color: "rgba(255,255,255,0.8)", cursor: "pointer", letterSpacing: 0.2 }}>
+        View full schedule →
+      </button>
+    </div>
+  );
+}
+
+function FullCalendarSheet({ expenses, onClose }) {
+  const [selectedDate, setSelectedDate] = useState(null);
+  const [currentMonth, setCurrentMonth] = useState(() => new Date());
+
+  const scheduled = getScheduleExpenses(expenses);
+
+  // Build a map: dateKey → [expenses]
+  const dateMap = new Map();
+  scheduled.forEach(e => {
+    const key = e._dueDate.toISOString().split("T")[0];
+    if (!dateMap.has(key)) dateMap.set(key, []);
+    dateMap.get(key).push(e);
+  });
+
+  const year = currentMonth.getFullYear();
+  const month = currentMonth.getMonth();
+  const monthName = currentMonth.toLocaleString("en-US", { month: "long" });
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const todayKey = new Date().toISOString().split("T")[0];
+
+  // Mon-based offset
+  let startOffset = new Date(year, month, 1).getDay() - 1;
+  if (startOffset < 0) startOffset = 6;
+
+  const cells = [
+    ...Array(startOffset).fill(null),
+    ...Array.from({ length: daysInMonth }, (_, i) => {
+      const d = i + 1;
+      const key = `${year}-${String(month + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+      return { d, key, exps: dateMap.get(key) || [] };
+    }),
+  ];
+
+  const selectedExps = selectedDate ? (dateMap.get(selectedDate) || []) : [];
+  const selectedDisplay = selectedDate
+    ? new Date(selectedDate + "T12:00:00").toLocaleDateString("en-US", { month: "long", day: "numeric" })
+    : "";
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.2 }}
+      style={{ position: "fixed", inset: 0, zIndex: 600, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "flex-end", justifyContent: "center" }}
+      onClick={() => selectedDate ? setSelectedDate(null) : onClose()}
+    >
+      <motion.div
+        initial={{ y: "100%" }}
+        animate={{ y: 0 }}
+        exit={{ y: "100%" }}
+        transition={{ type: "spring", stiffness: 300, damping: 30 }}
+        style={{ background: "#fff", borderRadius: "24px 24px 0 0", width: "100%", maxWidth: 430, maxHeight: "88vh", overflowY: "auto", paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 20px)" }}
+        onClick={(ev) => ev.stopPropagation()}
+      >
+        <div style={{ width: 40, height: 4, borderRadius: 999, background: "#E5DFF5", margin: "12px auto 0" }} />
+
+        {/* Month nav */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 20px 6px" }}>
+          <button type="button" onClick={() => setCurrentMonth(m => new Date(m.getFullYear(), m.getMonth() - 1, 1))} style={{ width: 36, height: 36, borderRadius: 999, border: "none", background: "#F5F0FB", cursor: "pointer", fontSize: 18, color: "#2D1B5E", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}>‹</button>
+          <p style={{ margin: 0, fontSize: 17, fontWeight: 800, color: "#2D1B5E" }}>{monthName} {year}</p>
+          <button type="button" onClick={() => setCurrentMonth(m => new Date(m.getFullYear(), m.getMonth() + 1, 1))} style={{ width: 36, height: 36, borderRadius: 999, border: "none", background: "#F5F0FB", cursor: "pointer", fontSize: 18, color: "#2D1B5E", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}>›</button>
+        </div>
+
+        {/* Day labels */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", padding: "0 12px", marginBottom: 2 }}>
+          {["M", "T", "W", "T", "F", "S", "S"].map((d, i) => (
+            <div key={i} style={{ textAlign: "center", fontSize: 11, fontWeight: 700, color: "#CCC", padding: "2px 0 4px" }}>{d}</div>
+          ))}
+        </div>
+
+        {/* Grid */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", padding: "0 12px", gap: 3 }}>
+          {cells.map((cell, i) => {
+            if (!cell) return <div key={`e${i}`} />;
+            const { d, key, exps } = cell;
+            const total = exps.reduce((s, e) => s + e._amount, 0);
+            const has = exps.length > 0;
+            const isToday = key === todayKey;
+            const isSel = selectedDate === key;
+            return (
+              <div
+                key={key}
+                onClick={() => has && setSelectedDate(isSel ? null : key)}
+                style={{ textAlign: "center", padding: "6px 2px", borderRadius: 10, minHeight: 52, display: "flex", flexDirection: "column", alignItems: "center", gap: 2, background: isSel ? "#2D1B5E" : isToday ? "#F5F0FB" : "transparent", cursor: has ? "pointer" : "default", transition: "background 0.15s" }}
+              >
+                <span style={{ fontSize: 14, fontWeight: isToday || isSel ? 800 : 400, color: isSel ? "#fff" : isToday ? "#2D1B5E" : "#1A1A1A" }}>{d}</span>
+                {has && <span style={{ fontSize: 9, fontWeight: 800, color: isSel ? "#A8EFC4" : "#7BBFB0" }}>${total >= 100 ? Math.round(total) : total.toFixed(0)}</span>}
+                {has && <div style={{ width: 4, height: 4, borderRadius: 999, background: isSel ? "#A8EFC4" : "#7BBFB0" }} />}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Selected date detail */}
+        <AnimatePresence>
+          {selectedDate && (
+            <motion.div
+              key={selectedDate}
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ type: "spring", stiffness: 300, damping: 28 }}
+              style={{ overflow: "hidden" }}
+            >
+              <div style={{ margin: "14px 16px 0", background: "#F8F4FF", borderRadius: 16, padding: "16px" }}>
+                <p style={{ margin: "0 0 12px", fontSize: 15, fontWeight: 800, color: "#2D1B5E" }}>{selectedDisplay}</p>
+                {selectedExps.map((e, i) => (
+                  <div key={e.id || i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: i > 0 ? 10 : 0, borderTop: i > 0 ? "1px solid #EDE4F5" : "none" }}>
+                    <span style={{ fontSize: 13, color: "#444", fontWeight: 600 }}>{e.description}</span>
+                    <span style={{ fontSize: 14, fontWeight: 800, color: "#2D1B5E" }}>${e._amount.toFixed(2)}</span>
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <button style={{ margin: "16px 16px 4px", width: "calc(100% - 32px)", padding: "13px", borderRadius: 14, border: "none", background: "#2D1B5E", color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer" }} onClick={onClose}>
+          Close
+        </button>
+      </motion.div>
+    </motion.div>
+  );
+}
+
 // ── EMMA BALANCE BANNER ───────────────────────────────────────────────
 function EmmaBalanceBanner({ balance, totalOwed, totalPaid, camOwesThisMonth, emmaPaidThisMonth, expenses = [], payments = [], onAddExpense, onLogPayment }) {
   const [expanded, setExpanded] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [scheduleOpen, setScheduleOpen] = useState(false);
 
   const pct = totalOwed > 0 ? Math.min(1, totalPaid / totalOwed) : 0;
   const pctLabel = Math.round(pct * 100);
@@ -1667,6 +1867,7 @@ function EmmaBalanceBanner({ balance, totalOwed, totalPaid, camOwesThisMonth, em
               <span style={{ fontSize: 13, color: "rgba(255,255,255,0.75)" }}>Remaining balance</span>
               <span style={{ fontSize: 13, fontWeight: 800, color: "#fff" }}>${balance.toFixed(2)}</span>
             </div>
+            <ScheduleMiniPreview expenses={expenses} onViewFull={() => setScheduleOpen(true)} accentColor="#d4f5d6" />
           </div>
           </motion.div>
         )}
@@ -1764,6 +1965,7 @@ function EmmaBalanceBanner({ balance, totalOwed, totalPaid, camOwesThisMonth, em
           </div>
         </div>
       )}
+      <AnimatePresence>{scheduleOpen && <FullCalendarSheet expenses={expenses} onClose={() => setScheduleOpen(false)} />}</AnimatePresence>
     </>
   );
 }
@@ -1773,6 +1975,7 @@ function CamBalanceBanner({ balance, totalOwed, totalPaid, camOwesThisMonth, cam
   const [expanded, setExpanded] = useState(false);
   const [disputeOpen, setDisputeOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [scheduleOpen, setScheduleOpen] = useState(false);
 
   const pct = totalOwed > 0 ? Math.min(1, totalPaid / totalOwed) : 0;
   const pctLabel = Math.round(pct * 100);
@@ -1899,6 +2102,7 @@ function CamBalanceBanner({ balance, totalOwed, totalPaid, camOwesThisMonth, cam
               <span style={{ fontSize: 13, color: "rgba(255,255,255,0.75)" }}>Remaining balance</span>
               <span style={{ fontSize: 13, fontWeight: 800, color: "#fff" }}>${balance.toFixed(2)}</span>
             </div>
+            <ScheduleMiniPreview expenses={expenses} onViewFull={() => setScheduleOpen(true)} accentColor="#A8EFC4" />
           </div>
           </motion.div>
         )}
@@ -2021,6 +2225,7 @@ function CamBalanceBanner({ balance, totalOwed, totalPaid, camOwesThisMonth, cam
           </div>
         </div>
       )}
+      <AnimatePresence>{scheduleOpen && <FullCalendarSheet expenses={expenses} onClose={() => setScheduleOpen(false)} />}</AnimatePresence>
     </>
   );
 }
