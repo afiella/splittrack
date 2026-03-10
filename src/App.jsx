@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut, setPersistence, browserLocalPersistence } from "firebase/auth";
 import { listenExpenses, listenPayments, addExpense, addPayment, confirmPayment as confirmPaymentInDb, deleteExpense as deleteExpenseInDb, deletePayment as deletePaymentInDb, updateExpense as updateExpenseInDb, resolveDispute as resolveDisputeInDb } from "./data";
 import { auth } from "./firebase";
@@ -214,6 +215,43 @@ function formatHistoryDate(isoOrDate) {
   const day = d.getDate();
   const yr = d.getFullYear();
   return `${mon} · ${day} · ${yr}`;
+}
+
+function formatPaymentDateTime(p) {
+  const ts = p.createdAt;
+  let d;
+  if (ts && typeof ts.toDate === "function") {
+    d = ts.toDate();
+  } else if (ts && ts.seconds) {
+    d = new Date(ts.seconds * 1000);
+  } else if (p.date) {
+    const fd = new Date(p.date + "T12:00:00");
+    return fd.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  } else {
+    return "";
+  }
+  const mon = d.toLocaleDateString("en-US", { month: "short" });
+  const day = d.getDate();
+  const time = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+  return `${mon} ${day} · ${time}`;
+}
+
+function PaymentMethodIcon({ method }) {
+  const configs = {
+    "Apple Pay":  { bg: "#000", color: "#fff", label: "Pay" },
+    "Venmo":      { bg: "#008CFF", color: "#fff", label: "V" },
+    "Zelle":      { bg: "#6D1ED4", color: "#fff", label: "Z" },
+    "Cash App":   { bg: "#00C244", color: "#fff", label: "$" },
+    "Cash":       { bg: "#1E8449", color: "#fff", label: "$" },
+  };
+  const cfg = configs[method] || { bg: "#7BBFB0", color: "#fff", label: "P" };
+  return (
+    <div style={{ width: 44, height: 44, borderRadius: 12, background: cfg.bg, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+      <span style={{ fontSize: method === "Apple Pay" ? 10 : 16, fontWeight: 900, color: cfg.color, letterSpacing: method === "Apple Pay" ? -0.3 : 0 }}>
+        {cfg.label}
+      </span>
+    </div>
+  );
 }
 
 // ── SEARCH FRAMEWORK (web) ───────────────────────────────────────────
@@ -1563,7 +1601,10 @@ function EmmaBalanceBanner({ balance, totalOwed, totalPaid, camOwesThisMonth, em
 
   return (
     <>
-      <div
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.28, ease: "easeOut" }}
         style={{
           margin: "0 16px",
           borderRadius: 24,
@@ -1602,7 +1643,16 @@ function EmmaBalanceBanner({ balance, totalOwed, totalPaid, camOwesThisMonth, em
         </div>
 
         {/* Expanded breakdown */}
+        <AnimatePresence initial={false}>
         {expanded && (
+          <motion.div
+            key="emma-breakdown"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ type: "spring", stiffness: 300, damping: 28, opacity: { duration: 0.15 } }}
+            style={{ overflow: "hidden" }}
+          >
           <div style={{ padding: "12px 20px 16px", borderTop: "1px solid rgba(255,255,255,0.12)", background: "rgba(0,0,0,0.12)" }}>
             <p style={{ margin: "0 0 10px", fontSize: 10, fontWeight: 800, color: "rgba(255,255,255,0.5)", textTransform: "uppercase", letterSpacing: 0.6 }}>This Month</p>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 7 }}>
@@ -1618,7 +1668,9 @@ function EmmaBalanceBanner({ balance, totalOwed, totalPaid, camOwesThisMonth, em
               <span style={{ fontSize: 13, fontWeight: 800, color: "#fff" }}>${balance.toFixed(2)}</span>
             </div>
           </div>
+          </motion.div>
         )}
+        </AnimatePresence>
 
         {/* Circle action buttons */}
         <div
@@ -1646,7 +1698,7 @@ function EmmaBalanceBanner({ balance, totalOwed, totalPaid, camOwesThisMonth, em
             </button>
           ))}
         </div>
-      </div>
+      </motion.div>
 
       {/* Details bottom sheet */}
       {detailsOpen && (
@@ -1765,7 +1817,10 @@ function CamBalanceBanner({ balance, totalOwed, totalPaid, camOwesThisMonth, cam
 
   return (
     <>
-      <div
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.28, ease: "easeOut" }}
         style={{
           margin: "0 16px",
           borderRadius: 24,
@@ -1820,7 +1875,16 @@ function CamBalanceBanner({ balance, totalOwed, totalPaid, camOwesThisMonth, cam
         </div>
 
         {/* ── Expanded breakdown ── */}
+        <AnimatePresence initial={false}>
         {expanded && (
+          <motion.div
+            key="cam-breakdown"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ type: "spring", stiffness: 300, damping: 28, opacity: { duration: 0.15 } }}
+            style={{ overflow: "hidden" }}
+          >
           <div style={{ padding: "12px 20px 16px", borderTop: "1px solid rgba(255,255,255,0.12)", background: "rgba(0,0,0,0.15)" }}>
             <p style={{ margin: "0 0 10px", fontSize: 10, fontWeight: 800, color: "rgba(255,255,255,0.5)", textTransform: "uppercase", letterSpacing: 0.6 }}>This Month</p>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 7 }}>
@@ -1836,7 +1900,9 @@ function CamBalanceBanner({ balance, totalOwed, totalPaid, camOwesThisMonth, cam
               <span style={{ fontSize: 13, fontWeight: 800, color: "#fff" }}>${balance.toFixed(2)}</span>
             </div>
           </div>
+          </motion.div>
         )}
+        </AnimatePresence>
 
         {/* ── Circle action buttons (inside card) ── */}
         <div
@@ -1868,7 +1934,7 @@ function CamBalanceBanner({ balance, totalOwed, totalPaid, camOwesThisMonth, cam
             </button>
           ))}
         </div>
-      </div>
+      </motion.div>
 
       {/* Dispute bottom sheet */}
       {disputeOpen && (
@@ -3883,7 +3949,7 @@ function ExpensesScreen({
           </p>
         </div>
       ) : (
-        <div style={{ padding: "0 16px" }}>
+        <motion.div layout style={{ padding: "0 16px" }}>
           {groupedList.map((item) => item._isGroup ? (
             <GroupExpenseRow
               key={`grp:${item.gid}`}
@@ -3909,7 +3975,7 @@ function ExpensesScreen({
               onDispute={onDisputeExpense}
             />
           ))}
-        </div>
+        </motion.div>
       )}
 
       <div style={{ height: 80 }} />
@@ -3988,67 +4054,73 @@ function HistoryScreen({ expenses, payments, user, targets = [], onBack, onConfi
       </div>
 
       {/* Step 5: Add PaymentTimeline framework component */}
-      <PaymentTimeline payments={payments} targets={targets} />
+      {all.map((item, i) => {
+        if (item.type === "payment") {
+          const lbl = paymentTargetLabel(item);
+          const statusText = item.confirmed ? "confirmed" : "pending";
+          return (
+            <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 14, padding: "14px 16px", borderBottom: "1px solid #F0EAF8" }}>
+              <PaymentMethodIcon method={item.method} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                {/* Title row + amount */}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+                  <p style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "#1A1A1A", flex: 1, minWidth: 0 }}>
+                    {item.method} Payment
+                  </p>
+                  <p style={{ margin: 0, fontSize: 16, fontWeight: 800, color: "#1E8449", flexShrink: 0 }}>
+                    -${Number(item.amount || 0).toFixed(2)}
+                  </p>
+                </div>
+                {lbl && (
+                  <p style={{ margin: "3px 0 0", fontSize: 13, color: "#555", fontWeight: 500 }}>{lbl}</p>
+                )}
+                {item.note && renderNote(item.note, { marginTop: 3 })}
+                {/* Date + status + action */}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 6 }}>
+                  <p style={{ margin: 0, fontSize: 12, color: "#AAA", fontWeight: 500 }}>
+                    {formatPaymentDateTime(item)} · {statusText}
+                  </p>
+                  {!item.confirmed && user === "emma" && (
+                    <button style={styles.miniConfirm} onClick={() => onConfirm(item.id)}>Confirm</button>
+                  )}
+                  {item.confirmed && user === "emma" && (
+                    <button style={styles.deleteBtn} onClick={() => onDeleteConfirmedPayment(item.id)} title="Delete">
+                      <Icon path={icons.x} size={16} color="#C0485A" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        }
 
-      {all.map((item, i) => (
-        <div key={i} style={styles.historyItem}>
-          <div style={{
-            ...styles.historyIcon,
-            background: item.type === "payment" ? "#EEF5EC" : "#EDE4F5"
-          }}>
-            {item.type === "payment" ? (
-              <Icon path={icons.wallet} size={18} color="#1E8449" />
-            ) : (
+        // Expense row (unchanged)
+        return (
+          <div key={i} style={styles.historyItem}>
+            <div style={{ ...styles.historyIcon, background: "#EDE4F5" }}>
               <Icon path={icons.list} size={18} color="#5B3B8C" />
+            </div>
+            <div style={styles.historyInfo}>
+              <p style={styles.historyDesc}>{item.description}</p>
+              <p style={styles.historyMeta}>
+                {formatHistoryDate(item.date)}
+                {item.status === "paid" && <span style={styles.confirmedBadge}>paid</span>}
+              </p>
+              {item.note && renderNote(item.note, { marginTop: 4 })}
+            </div>
+            <div style={styles.historyAmt}>
+              <p style={{ ...styles.historyAmtText, color: item.split === "mine" ? "#555" : "#9E4C6A" }}>
+                ${(item.split === "split" ? item.amount / 2 : item.amount).toFixed(2)}
+              </p>
+            </div>
+            {item.status === "paid" && user === "emma" && typeof onDeleteExpense === "function" && (
+              <button style={styles.deleteBtn} onClick={() => onDeleteExpense(item.id)} title="Delete paid expense">
+                <Icon path={icons.x} size={16} color="#C0485A" />
+              </button>
             )}
           </div>
-          <div style={styles.historyInfo}>
-            <p style={styles.historyDesc}>
-              {item.type === "payment"
-                ? (() => {
-                    const lbl = paymentTargetLabel(item);
-                    return lbl ? `Payment via ${item.method} · toward ${lbl}` : `Payment via ${item.method}`;
-                  })()
-                : item.description}
-            </p>
-            <p style={styles.historyMeta}>
-              {formatHistoryDate(item.date)} {item.type === "payment" && !item.confirmed && <span style={styles.pendingBadge}>pending</span>}
-              {item.type === "payment" && item.confirmed && <span style={styles.confirmedBadge}>confirmed</span>}
-              {item.type === "expense" && item.status === "paid" && <span style={styles.confirmedBadge}>paid</span>}
-            </p>
-            {item.note && renderNote(item.note, { marginTop: 4 })}
-          </div>
-          <div style={styles.historyAmt}>
-            <p style={{
-              ...styles.historyAmtText,
-              color: item.type === "payment" ? "#1E8449" : item.split === "mine" ? "#555" : "#9E4C6A"
-            }}>
-              {item.type === "payment" ? "-" : ""}${(item.type === "payment" ? item.amount : item.split === "split" ? item.amount/2 : item.amount).toFixed(2)}
-            </p>
-            {item.type === "payment" && !item.confirmed && user === "emma" && (
-              <button style={styles.miniConfirm} onClick={() => onConfirm(item.id)}>Confirm</button>
-            )}
-          </div>
-          {item.type === "payment" && item.confirmed && user === "emma" && (
-            <button
-              style={styles.deleteBtn}
-              onClick={() => onDeleteConfirmedPayment(item.id)}
-              title="Delete confirmed payment"
-            >
-              <Icon path={icons.x} size={16} color="#C0485A" />
-            </button>
-          )}
-          {item.type === "expense" && item.status === "paid" && user === "emma" && typeof onDeleteExpense === "function" && (
-            <button
-              style={styles.deleteBtn}
-              onClick={() => onDeleteExpense(item.id)}
-              title="Delete paid expense"
-            >
-              <Icon path={icons.x} size={16} color="#C0485A" />
-            </button>
-          )}
-        </div>
-      ))}
+        );
+      })}
       <div style={{height: 80}} />
     </div>
   );
@@ -4403,7 +4475,8 @@ function ExpandableExpenseRow({ expense: e, user, onDelete, onEdit, onMarkPaid, 
   }
 
   return (
-    <div
+    <motion.div
+      layout
       style={{
         ...fw.expenseCard,
         opacity: e._deleting ? 0.55 : e._marking ? 0.75 : 1,
@@ -4515,7 +4588,16 @@ function ExpandableExpenseRow({ expense: e, user, onDelete, onEdit, onMarkPaid, 
         </div>
       </div>
 
+      <AnimatePresence initial={false}>
       {expanded && (
+        <motion.div
+          key="expand"
+          initial={{ height: 0, opacity: 0 }}
+          animate={{ height: "auto", opacity: 1 }}
+          exit={{ height: 0, opacity: 0 }}
+          transition={{ type: "spring", stiffness: 300, damping: 25, opacity: { duration: 0.15 } }}
+          style={{ overflow: "hidden" }}
+        >
         <div style={fw.expandPanel} onClick={(ev) => ev.stopPropagation()}>
           
 
@@ -4892,8 +4974,10 @@ function ExpandableExpenseRow({ expense: e, user, onDelete, onEdit, onMarkPaid, 
             </div>
           )}
         </div>
+        </motion.div>
       )}
-    </div>
+      </AnimatePresence>
+    </motion.div>
   );
 }
 
@@ -4957,60 +5041,6 @@ function SearchBar({ expenses, onFilter }) {
   );
 }
 
-
-function PaymentTimeline({ payments, targets = [] }) {
-  const [open, setOpen] = useState(false);
-  const confirmed = (payments || []).filter((p) => p && p.confirmed);
-  const targetLabelByKey = new Map((targets || []).map((t) => [t.key, t.label]));
-  function resolveLabel(p) {
-    const key = p.appliedToKey || (p.appliedToGroupId ? `grp:${p.appliedToGroupId}` : "general");
-    if (!key || key === "general") return "General payment";
-    return targetLabelByKey.get(key) || "Payment";
-  }
-
-  return (
-    <div style={fw.timelineCard}>
-      <div style={fw.timelineHeader} onClick={() => setOpen((o) => !o)} role="button">
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <Icon path={icons.wallet} size={16} color="#2D1B5E" />
-          <span style={fw.insightTitle}>Payment History</span>
-          {confirmed.length > 0 && <span style={fw.countBadge}>{confirmed.length}</span>}
-        </div>
-        <span style={fw.chevron}>
-          <Icon
-            path={open ? icons.chevronUp : icons.chevronDown}
-            size={16}
-            color={open ? "#2D1B5E" : "#CCC"}
-          />
-        </span>
-      </div>
-
-      {open && (
-        <div style={{ padding: "8px 16px 12px" }}>
-          {confirmed.length === 0 ? (
-            <p style={{ color: "#999", fontSize: 13, textAlign: "center", padding: "16px 0" }}>
-              No confirmed payments yet
-            </p>
-          ) : (
-            confirmed.map((p, i) => (
-              <div key={p.id || i} style={fw.timelineItem}>
-                <div style={fw.timelineLine}>
-                  <div style={fw.timelineDot} />
-                  {i < confirmed.length - 1 && <div style={fw.timelineConnector} />}
-                </div>
-                <div style={fw.timelineContent}>
-                  <p style={fw.timelineAmt}>${Number(p.amount || 0).toFixed(2)}</p>
-                  <p style={fw.timelineMeta}>{resolveLabel(p)} · {p.method} · {formatHistoryDate(p.date)}</p>
-                  {p.note && renderNote(p.note, { marginTop: 2, fontSize: 11, color: "#888" })}
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
 
 // ── ADD EXPENSE MODAL ─────────────────────────────────────────────────
 function AddExpenseModal({ onSave, onClose, user }) {
