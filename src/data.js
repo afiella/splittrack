@@ -53,6 +53,13 @@ export async function deletePayment(id) {
   await deleteDoc(doc(db, "payments", id));
 }
 
+export async function resolveDispute(id, resolution, declineReason) {
+  // resolution: "accepted" | "denied"
+  const update = { confirmed: true, disputeStatus: resolution, resolvedAt: serverTimestamp() };
+  if (declineReason) update.declineReason = declineReason;
+  await updateDoc(doc(db, "payments", id), update);
+}
+
 async function updateExpense(id, updates) {
   await updateDoc(doc(db, "expenses", id), updates);
 }

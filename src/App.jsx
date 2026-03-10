@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut, setPersistence, browserLocalPersistence } from "firebase/auth";
-import { listenExpenses, listenPayments, addExpense, addPayment, confirmPayment as confirmPaymentInDb, deleteExpense as deleteExpenseInDb, deletePayment as deletePaymentInDb, updateExpense as updateExpenseInDb, } from "./data";
+import { listenExpenses, listenPayments, addExpense, addPayment, confirmPayment as confirmPaymentInDb, deleteExpense as deleteExpenseInDb, deletePayment as deletePaymentInDb, updateExpense as updateExpenseInDb, resolveDispute as resolveDisputeInDb } from "./data";
 import { auth } from "./firebase";
 // ── MOCK DATA ─────────────────────────────────────────────────────────
 const INITIAL_EXPENSES = [
@@ -574,6 +574,7 @@ export default function App() {
   const [notification, setNotification] = useState(null);
   const [modal, setModal] = useState(null); // "addExpense" | "logPayment" | "confirmPayment" | "camQuickPay"
   const [editingExpense, setEditingExpense] = useState(null);
+  const [disputingExpense, setDisputingExpense] = useState(null);
   
   const [paymentDraftKey, setPaymentDraftKey] = useState("general");
   const [paymentDraftAmount, setPaymentDraftAmount] = useState(null);
@@ -769,6 +770,17 @@ export default function App() {
         setExpenses((prev) => prev.map((e) => e.id === revertExpense.id ? revertExpense : e));
       }
       notify("Couldn't delete payment. Check Firestore rules.", "error");
+    }
+  }
+
+  async function handleResolveDispute(id, resolution, declineReason) {
+    try {
+      await resolveDisputeInDb(id, resolution, declineReason || null);
+      setPayments((prev) => prev.map((p) => p.id === id ? { ...p, confirmed: true, disputeStatus: resolution, declineReason: declineReason || null } : p));
+      notify(resolution === "accepted" ? "Dispute accepted — charge flagged for review." : "Dispute dismissed — charge stands.");
+    } catch (err) {
+      console.error("Failed to resolve dispute:", err);
+      notify("Couldn't resolve dispute. Check connection.", "error");
     }
   }
 
@@ -1000,6 +1012,14 @@ export default function App() {
         />
       )}
 
+      {disputingExpense && (
+        <DisputeModal
+          expense={disputingExpense}
+          onSubmit={handleLogPayment}
+          onClose={() => setDisputingExpense(null)}
+        />
+      )}
+
       {/* Screen */}
       {screen === "dashboard" && (
         <DashboardScreen
@@ -1017,6 +1037,7 @@ export default function App() {
           onLogPayment={() => setModal("logPayment")}
           onQuickPay={() => setModal("camQuickPay")}
           onConfirm={handleConfirm}
+          onResolveDispute={handleResolveDispute}
           onDeleteExpense={handleDeleteExpense}
           onMarkPaid={handleMarkPaid}
           onNavigate={setScreen}
@@ -1065,6 +1086,7 @@ export default function App() {
       setPaymentDraftAmount(amount ?? null);
       setModal("logPayment");
     }}
+    onDisputeExpense={(exp) => setDisputingExpense(exp)}
   />
 )}
       {screen === "urgent" && (
@@ -1137,25 +1159,30 @@ function LoginScreen() {
 
 // ── DASHBOARD MOCKUP (incremental) ───────────────────────────────────
 // Step 1: mockup components (not rendered yet)
-function DashboardPendingCard({ pendingPayments = [], onConfirm, user }) {
+function DashboardPendingCard({ pendingPayments = [], onConfirm, onResolveDispute, user }) {
   if (user !== "emma") return null;
 
-  const [selectedIds, setSelectedIds] = useState(() => new Set((pendingPayments || []).map((p) => p.id)));
+  const disputes = pendingPayments.filter(p => p.type === "dispute");
+  const payments = pendingPayments.filter(p => p.type !== "dispute");
+  const [expandedDispute, setExpandedDispute] = useState(null);
+  const [decliningId, setDecliningId] = useState(null);
+  const [declineInput, setDeclineInput] = useState("");
 
-  // Keep selection in sync with the latest pending list
+  const [selectedIds, setSelectedIds] = useState(() => new Set((payments || []).map((p) => p.id)));
+
+  // Keep selection in sync with payments only (not disputes)
   useEffect(() => {
     setSelectedIds((prev) => {
       const next = new Set();
-      for (const p of pendingPayments) {
+      for (const p of payments) {
         if (prev.has(p.id) || prev.size === 0) next.add(p.id);
       }
-      // If prev was empty (first load), default-select all
       if (prev.size === 0) {
-        for (const p of pendingPayments) next.add(p.id);
+        for (const p of payments) next.add(p.id);
       }
       return next;
     });
-  }, [pendingPayments]);
+  }, [pendingPayments]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const selectedCount = selectedIds.size;
 
@@ -1199,137 +1226,121 @@ function DashboardPendingCard({ pendingPayments = [], onConfirm, user }) {
             borderRadius: 8,
           }}
         >
-          {pendingPayments.length === 0 ? "0 pending" : `${selectedCount} selected`}
+          {pendingPayments.length === 0 ? "0 pending" : `${payments.length} payment${payments.length !== 1 ? "s" : ""}${disputes.length > 0 ? `, ${disputes.length} dispute${disputes.length !== 1 ? "s" : ""}` : ""}`}
         </span>
       </div>
 
       {/* Scrollable list */}
-      <div style={{ flex: 1, maxHeight: 112, overflowY: "auto" }}>
+      <div style={{ flex: 1, maxHeight: 160, overflowY: "auto" }}>
         {pendingPayments.length === 0 ? (
-          <div
-            style={{
-              height: 112,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              color: "#888",
-              fontSize: 12,
-              fontWeight: 700,
-              textAlign: "center",
-            }}
-          >
-            No Pending Payments
+          <div style={{ height: 112, display: "flex", alignItems: "center", justifyContent: "center", color: "#888", fontSize: 12, fontWeight: 700, textAlign: "center" }}>
+            No Pending Activity
           </div>
         ) : (
-          pendingPayments.map((p) => (
-            <div
-              key={p.id}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                padding: "6px 0",
-                borderBottom: "1px solid #faf7ff",
-                gap: 8,
-                cursor: "pointer",
-              }}
-              role="button"
-              onClick={() =>
-                setSelectedIds((prev) => {
-                  const next = new Set(prev);
-                  if (next.has(p.id)) next.delete(p.id);
-                  else next.add(p.id);
-                  return next;
-                })
-              }
-            >
+          <>
+            {/* Disputes — shown first with flag styling */}
+            {disputes.map((p) => {
+              const isExpanded = expandedDispute === p.id;
+              return (
+                <div key={p.id} style={{ borderRadius: 10, border: "1.5px solid #F8C4CD", background: "#FFF8F8", marginBottom: 6, overflow: "hidden" }}>
+                  <div
+                    style={{ display: "flex", alignItems: "center", padding: "7px 8px", gap: 7, cursor: "pointer" }}
+                    role="button"
+                    onClick={() => setExpandedDispute(isExpanded ? null : p.id)}
+                  >
+                    <div style={{ width: 22, height: 22, borderRadius: 7, background: "#FFF0F0", border: "1.5px solid #F8C4CD", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                      <Icon path={icons.flag} size={12} color="#E05C6E" />
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={{ fontSize: 11, fontWeight: 700, color: "#E05C6E", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        Dispute — {p.disputeDescription || "charge"}
+                      </p>
+                      <p style={{ fontSize: 9, color: "#bbb", margin: "1px 0 0" }}>{formatHistoryDate(p.date)} · Cam</p>
+                    </div>
+                    <Icon path={isExpanded ? icons.chevronUp : icons.chevronDown} size={12} color="#E05C6E" />
+                  </div>
+                  {isExpanded && (
+                    <div style={{ padding: "0 8px 10px" }}>
+                      <p style={{ fontSize: 11, color: "#555", margin: "0 0 8px", background: "#FFF0F0", borderRadius: 8, padding: "7px 10px", lineHeight: 1.5 }}>
+                        <span style={{ fontWeight: 700, color: "#E05C6E" }}>Reason: </span>{p.disputeReason || "No reason provided"}
+                      </p>
+
+                      {/* Decline reason input — shown when dismissing */}
+                      {decliningId === p.id ? (
+                        <div style={{ marginBottom: 6 }}>
+                          <textarea
+                            autoFocus
+                            placeholder="Explain why you're declining this dispute…"
+                            value={declineInput}
+                            onChange={ev => setDeclineInput(ev.target.value)}
+                            rows={2}
+                            style={{ width: "100%", padding: "8px 10px", borderRadius: 9, border: "1.5px solid #E5DFF5", fontSize: 11, fontFamily: "inherit", outline: "none", resize: "none", boxSizing: "border-box", marginBottom: 6, background: "#FDFBFF", color: "#1A1030" }}
+                          />
+                          <div style={{ display: "flex", gap: 6 }}>
+                            <button type="button"
+                              onClick={() => { setDecliningId(null); setDeclineInput(""); }}
+                              style={{ flex: 1, padding: "7px 0", borderRadius: 9, border: "none", background: "#F0EBF9", color: "#888", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                              Cancel
+                            </button>
+                            <button type="button"
+                              onClick={() => { onResolveDispute && onResolveDispute(p.id, "denied", declineInput.trim() || null); setExpandedDispute(null); setDecliningId(null); setDeclineInput(""); }}
+                              style={{ flex: 1, padding: "7px 0", borderRadius: 9, border: "none", background: "#2D1B5E", color: "#fff", fontSize: 11, fontWeight: 800, cursor: "pointer" }}>
+                              Send
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div style={{ display: "flex", gap: 6 }}>
+                          <button type="button"
+                            onClick={() => { onResolveDispute && onResolveDispute(p.id, "accepted"); setExpandedDispute(null); }}
+                            style={{ flex: 1, padding: "7px 0", borderRadius: 9, border: "none", background: "linear-gradient(135deg, #7BBFB0, #5CA89A)", color: "#fff", fontSize: 11, fontWeight: 800, cursor: "pointer" }}>
+                            ✓ Accept
+                          </button>
+                          <button type="button"
+                            onClick={() => { setDecliningId(p.id); setDeclineInput(""); }}
+                            style={{ flex: 1, padding: "7px 0", borderRadius: 9, border: "none", background: "#F5F0FB", color: "#888", fontSize: 11, fontWeight: 800, cursor: "pointer" }}>
+                            Decline
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+            {/* Regular payments */}
+            {payments.map((p) => (
               <div
-                style={{
-                  width: 20,
-                  height: 20,
-                  borderRadius: 7,
-                  flexShrink: 0,
-                  border: selectedIds.has(p.id) ? "1.5px solid #7bbfb0" : "1.5px solid #d8eae7",
-                  background: selectedIds.has(p.id) ? "#7bbfb0" : "#f5fffd",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
+                key={p.id}
+                style={{ display: "flex", alignItems: "center", padding: "6px 0", borderBottom: "1px solid #faf7ff", gap: 8, cursor: "pointer" }}
+                role="button"
+                onClick={() => setSelectedIds((prev) => { const next = new Set(prev); if (next.has(p.id)) next.delete(p.id); else next.add(p.id); return next; })}
               >
-                {selectedIds.has(p.id) && <Icon path={icons.check} size={14} color="#fff" />}
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <p
-                  style={{
-                    fontSize: 11,
-                    fontWeight: 600,
-                    color: "#1e0f45",
-                    whiteSpace: "nowrap",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    margin: 0,
-                  }}
+                <div style={{ width: 20, height: 20, borderRadius: 7, flexShrink: 0, border: selectedIds.has(p.id) ? "1.5px solid #7bbfb0" : "1.5px solid #d8eae7", background: selectedIds.has(p.id) ? "#7bbfb0" : "#f5fffd", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  {selectedIds.has(p.id) && <Icon path={icons.check} size={14} color="#fff" />}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ fontSize: 11, fontWeight: 600, color: "#1e0f45", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", margin: 0 }}>{p.method || "Payment"}</p>
+                  <p style={{ fontSize: 9, color: "#bbb", margin: "1px 0 0" }}>{formatHistoryDate(p.date)} · Cam</p>
+                </div>
+                <p style={{ fontSize: 11, fontWeight: 700, color: "#1e0f45", flexShrink: 0, margin: 0 }}>${Number(p.amount || 0).toFixed(2)}</p>
+                <button type="button"
+                  onClick={(ev) => { ev.stopPropagation(); setSelectedIds((prev) => { const next = new Set(prev); next.add(p.id); return next; }); onConfirm(p.id); }}
+                  style={{ marginLeft: 6, background: "#7bbfb0", border: "none", borderRadius: 10, padding: "6px 8px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+                  aria-label="Confirm payment"
                 >
-                  {p.method || "Payment"}
-                </p>
-                <p style={{ fontSize: 9, color: "#bbb", margin: "1px 0 0" }}>
-                  {formatHistoryDate(p.date)} · Cam
-                </p>
+                  <Icon path={icons.check} size={14} color="#fff" />
+                </button>
               </div>
-              <p style={{ fontSize: 11, fontWeight: 700, color: "#1e0f45", flexShrink: 0, margin: 0 }}>
-                ${Number(p.amount || 0).toFixed(2)}
-              </p>
-              <button
-                type="button"
-                onClick={(ev) => {
-                  ev.stopPropagation();
-                  setSelectedIds((prev) => {
-                    const next = new Set(prev);
-                    next.add(p.id);
-                    return next;
-                  });
-                  onConfirm(p.id);
-                }}
-                style={{
-                  marginLeft: 6,
-                  background: "#7bbfb0",
-                  border: "none",
-                  borderRadius: 10,
-                  padding: "6px 8px",
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-                aria-label="Confirm payment"
-                title="Confirm"
-              >
-                <Icon path={icons.check} size={14} color="#fff" />
-              </button>
-            </div>
-          ))
+            ))}
+          </>
         )}
       </div>
 
-      {pendingPayments.length > 0 && (
-        <button
-          type="button"
-          style={{
-            width: "100%",
-            marginTop: 8,
-            background: "linear-gradient(135deg, #7bbfb0, #5ca898)",
-            border: "none",
-            borderRadius: 11,
-            padding: 8,
-            color: "#fff",
-            fontSize: 11,
-            fontWeight: 700,
-            opacity: selectedCount === 0 ? 0.55 : 1,
-            cursor: selectedCount === 0 ? "default" : "pointer",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: 5,
-          }}
+      {payments.length > 0 && (
+        <button type="button"
+          style={{ width: "100%", marginTop: 8, background: "linear-gradient(135deg, #7bbfb0, #5ca898)", border: "none", borderRadius: 11, padding: 8, color: "#fff", fontSize: 11, fontWeight: 700, opacity: selectedCount === 0 ? 0.55 : 1, cursor: selectedCount === 0 ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}
           onClick={confirmAll}
           disabled={selectedCount === 0}
         >
@@ -1526,99 +1537,182 @@ function DashboardRecentChargesList({ items = [], onOpenTarget, user, searching 
   );
 }
 
-function DashboardActionChips({ onAddExpense, onLogPayment }) {
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 10, flexShrink: 0, width: 110 }}>
-      <button
-        type="button"
-        onClick={onAddExpense}
-        style={{
-          flex: 1,
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          justifyContent: "center",
-          gap: 8,
-          borderRadius: 18,
-          cursor: "pointer",
-          border: "none",
-          padding: "14px 10px",
-          boxShadow: "0 3px 12px rgba(30,15,69,0.13)",
-          background: "linear-gradient(160deg, #7bbfb0, #4e9e90)",
-        }}
-      >
-        <div
-          style={{
-            width: 34,
-            height: 34,
-            background: "rgba(255,255,255,0.22)",
-            borderRadius: 11,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <Icon path={icons.plus} size={18} color="#fff" />
-        </div>
-        <span
-          style={{
-            fontSize: 11,
-            fontWeight: 800,
-            color: "#fff",
-            textAlign: "center",
-            lineHeight: 1.3,
-            whiteSpace: "pre",
-          }}
-        >
-          {"Add\nExpense"}
-        </span>
-      </button>
+// ── EMMA BALANCE BANNER ───────────────────────────────────────────────
+function EmmaBalanceBanner({ balance, totalOwed, totalPaid, camOwesThisMonth, emmaPaidThisMonth, expenses = [], payments = [], onAddExpense, onLogPayment }) {
+  const [expanded, setExpanded] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
 
-      <button
-        type="button"
-        onClick={onLogPayment}
+  const pct = totalOwed > 0 ? Math.min(1, totalPaid / totalOwed) : 0;
+  const pctLabel = Math.round(pct * 100);
+
+  const now = new Date();
+  const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const monthName = now.toLocaleString("en-US", { month: "long" });
+  const thisMonthExp = expenses.filter(e => String(e.date || "").startsWith(monthKey));
+  const totalThisMonth = thisMonthExp.reduce((s, e) => s + Number(e.amount || 0), 0);
+  const camUnpaid = expenses
+    .filter(e => e.status !== "paid" && ["cam", "split"].includes(e.split))
+    .reduce((s, e) => s + (e.split === "split" ? Number(e.amount || 0) / 2 : Number(e.amount || 0)), 0);
+  const confirmedPayments = payments.filter(p => p?.confirmed);
+
+  const circleActions = [
+    { label: "Add\nExpense", icon: icons.plus, onTap: onAddExpense },
+    { label: "Log\nPayment", icon: icons.wallet, onTap: onLogPayment },
+    { label: "Details", icon: icons.list, onTap: () => setDetailsOpen(true) },
+  ];
+
+  return (
+    <>
+      <div
         style={{
-          flex: 1,
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          justifyContent: "center",
-          gap: 8,
-          borderRadius: 18,
+          margin: "0 16px",
+          borderRadius: 24,
+          background: "linear-gradient(145deg, #3d6e3f 0%, #77a178 45%, #9bc49c 100%)",
+          boxShadow: "0 14px 40px rgba(119,161,120,0.35)",
+          overflow: "hidden",
           cursor: "pointer",
-          border: "none",
-          padding: "14px 10px",
-          boxShadow: "0 3px 12px rgba(30,15,69,0.13)",
-          background: "linear-gradient(160deg, #c4a8d4, #9a72ba)",
         }}
+        onClick={() => setExpanded((o) => !o)}
+        role="button"
       >
-        <div
-          style={{
-            width: 34,
-            height: 34,
-            background: "rgba(255,255,255,0.22)",
-            borderRadius: 11,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <Icon path={icons.wallet} size={18} color="#fff" />
+        {/* Top section */}
+        <div style={{ padding: "20px 20px 16px" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+            <p style={{ margin: 0, fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.65)", letterSpacing: 0.6, textTransform: "uppercase" }}>
+              Cameron owes you
+            </p>
+            <Icon path={expanded ? icons.chevronUp : icons.chevronDown} size={16} color="rgba(255,255,255,0.6)" />
+          </div>
+
+          <p style={{ margin: "0 0 16px", fontSize: 38, fontWeight: 900, color: "#fff", letterSpacing: -1.5, lineHeight: 1 }}>
+            ${balance.toFixed(2)}
+          </p>
+
+          <div>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+              <span style={{ fontSize: 11, color: "rgba(255,255,255,0.65)", fontWeight: 600 }}>
+                Paid ${totalPaid.toFixed(2)} of ${totalOwed.toFixed(2)}
+              </span>
+              <span style={{ fontSize: 11, color: "#d4f5d6", fontWeight: 800 }}>{pctLabel}%</span>
+            </div>
+            <div style={{ height: 7, borderRadius: 999, background: "rgba(255,255,255,0.18)", overflow: "hidden" }}>
+              <div style={{ width: `${pctLabel}%`, height: "100%", background: "linear-gradient(90deg, #d4f5d6, #7BBFB0)", borderRadius: 999, transition: "width 0.5s" }} />
+            </div>
+          </div>
         </div>
-        <span
-          style={{
-            fontSize: 11,
-            fontWeight: 800,
-            color: "#fff",
-            textAlign: "center",
-            lineHeight: 1.3,
-            whiteSpace: "pre",
-          }}
+
+        {/* Expanded breakdown */}
+        {expanded && (
+          <div style={{ padding: "12px 20px 16px", borderTop: "1px solid rgba(255,255,255,0.12)", background: "rgba(0,0,0,0.12)" }}>
+            <p style={{ margin: "0 0 10px", fontSize: 10, fontWeight: 800, color: "rgba(255,255,255,0.5)", textTransform: "uppercase", letterSpacing: 0.6 }}>This Month</p>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 7 }}>
+              <span style={{ fontSize: 13, color: "rgba(255,255,255,0.75)" }}>Cam owes this month</span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: "#fff" }}>${Number(camOwesThisMonth || 0).toFixed(2)}</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 7 }}>
+              <span style={{ fontSize: 13, color: "rgba(255,255,255,0.75)" }}>Your expenses this month</span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: "#d4f5d6" }}>${Number(emmaPaidThisMonth || 0).toFixed(2)}</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <span style={{ fontSize: 13, color: "rgba(255,255,255,0.75)" }}>Remaining balance</span>
+              <span style={{ fontSize: 13, fontWeight: 800, color: "#fff" }}>${balance.toFixed(2)}</span>
+            </div>
+          </div>
+        )}
+
+        {/* Circle action buttons */}
+        <div
+          style={{ display: "flex", justifyContent: "space-around", padding: "14px 20px 20px", borderTop: "1px solid rgba(255,255,255,0.1)" }}
+          onClick={(ev) => ev.stopPropagation()}
         >
-          {"Log\nPayment"}
-        </span>
-      </button>
-    </div>
+          {circleActions.map((action) => (
+            <button
+              key={action.label}
+              type="button"
+              onClick={() => action.onTap && action.onTap()}
+              style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 7, background: "none", border: "none", cursor: "pointer", padding: 0, flex: 1 }}
+            >
+              <div style={{
+                width: 52, height: 52, borderRadius: 999,
+                background: "rgba(255,255,255,0.18)",
+                border: "1.5px solid rgba(255,255,255,0.3)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+              }}>
+                <Icon path={action.icon} size={20} color="#fff" />
+              </div>
+              <span style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.8)", textAlign: "center", lineHeight: 1.3, whiteSpace: "pre-line" }}>
+                {action.label}
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Details bottom sheet */}
+      {detailsOpen && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 500, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "flex-end", justifyContent: "center" }}
+          onClick={() => setDetailsOpen(false)}>
+          <div style={{ background: "#fff", borderRadius: "24px 24px 0 0", padding: "24px 20px 44px", width: "100%", maxWidth: 430, maxHeight: "80vh", overflowY: "auto" }}
+            onClick={(ev) => ev.stopPropagation()}>
+
+            <div style={{ width: 40, height: 4, borderRadius: 999, background: "#E5DFF5", margin: "0 auto 20px" }} />
+
+            <p style={{ margin: "0 0 18px", fontSize: 18, fontWeight: 900, color: "#2D1B5E" }}>{monthName} Details</p>
+
+            {/* Monthly summary */}
+            <div style={{ background: "#F3FAF3", borderRadius: 16, padding: "16px", marginBottom: 12 }}>
+              <p style={{ margin: "0 0 12px", fontSize: 11, fontWeight: 800, color: "#77a178", textTransform: "uppercase", letterSpacing: 0.5 }}>This Month</p>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+                <span style={{ fontSize: 13, color: "#555" }}>Total charges</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: "#2D1B5E" }}>${totalThisMonth.toFixed(2)}</span>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+                <span style={{ fontSize: 13, color: "#555" }}>Cam owes this month</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: "#E05C6E" }}>${Number(camOwesThisMonth || 0).toFixed(2)}</span>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <span style={{ fontSize: 13, color: "#555" }}>Your expenses this month</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: "#3d6e3f" }}>${Number(emmaPaidThisMonth || 0).toFixed(2)}</span>
+              </div>
+            </div>
+
+            {/* Insights */}
+            <div style={{ background: "#F3FAF3", borderRadius: 16, padding: "16px", marginBottom: 12 }}>
+              <p style={{ margin: "0 0 12px", fontSize: 11, fontWeight: 800, color: "#77a178", textTransform: "uppercase", letterSpacing: 0.5 }}>Insights</p>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+                <span style={{ fontSize: 13, color: "#555" }}>Cam still owes (total)</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: "#E05C6E" }}>${camUnpaid.toFixed(2)}</span>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+                <span style={{ fontSize: 13, color: "#555" }}>Total expenses on file</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: "#2D1B5E" }}>{expenses.length} items</span>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <span style={{ fontSize: 13, color: "#555" }}>Confirmed payments</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: "#3d6e3f" }}>{confirmedPayments.length}</span>
+              </div>
+            </div>
+
+            {/* Overall progress */}
+            <div style={{ background: "#F3FAF3", borderRadius: 16, padding: "16px", marginBottom: 16 }}>
+              <p style={{ margin: "0 0 12px", fontSize: 11, fontWeight: 800, color: "#77a178", textTransform: "uppercase", letterSpacing: 0.5 }}>Overall Progress</p>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                <span style={{ fontSize: 13, color: "#555" }}>Paid ${totalPaid.toFixed(2)} of ${totalOwed.toFixed(2)}</span>
+                <span style={{ fontSize: 13, fontWeight: 800, color: "#3d6e3f" }}>{pctLabel}%</span>
+              </div>
+              <div style={{ height: 8, borderRadius: 999, background: "#d4f5d6", overflow: "hidden" }}>
+                <div style={{ width: `${pctLabel}%`, height: "100%", background: "linear-gradient(90deg, #7BBFB0, #3d6e3f)", borderRadius: 999, transition: "width 0.4s" }} />
+              </div>
+            </div>
+
+            <button
+              style={{ width: "100%", padding: "13px", borderRadius: 14, border: "none", background: "#77a178", color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer" }}
+              onClick={() => setDetailsOpen(false)}
+            >Close</button>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -1861,6 +1955,138 @@ function CamBalanceBanner({ balance, totalOwed, totalPaid, camOwesThisMonth, cam
           </div>
         </div>
       )}
+    </>
+  );
+}
+
+// ── DISPUTE MODAL ─────────────────────────────────────────────────────
+const DISPUTE_REASONS = [
+  "Amount seems wrong",
+  "I already paid this",
+  "I don't recognize this charge",
+  "Split should be different",
+  "This was cancelled",
+  "Other",
+];
+
+function DisputeModal({ expense, onSubmit, onClose }) {
+  const [selectedReason, setSelectedReason] = useState(null);
+  const [details, setDetails] = useState("");
+  const canSubmit = selectedReason !== null && (selectedReason !== "Other" || details.trim().length > 0);
+
+  const camShare = expense
+    ? expense.split === "cam" ? Number(expense.amount) : Number(expense.amount) / 2
+    : 0;
+
+  function handleSubmit() {
+    const reason = selectedReason === "Other" ? details.trim() : `${selectedReason}${details.trim() ? ` — ${details.trim()}` : ""}`;
+    onSubmit({
+      type: "dispute",
+      amount: camShare,
+      date: new Date().toISOString().slice(0, 10),
+      method: "Dispute",
+      appliedToKey: `exp:${expense.id}`,
+      disputeReason: reason,
+      disputeDescription: expense.description,
+      confirmed: false,
+      disputeStatus: "pending",
+    });
+    onClose();
+  }
+
+  return (
+    <>
+      <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 900 }} />
+      <div style={{
+        position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)",
+        width: "100%", maxWidth: 430, background: "#fff", borderRadius: "24px 24px 0 0",
+        zIndex: 901, paddingBottom: "max(28px, env(safe-area-inset-bottom))",
+        maxHeight: "88vh", overflowY: "auto", boxShadow: "0 -8px 40px rgba(45,27,94,0.18)",
+      }}>
+        {/* Handle */}
+        <div style={{ display: "flex", justifyContent: "center", padding: "12px 0 4px" }}>
+          <div style={{ width: 40, height: 4, borderRadius: 2, background: "#E5DFF5" }} />
+        </div>
+
+        {/* Header */}
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", padding: "8px 20px 16px" }}>
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+              <div style={{ width: 32, height: 32, borderRadius: 10, background: "#FFF0F0", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <Icon path={icons.flag} size={16} color="#E05C6E" />
+              </div>
+              <p style={{ margin: 0, fontSize: 20, fontWeight: 900, color: "#1A1030" }}>Dispute Charge</p>
+            </div>
+            <p style={{ margin: 0, fontSize: 12, color: "#999" }}>Let Emmanuella know there's an issue</p>
+          </div>
+          <button onClick={onClose} type="button"
+            style={{ background: "#E8E0F4", border: "none", borderRadius: 10, width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", fontSize: 18, fontWeight: 700, color: "#6B5B8E", flexShrink: 0 }}>
+            ✕
+          </button>
+        </div>
+
+        <div style={{ padding: "0 20px 24px" }}>
+          {/* Charge summary */}
+          {expense && (
+            <div style={{ background: "linear-gradient(135deg, #FFF5F6, #FFF0F0)", border: "1.5px solid #F8C4CD", borderRadius: 16, padding: "14px 16px", marginBottom: 20 }}>
+              <p style={{ margin: "0 0 2px", fontSize: 12, color: "#E05C6E", fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.6 }}>Charge you're disputing</p>
+              <p style={{ margin: "0 0 4px", fontSize: 16, fontWeight: 800, color: "#1A1030" }}>{expense.description}</p>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontSize: 12, color: "#999" }}>{expense.date}</span>
+                <span style={{ fontSize: 18, fontWeight: 900, color: "#E05C6E" }}>${camShare.toFixed(2)}</span>
+              </div>
+            </div>
+          )}
+
+          {/* Reason selection */}
+          <p style={{ fontSize: 12, fontWeight: 800, color: "#999", textTransform: "uppercase", letterSpacing: 0.8, margin: "0 0 10px" }}>What's the issue?</p>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
+            {DISPUTE_REASONS.map(r => (
+              <button key={r} type="button"
+                onClick={() => setSelectedReason(r)}
+                style={{
+                  padding: "13px 16px", borderRadius: 14, border: "2px solid",
+                  borderColor: selectedReason === r ? "#E05C6E" : "#E5DFF5",
+                  background: selectedReason === r ? "#FFF5F6" : "#FDFBFF",
+                  color: selectedReason === r ? "#E05C6E" : "#555",
+                  fontSize: 14, fontWeight: selectedReason === r ? 700 : 500,
+                  cursor: "pointer", textAlign: "left", display: "flex", alignItems: "center", justifyContent: "space-between",
+                }}>
+                {r}
+                {selectedReason === r && <Icon path={icons.check} size={16} color="#E05C6E" />}
+              </button>
+            ))}
+          </div>
+
+          {/* Details text area */}
+          <p style={{ fontSize: 12, fontWeight: 800, color: "#999", textTransform: "uppercase", letterSpacing: 0.8, margin: "0 0 8px" }}>
+            {selectedReason === "Other" ? "Explain the issue *" : "Additional details (optional)"}
+          </p>
+          <textarea
+            placeholder="Add more context for Emmanuella…"
+            value={details}
+            onChange={e => setDetails(e.target.value)}
+            rows={3}
+            style={{
+              width: "100%", padding: "12px 14px", borderRadius: 14, border: "1.5px solid #E5DFF5",
+              fontSize: 14, color: "#1A1030", outline: "none", resize: "none",
+              fontFamily: "inherit", background: "#FDFBFF", boxSizing: "border-box", marginBottom: 20,
+            }}
+          />
+
+          <button type="button"
+            disabled={!canSubmit}
+            onClick={handleSubmit}
+            style={{
+              width: "100%", padding: "16px", borderRadius: 16, border: "none",
+              background: canSubmit ? "linear-gradient(135deg, #E05C6E, #C0405A)" : "#E5DFF5",
+              color: canSubmit ? "#fff" : "#AAA",
+              fontSize: 16, fontWeight: 800, cursor: canSubmit ? "pointer" : "default",
+            }}>
+            Submit Dispute
+          </button>
+        </div>
+      </div>
     </>
   );
 }
@@ -2233,20 +2459,29 @@ function CamNotificationsPanel({ expenses = [], payments = [], onClose, onNaviga
       return new Date(da) - new Date(db);
     });
 
-  // Recently confirmed payments (last 7 days)
+  // Recently confirmed payments (last 7 days, non-dispute)
   const recentlyConfirmed = (payments || [])
     .filter((p) => {
-      if (!p.confirmed) return false;
+      if (!p.confirmed || p.type === "dispute") return false;
       const pDate = new Date((p.date || "") + "T12:00:00");
       const diffDays = Math.ceil((today - pDate) / 86400000);
       return diffDays <= 7;
     })
     .sort((a, b) => new Date(b.date) - new Date(a.date));
 
-  // Pending: payments awaiting confirmation
-  const pending = (payments || []).filter((p) => !p.confirmed);
+  // Pending: payments awaiting confirmation (non-dispute)
+  const pending = (payments || []).filter((p) => !p.confirmed && p.type !== "dispute");
 
-  const hasAny = upcoming.length > 0 || recentlyConfirmed.length > 0 || pending.length > 0;
+  // Declined disputes (last 14 days) — show Emma's response
+  const declinedDisputes = (payments || [])
+    .filter((p) => p.type === "dispute" && p.confirmed && p.disputeStatus === "denied")
+    .filter((p) => {
+      const pDate = new Date((p.date || "") + "T12:00:00");
+      return Math.ceil((today - pDate) / 86400000) <= 14;
+    })
+    .sort((a, b) => new Date(b.date) - new Date(a.date));
+
+  const hasAny = upcoming.length > 0 || recentlyConfirmed.length > 0 || pending.length > 0 || declinedDisputes.length > 0;
 
   function camAmt(e) {
     const amt = Number(e.amount || 0);
@@ -2382,20 +2617,49 @@ function CamNotificationsPanel({ expenses = [], payments = [], onClose, onNaviga
             ))}
           </div>
         )}
+
+        {/* Declined disputes — Emma's response to Cameron */}
+        {declinedDisputes.length > 0 && (
+          <div style={{ padding: "8px 16px 4px" }}>
+            <p style={{ fontSize: 11, fontWeight: 800, color: "#999", textTransform: "uppercase", letterSpacing: 0.8, margin: "0 0 8px" }}>Dispute Response</p>
+            {declinedDisputes.map((p, i) => (
+              <div key={p.id || i} style={{ background: "#FFF8F0", borderRadius: 14, padding: "12px 14px", marginBottom: 8, border: "1.5px solid #F5DABA" }}>
+                <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+                  <div style={{ width: 32, height: 32, borderRadius: 10, background: "#FFF0E0", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                    <Icon path={icons.flag} size={16} color="#C48A00" />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: "#1A1030" }}>Dispute declined</p>
+                    <p style={{ margin: "2px 0 4px", fontSize: 11, color: "#C48A00", fontWeight: 600 }}>
+                      {p.disputeDescription || "charge"} · {formatShortDate(p.date)}
+                    </p>
+                    {p.declineReason ? (
+                      <div style={{ background: "#FFF3E0", border: "1px solid #F5DABA", borderRadius: 9, padding: "8px 10px" }}>
+                        <p style={{ margin: "0 0 2px", fontSize: 10, fontWeight: 800, color: "#C48A00", textTransform: "uppercase", letterSpacing: 0.5 }}>Emmanuella's response</p>
+                        <p style={{ margin: 0, fontSize: 12, color: "#555", lineHeight: 1.5 }}>"{p.declineReason}"</p>
+                      </div>
+                    ) : (
+                      <p style={{ margin: 0, fontSize: 12, color: "#999", fontStyle: "italic" }}>The charge stands — no additional reason given.</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </>
   );
 }
 
 // ── DASHBOARD ─────────────────────────────────────────────────────────
-function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, payments, syncingPayments, urgentCount, targetSummaries, onOpenTarget, onAddExpense, onLogPayment, onQuickPay, onConfirm, onDeleteExpense, onMarkPaid, onNavigate, onLogout, onSwitchView, viewingAsCam }) {
+function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, payments, syncingPayments, urgentCount, targetSummaries, onOpenTarget, onAddExpense, onLogPayment, onQuickPay, onConfirm, onResolveDispute, onDeleteExpense, onMarkPaid, onNavigate, onLogout, onSwitchView, viewingAsCam }) {
   const pending = payments.filter((p) => !p.confirmed);
   // Cam dashboard urgent banner improvement: Step 3
   const urgentList = (expenses || []).filter((e) => getUrgencyLevel(e) !== null);
   const overdueCount = urgentList.filter((e) => getUrgencyLevel(e) === "overdue").length;
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchVal, setSearchVal] = useState("");
-  const [balanceOpen, setBalanceOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
 
   const sortedByDate = (expenses || [])
@@ -2609,47 +2873,22 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
         </div>
       )}
 
-      {/* Balance Card — Emma */}
+      {/* Balance Banner — Emma */}
       {user === "emma" && (
         <>
-          <div
-            style={{
-              ...styles.balanceCard,
-              cursor: "pointer",
-            }}
-            onClick={() => setBalanceOpen((o) => !o)}
-            role="button"
-          >
-            <p style={styles.balanceLabel}>Cameron owes you</p>
-            <p style={styles.balanceAmount}>${balance.toFixed(2)}</p>
-            <div style={styles.balanceRow}>
-              <div style={styles.balanceStat}>
-                <span style={styles.balanceStatLabel}>Total charged</span>
-                <span style={styles.balanceStatVal}>${totalOwed.toFixed(2)}</span>
-              </div>
-              <div style={styles.balanceDivider} />
-              <div style={styles.balanceStat}>
-                <span style={styles.balanceStatLabel}>Total paid</span>
-                <span style={{ ...styles.balanceStatVal, color: "#A8EFC4" }}>${totalPaid.toFixed(2)}</span>
-              </div>
-            </div>
-            {balanceOpen && (
-              <div style={styles.breakdownBox}>
-                <p style={styles.breakdownTitle}>This month</p>
-                <div style={styles.breakdownRow}>
-                  <span style={styles.breakdownDesc}>Cam owes this month</span>
-                  <span style={styles.breakdownAmt}>${Number(camOwesThisMonth || 0).toFixed(2)}</span>
-                </div>
-                <div style={styles.breakdownRow}>
-                  <span style={styles.breakdownDesc}>Your expenses this month</span>
-                  <span style={{ ...styles.breakdownAmt, color: "#fff" }}>${Number(emmaPaidThisMonth || 0).toFixed(2)}</span>
-                </div>
-              </div>
-            )}
-          </div>
-          <div style={{ display: "flex", gap: 12, padding: "0 16px", marginBottom: 16 }}>
-            <DashboardPendingCard user={user} pendingPayments={pending} onConfirm={onConfirm} />
-            <DashboardActionChips onAddExpense={onAddExpense} onLogPayment={onLogPayment} />
+          <EmmaBalanceBanner
+            balance={balance}
+            totalOwed={totalOwed}
+            totalPaid={totalPaid}
+            camOwesThisMonth={camOwesThisMonth}
+            emmaPaidThisMonth={emmaPaidThisMonth}
+            expenses={expenses}
+            payments={payments}
+            onAddExpense={onAddExpense}
+            onLogPayment={onLogPayment}
+          />
+          <div style={{ display: "flex", gap: 12, padding: "0 16px", marginTop: 16, marginBottom: 0 }}>
+            <DashboardPendingCard user={user} pendingPayments={pending} onConfirm={onConfirm} onResolveDispute={onResolveDispute} />
           </div>
         </>
       )}
@@ -2672,9 +2911,6 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
         />
       )}
 
-      {user === "emma" && <MonthlySummaryCard expenses={expenses} />}
-
-      {user === "emma" && <InsightsSection expenses={expenses} />}
 
       {/* Progress */}
       {(planTargets.length > 0 || oneTimeTargets.length > 0) && (
@@ -3129,6 +3365,7 @@ function ExpensesScreen({
   targetSummaries,
   onQuickAdd,
   onLogPaymentForKey,
+  onDisputeExpense,
 }) {
   const isCam = user === "cam";
   const screenRef = useRef(null);
@@ -3669,6 +3906,7 @@ function ExpensesScreen({
               targetSummaries={targetSummaries}
               payments={payments}
               onLogPaymentForKey={onLogPaymentForKey}
+              onDispute={onDisputeExpense}
             />
           ))}
         </div>
@@ -3947,7 +4185,7 @@ function GroupExpenseRow({ gid, items, user, targetSummaries, onMarkPaid, onEdit
 }
 
 // ── EXPENSE ROW ───────────────────────────────────────────────────────
-function ExpenseRow({ expense, user, onDelete, onEdit, onMarkPaid, targetSummaries, payments, onLogPaymentForKey }) {
+function ExpenseRow({ expense, user, onDelete, onEdit, onMarkPaid, targetSummaries, payments, onLogPaymentForKey, onDispute }) {
   return (
     <ExpandableExpenseRow
       expense={expense}
@@ -3958,6 +4196,7 @@ function ExpenseRow({ expense, user, onDelete, onEdit, onMarkPaid, targetSummari
       targetSummaries={targetSummaries}
       payments={payments}
       onLogPaymentForKey={onLogPaymentForKey}
+      onDispute={onDispute}
     />
   );
 }
@@ -4065,7 +4304,7 @@ function QuickPayButtons({ targetKey, myShare, remaining, onLogPaymentForKey }) 
 
 // ── SPLITTRACK FRAMEWORK COMPONENTS (imported) ───────────────────────
 
-function ExpandableExpenseRow({ expense: e, user, onDelete, onEdit, onMarkPaid, targetSummaries, payments, onLogPaymentForKey }) {
+function ExpandableExpenseRow({ expense: e, user, onDelete, onEdit, onMarkPaid, targetSummaries, payments, onLogPaymentForKey, onDispute }) {
   const [expanded, setExpanded] = useState(false);
   const [note, setNote] = useState(e.note || "");
   const [editingNote, setEditingNote] = useState(false);
@@ -4544,6 +4783,17 @@ function ExpandableExpenseRow({ expense: e, user, onDelete, onEdit, onMarkPaid, 
             </button>
           )}
 
+          {user === "cam" && typeof onDispute === "function" && e.status !== "paid" && (
+            <button
+              type="button"
+              style={{ width: "100%", marginTop: 8, padding: "9px", borderRadius: 12, border: "1.5px solid #F8C4CD", background: "#FFF5F6", color: "#E05C6E", fontWeight: 700, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}
+              onClick={() => onDispute(e)}
+            >
+              <Icon path={icons.flag} size={15} color="#E05C6E" />
+              Dispute Charge
+            </button>
+          )}
+
           {!isCam && user === "emma" && (
             <div style={fw.actionBtns}>
               {(markPaidBusy || (e.status !== "paid" && !e._optimistic)) && typeof onMarkPaid === "function" && (
@@ -4647,45 +4897,6 @@ function ExpandableExpenseRow({ expense: e, user, onDelete, onEdit, onMarkPaid, 
   );
 }
 
-function InsightsSection({ expenses }) {
-  const [open, setOpen] = useState(false);
-
-  const totalUnpaid = (expenses || [])
-    .filter((e) => e.status !== "paid" && ["cam", "split"].includes(e.split))
-    .reduce((s, e) => s + (e.split === "split" ? Number(e.amount || 0) / 2 : Number(e.amount || 0)), 0);
-
-  return (
-    <div style={fw.insightCard}>
-      <div style={fw.insightHeader} onClick={() => setOpen((o) => !o)} role="button">
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <Icon path={icons.list} size={18} color="#2D1B5E" />
-          <span style={fw.insightTitle}>Insights</span>
-        </div>
-        <span style={fw.chevron}>
-          <Icon
-            path={open ? icons.chevronUp : icons.chevronDown}
-            size={16}
-            color={open ? "#2D1B5E" : "#CCC"}
-          />
-        </span>
-      </div>
-
-      {open && (
-        <div style={fw.insightBody}>
-          <div style={fw.insightStat}>
-            <span style={fw.insightStatLabel}>Cam still owes</span>
-            <span style={fw.insightStatVal}>${totalUnpaid.toFixed(2)}</span>
-          </div>
-          <div style={fw.insightDivider} />
-          <div style={fw.insightStat}>
-            <span style={fw.insightStatLabel}>Total expenses</span>
-            <span style={fw.insightStatVal}>{(expenses || []).length} items</span>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
 
 function SearchBar({ expenses, onFilter }) {
   const [visible, setVisible] = useState(false);
@@ -4746,50 +4957,6 @@ function SearchBar({ expenses, onFilter }) {
   );
 }
 
-function MonthlySummaryCard({ expenses }) {
-  const [open, setOpen] = useState(false);
-
-  const now = new Date();
-  const month = now.toLocaleString("en-US", { month: "long" });
-  const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-
-  const thisMonth = (expenses || []).filter((e) => String(e.date || "").startsWith(monthKey));
-  const total = thisMonth.reduce((s, e) => s + Number(e.amount || 0), 0);
-  const camTotal = thisMonth
-    .filter((e) => ["cam", "split"].includes(e.split))
-    .reduce((s, e) => s + (e.split === "split" ? Number(e.amount || 0) / 2 : Number(e.amount || 0)), 0);
-
-  return (
-    <div style={fw.summaryCard} onClick={() => setOpen((o) => !o)} role="button">
-      <div style={fw.summaryTop}>
-        <div>
-          <p style={fw.summaryMonth}>{month} Summary</p>
-          <p style={fw.summaryTotal}>${total.toFixed(2)} total</p>
-        </div>
-        <span style={fw.chevron}>
-          <Icon
-            path={open ? icons.chevronUp : icons.chevronDown}
-            size={18}
-            color="#fff"
-          />
-        </span>
-      </div>
-
-      {open && (
-        <div style={fw.summaryBreakdown}>
-          <div style={fw.summaryRow}>
-            <span style={{ color: "rgba(255,255,255,0.7)", fontSize: 13 }}>Cam owes (this month)</span>
-            <span style={{ color: "#A8EFC4", fontWeight: 700 }}>${camTotal.toFixed(2)}</span>
-          </div>
-          <div style={fw.summaryRow}>
-            <span style={{ color: "rgba(255,255,255,0.7)", fontSize: 13 }}>Your expenses</span>
-            <span style={{ color: "#fff", fontWeight: 700 }}>${(total - camTotal).toFixed(2)}</span>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
 
 function PaymentTimeline({ payments, targets = [] }) {
   const [open, setOpen] = useState(false);
