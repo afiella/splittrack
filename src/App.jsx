@@ -553,7 +553,14 @@ function getNextDueDate(currentDue, frequency) {
 
   if (frequency === "weekly") d.setDate(d.getDate() + 7);
   if (frequency === "biweekly") d.setDate(d.getDate() + 14);
-  if (frequency === "monthly") d.setMonth(d.getMonth() + 1);
+  if (frequency === "monthly") {
+    // Clamp to last day of target month so Jan 31 → Feb 28, not Mar 3
+    const originalDay = dd;
+    d.setDate(1);
+    d.setMonth(d.getMonth() + 1);
+    const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+    d.setDate(Math.min(originalDay, lastDay));
+  }
 
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
@@ -2451,7 +2458,7 @@ function CamQuickPayModal({ expenses = [], targetSummaries, onSubmit, onClose })
   const [selectedAmt, setSelectedAmt] = useState(null); // 20 | 50 | "custom"
   const [customVal, setCustomVal] = useState("");
   const [targetMode, setTargetMode] = useState(null); // "overdue" | "specific"
-  const [selectedExp, setSelectedExp] = useState(null);
+  const [selectedExpIds, setSelectedExpIds] = useState(new Set());
   const [method, setMethod] = useState("Zelle");
 
   const finalAmount = selectedAmt === "custom" ? parseFloat(customVal) || 0 : (selectedAmt || 0);
@@ -2488,10 +2495,29 @@ function CamQuickPayModal({ expenses = [], targetSummaries, onSubmit, onClose })
   }
 
   const overduePlan = targetMode === "overdue" && finalAmount > 0 ? getOverduePlan(finalAmount) : [];
+
+  // Multi-select helpers for "specific" mode
+  const selectedExps = camUnpaid.filter(e => selectedExpIds.has(e.id));
+  const selectedTotal = selectedExps.reduce((sum, e) => sum + camShare(e), 0);
+  const remainingBudget = finalAmount - selectedTotal;
+
+  function toggleExp(e) {
+    const share = camShare(e);
+    setSelectedExpIds(prev => {
+      const next = new Set(prev);
+      if (next.has(e.id)) {
+        next.delete(e.id);
+      } else if (share <= remainingBudget + 0.004) {
+        next.add(e.id);
+      }
+      return next;
+    });
+  }
+
   const canProceedAmount = finalAmount > 0;
   const canConfirm = targetMode === "overdue"
     ? overduePlan.length > 0
-    : targetMode === "specific" && selectedExp != null;
+    : targetMode === "specific" && selectedExpIds.size > 0;
 
   function handleConfirm() {
     const today = new Date().toISOString().slice(0, 10);
@@ -2499,10 +2525,12 @@ function CamQuickPayModal({ expenses = [], targetSummaries, onSubmit, onClose })
       overduePlan.forEach(({ e, pay, tKey }) => {
         onSubmit({ amount: pay, date: today, method, appliedToKey: tKey, note: `Quick pay — clears overdue: ${e.description}` });
       });
-    } else if (targetMode === "specific" && selectedExp) {
-      const isRec = selectedExp.recurring && selectedExp.recurring !== "none";
-      const tKey = isRec ? `grp:${selectedExp.groupId || selectedExp.id}` : `exp:${selectedExp.id}`;
-      onSubmit({ amount: finalAmount, date: today, method, appliedToKey: tKey });
+    } else if (targetMode === "specific" && selectedExps.length > 0) {
+      selectedExps.forEach(e => {
+        const isRec = e.recurring && e.recurring !== "none";
+        const tKey = isRec ? `grp:${e.groupId || e.id}` : `exp:${e.id}`;
+        onSubmit({ amount: camShare(e), date: today, method, appliedToKey: tKey });
+      });
     }
     onClose();
   }
@@ -2629,7 +2657,7 @@ function CamQuickPayModal({ expenses = [], targetSummaries, onSubmit, onClose })
 
             {/* Option A: Clear overdue */}
             <button type="button"
-              onClick={() => { setTargetMode("overdue"); setSelectedExp(null); }}
+              onClick={() => { setTargetMode("overdue"); setSelectedExpIds(new Set()); }}
               style={{
                 width: "100%", marginBottom: 12, padding: "16px", borderRadius: 16,
                 border: "2px solid", borderColor: targetMode === "overdue" ? "#E05C6E" : "#E5DFF5",
@@ -2649,7 +2677,6 @@ function CamQuickPayModal({ expenses = [], targetSummaries, onSubmit, onClose })
                   </p>
                 </div>
               </div>
-              {/* Preview breakdown */}
               {targetMode === "overdue" && overduePlan.length > 0 && (
                 <div style={{ marginTop: 12, borderTop: "1px solid #F8E8EA", paddingTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
                   {overduePlan.map(({ e, pay }) => (
@@ -2688,7 +2715,16 @@ function CamQuickPayModal({ expenses = [], targetSummaries, onSubmit, onClose })
             {/* Transaction picker */}
             {targetMode === "specific" && (
               <div style={{ marginBottom: 16 }}>
-                <p style={{ fontSize: 11, fontWeight: 800, color: "#999", textTransform: "uppercase", letterSpacing: 0.8, margin: "0 0 8px" }}>Select a charge</p>
+                {/* Budget bar */}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                  <p style={{ fontSize: 11, fontWeight: 800, color: "#999", textTransform: "uppercase", letterSpacing: 0.8, margin: 0 }}>Select charges</p>
+                  <span style={{ fontSize: 12, fontWeight: 800, color: remainingBudget < 0.01 ? "#5CA89A" : "#9B7ED4" }}>
+                    ${selectedTotal.toFixed(2)} / ${finalAmount.toFixed(2)}
+                  </span>
+                </div>
+                <div style={{ height: 5, borderRadius: 999, background: "#E5DFF5", overflow: "hidden", marginBottom: 12 }}>
+                  <div style={{ height: "100%", borderRadius: 999, background: remainingBudget < 0.01 ? "#5CA89A" : "#9B7ED4", width: `${Math.min(100, (selectedTotal / finalAmount) * 100)}%`, transition: "width 0.2s" }} />
+                </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                   {camUnpaid.length === 0 && (
                     <p style={{ fontSize: 13, color: "#AAA", textAlign: "center", padding: "16px 0" }}>No unpaid charges found.</p>
@@ -2696,16 +2732,18 @@ function CamQuickPayModal({ expenses = [], targetSummaries, onSubmit, onClose })
                   {camUnpaid.map(e => {
                     const share = camShare(e);
                     const isOverdue = getUrgencyLevel(e) === "overdue";
-                    const isSelected = selectedExp?.id === e.id;
+                    const isSelected = selectedExpIds.has(e.id);
+                    const wouldExceed = !isSelected && share > remainingBudget + 0.004;
                     return (
                       <button key={e.id} type="button"
-                        onClick={() => setSelectedExp(isSelected ? null : e)}
+                        onClick={() => !wouldExceed && toggleExp(e)}
                         style={{
                           display: "flex", alignItems: "center", justifyContent: "space-between",
                           padding: "12px 14px", borderRadius: 14, border: "2px solid",
                           borderColor: isSelected ? "#9B7ED4" : isOverdue ? "#F8C4CD" : "#E5DFF5",
-                          background: isSelected ? "#F0EBF9" : isOverdue ? "#FFF8F8" : "#FDFBFF",
-                          cursor: "pointer", textAlign: "left",
+                          background: isSelected ? "#F0EBF9" : wouldExceed ? "#F8F8F8" : isOverdue ? "#FFF8F8" : "#FDFBFF",
+                          cursor: wouldExceed ? "not-allowed" : "pointer", textAlign: "left",
+                          opacity: wouldExceed ? 0.45 : 1,
                         }}>
                         <div style={{ minWidth: 0, flex: 1 }}>
                           <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: "#1A1030", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.description}</p>
@@ -2741,17 +2779,15 @@ function CamQuickPayModal({ expenses = [], targetSummaries, onSubmit, onClose })
         {/* ── STEP 3: Confirm ── */}
         {step === "confirm" && (
           <div style={{ padding: "0 20px 24px" }}>
-            {/* Summary card */}
             <div style={{ background: "linear-gradient(135deg, #2D1B5E, #6B3FA0)", borderRadius: 20, padding: "20px", marginBottom: 20, color: "#fff" }}>
               <p style={{ margin: "0 0 4px", fontSize: 12, fontWeight: 700, opacity: 0.7, textTransform: "uppercase", letterSpacing: 0.8 }}>You're paying</p>
               <p style={{ margin: "0 0 16px", fontSize: 34, fontWeight: 900 }}>${finalAmount.toFixed(2)}</p>
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, opacity: 0.85 }}>
                 <span>via {method}</span>
-                <span>{targetMode === "overdue" ? `Clears ${overduePlan.length} overdue charge${overduePlan.length !== 1 ? "s" : ""}` : selectedExp?.description}</span>
+                <span>{targetMode === "overdue" ? `Clears ${overduePlan.length} overdue charge${overduePlan.length !== 1 ? "s" : ""}` : `${selectedExps.length} charge${selectedExps.length !== 1 ? "s" : ""} selected`}</span>
               </div>
             </div>
 
-            {/* Breakdown */}
             {targetMode === "overdue" && overduePlan.length > 0 && (
               <div style={{ background: "#FFF5F6", borderRadius: 14, padding: "12px 16px", marginBottom: 20 }}>
                 <p style={{ margin: "0 0 10px", fontSize: 11, fontWeight: 800, color: "#E05C6E", textTransform: "uppercase", letterSpacing: 0.8 }}>Breakdown</p>
@@ -2764,11 +2800,21 @@ function CamQuickPayModal({ expenses = [], targetSummaries, onSubmit, onClose })
               </div>
             )}
 
-            {targetMode === "specific" && selectedExp && (
+            {targetMode === "specific" && selectedExps.length > 0 && (
               <div style={{ background: "#F5F0FB", borderRadius: 14, padding: "12px 16px", marginBottom: 20 }}>
-                <p style={{ margin: "0 0 6px", fontSize: 11, fontWeight: 800, color: "#9B7ED4", textTransform: "uppercase", letterSpacing: 0.8 }}>Applied to</p>
-                <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#1A1030" }}>{selectedExp.description}</p>
-                <p style={{ margin: "2px 0 0", fontSize: 12, color: "#999" }}>{formatShortDate(selectedExp.nextDue || selectedExp.dueDate || selectedExp.date)}</p>
+                <p style={{ margin: "0 0 10px", fontSize: 11, fontWeight: 800, color: "#9B7ED4", textTransform: "uppercase", letterSpacing: 0.8 }}>Applied to</p>
+                {selectedExps.map(e => (
+                  <div key={e.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: "#1A1030", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "70%" }}>{e.description}</span>
+                    <span style={{ fontSize: 13, fontWeight: 800, color: "#9B7ED4" }}>${camShare(e).toFixed(2)}</span>
+                  </div>
+                ))}
+                {selectedExps.length > 1 && (
+                  <div style={{ borderTop: "1px solid #E5DFF5", marginTop: 6, paddingTop: 6, display: "flex", justifyContent: "space-between" }}>
+                    <span style={{ fontSize: 12, fontWeight: 800, color: "#666" }}>Total</span>
+                    <span style={{ fontSize: 13, fontWeight: 900, color: "#2D1B5E" }}>${selectedTotal.toFixed(2)}</span>
+                  </div>
+                )}
               </div>
             )}
 
@@ -3125,7 +3171,7 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
                   aria-label="Notifications"
                 >
                   {/* Filled bell icon */}
-                  <svg width={22} height={22} viewBox="0 0 24 24" fill="#fff">
+                  <svg width={28} height={28} viewBox="0 0 24 24" fill="#fff">
                     <path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6V11c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/>
                   </svg>
                   {badgeCount > 0 && !notifOpen && (
@@ -4966,10 +5012,17 @@ function ExpandableExpenseRow({ expense: e, user, onDelete, onEdit, onMarkPaid, 
                     <div style={fw.payMetaDivider} />
 
                     <div style={fw.payMetaStat}>
-                      <div style={fw.payMetaLabel}>Total</div>
+                      <div style={fw.payMetaLabel}>Your share</div>
                       <div style={fw.payMetaVal}>${Math.abs(tCharged).toFixed(2)}</div>
                     </div>
                   </div>
+
+                  {e.split === "split" && (
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 10, paddingTop: 8, borderTop: "1px solid #F0EAF8" }}>
+                      <span style={{ fontSize: 11, color: "#BBB", fontWeight: 600 }}>Full expense (50/50 split)</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: "#AAA" }}>${Number(e.amount || 0).toFixed(2)}</span>
+                    </div>
+                  )}
 
                   {tRemaining > 0.005 ? (
                     <QuickPayButtons
@@ -5329,23 +5382,50 @@ function SearchBar({ expenses, onFilter }) {
 
 // ── ADD EXPENSE MODAL ─────────────────────────────────────────────────
 function AddExpenseModal({ onSave, onClose, user }) {
+  const todayStr = new Date().toISOString().split("T")[0];
   const [form, setForm] = useState({
     description: "",
     amount: "",
     split: "split",
-    date: new Date().toISOString().split("T")[0],
+    date: todayStr,
     dueDate: "",
     endDate: "",
-    repeatCount: "",
     account: "Navy Platinum",
     category: "Groceries",
     recurring: "none",
   });
+  const [showDatePicker, setShowDatePicker] = useState(false);
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const previewNextDue =
     form.recurring && form.recurring !== "none" && form.dueDate
       ? getNextDueDate(form.dueDate, form.recurring)
       : "";
+  const isToday = form.date === todayStr;
+  const dateDisplay = isToday
+    ? `Today · ${new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" })}`
+    : new Date(form.date + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+
+  const isRecurring = form.recurring && form.recurring !== "none";
+
+  const groupCard = {
+    borderRadius: 16,
+    border: "1.5px solid #F0EAF8",
+    background: "#FAFBFF",
+    padding: "14px 14px 10px",
+    display: "flex",
+    flexDirection: "column",
+    gap: 10,
+  };
+  const groupLabel = (text, color, badge) => (
+    <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
+      <span style={{ fontSize: 10, fontWeight: 800, color, textTransform: "uppercase", letterSpacing: 1.1 }}>{text}</span>
+      {badge}
+    </div>
+  );
+
+  const splitOptions = user === "cam"
+    ? [["cam", "I pay", "#E8A0B0"], ["ella", "Emmanuella pays", "#7BBFB0"], ["split", "Split 50/50", "#C4A8D4"]]
+    : [["mine", "I pay", "#7BBFB0"], ["cam", "Cam pays", "#E8A0B0"], ["split", "Split 50/50", "#C4A8D4"]];
 
   return (
     <div style={styles.modalOverlay}>
@@ -5359,17 +5439,15 @@ function AddExpenseModal({ onSave, onClose, user }) {
           </button>
         </div>
 
-        <div style={styles.form}>
-          {/* Templates */}
-          <div style={styles.sectionLabelRow}>
-            <span style={styles.sectionLabel}>Templates</span>
-          </div>
-          <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4, WebkitOverflowScrolling: "touch", scrollbarWidth: "none", msOverflowStyle: "none" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+
+          {/* ── Templates ── */}
+          <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 2, WebkitOverflowScrolling: "touch", scrollbarWidth: "none", msOverflowStyle: "none" }}>
             {EXPENSE_TEMPLATES.map((t) => (
               <button
                 key={t.label}
                 type="button"
-                style={{ flexShrink: 0, padding: "6px 14px", borderRadius: 999, border: "1.5px solid #E5DFF5", background: "#F5F0FB", fontSize: 12, fontWeight: 700, color: "#2D1B5E", cursor: "pointer", whiteSpace: "nowrap" }}
+                style={{ flexShrink: 0, padding: "7px 14px", borderRadius: 999, border: "1.5px solid #E5DFF5", background: "#F5F0FB", fontSize: 12, fontWeight: 700, color: "#2D1B5E", cursor: "pointer", whiteSpace: "nowrap" }}
                 onClick={() => setForm(f => ({ ...f, description: t.description, category: t.category, recurring: t.recurring, split: t.split, ...(t.amount ? { amount: t.amount } : {}) }))}
               >
                 {t.label}
@@ -5377,225 +5455,186 @@ function AddExpenseModal({ onSave, onClose, user }) {
             ))}
           </div>
 
-          {/* Transaction Details */}
-          <div style={styles.sectionLabelRow}>
-            <span style={styles.sectionLabel}>Transaction details</span>
-          </div>
+          {/* ── Group 1: WHAT ── */}
+          <div style={groupCard}>
+            {groupLabel("What", "#9B7ED4")}
 
-          <label style={styles.fieldLabel}>Description</label>
-          <input
-            style={styles.input}
-            placeholder="e.g. Netflix, Wegmans…"
-            value={form.description}
-            onChange={(e) => set("description", e.target.value)}
-          />
-
-          <label style={styles.fieldLabel}>Amount ($)</label>
-          <div style={{ position: "relative" }}>
-            <span style={styles.dollarSign}>$</span>
             <input
-              style={{ ...styles.input, paddingLeft: 28, fontSize: 20, fontWeight: 700 }}
-              type="number"
-              placeholder="0.00"
-              value={form.amount}
-              onChange={(e) => set("amount", e.target.value)}
+              style={{ ...styles.input, fontSize: 16, fontWeight: 600 }}
+              placeholder="Description — e.g. Netflix, Wegmans…"
+              value={form.description}
+              onChange={(e) => set("description", e.target.value)}
             />
-          </div>
 
-          <div style={styles.twoCol}>
-            <div style={{ flex: 1 }}>
-              <label style={styles.fieldLabel}>Transaction date</label>
-              <input
-                style={styles.input}
-                type="date"
-                value={form.date}
-                onChange={(e) => set("date", e.target.value)}
-              />
-            </div>
-            <div style={{ flex: 1 }}>
-              <label style={styles.fieldLabel}>Reference # (optional)</label>
-              <input
-                style={styles.input}
-                placeholder="TXN-4821"
-                value={form.referenceNum || ""}
-                onChange={(e) => set("referenceNum", e.target.value)}
-              />
+            <div style={{ display: "flex", gap: 7, overflowX: "auto", WebkitOverflowScrolling: "touch", scrollbarWidth: "none", msOverflowStyle: "none", paddingBottom: 2, margin: "0 -14px", padding: "0 14px 2px" }}>
+              {CATEGORIES.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  style={{
+                    flexShrink: 0, padding: "6px 14px", borderRadius: 999, border: "1.5px solid",
+                    background: form.category === c ? "#2D1B5E" : "#F5F0FB",
+                    color: form.category === c ? "#fff" : "#666",
+                    borderColor: form.category === c ? "#2D1B5E" : "#E5DFF5",
+                    fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap",
+                  }}
+                  onClick={() => set("category", c)}
+                >
+                  {c}
+                </button>
+              ))}
             </div>
           </div>
-          <p style={styles.hintText}>Optional — from bank statement or receipt</p>
 
-          {/* Schedule */}
-          <div style={styles.sectionLabelRow}>
-  <span style={styles.sectionLabel}>Schedule</span>
-  {form.recurring && form.recurring !== "none" && <span style={styles.newBadge}>NEW</span>}
-</div>
+          {/* ── Group 2: HOW MUCH ── */}
+          <div style={groupCard}>
+            {groupLabel("How Much", "#5B3FA6")}
+            <div style={{ position: "relative", width: "100%" }}>
+              <span style={{ position: "absolute", left: 16, top: "50%", transform: "translateY(-50%)", fontSize: 26, fontWeight: 800, color: "#C4A8D4", pointerEvents: "none" }}>$</span>
+              <input
+                style={{ display: "block", width: "100%", boxSizing: "border-box", height: 64, paddingLeft: 44, paddingRight: 14, borderRadius: 12, border: "1.5px solid #E5DFF5", background: "#FDFBFF", outline: "none", fontSize: 34, fontWeight: 800, color: "#2D1B5E", letterSpacing: -0.5, fontFamily: "inherit" }}
+                type="number"
+                inputMode="decimal"
+                placeholder="0.00"
+                value={form.amount}
+                onChange={(e) => set("amount", e.target.value)}
+              />
+            </div>
+          </div>
 
-          <label style={styles.fieldLabel}>Frequency</label>
-          <div style={styles.chipRow}>
-            {[["none", "One-time"], ["weekly", "Weekly"], ["biweekly", "Biweekly"], ["monthly", "Monthly"]].map(
-              ([val, label]) => (
+          {/* ── Group 3: WHO PAYS ── */}
+          <div style={groupCard}>
+            {groupLabel("Who Pays", "#C0485A")}
+
+            <div style={{ display: "flex", gap: 8 }}>
+              {splitOptions.map(([val, label, color]) => (
                 <button
                   key={val}
                   type="button"
                   style={{
-                    ...styles.freqBtn,
-                    ...(form.recurring === val ? styles.freqBtnActive : {}),
+                    flex: 1, padding: "11px 6px", borderRadius: 12, border: "1.5px solid",
+                    borderColor: form.split === val ? color : "#E5DFF5",
+                    background: form.split === val ? color : "#F5F0FB",
+                    color: form.split === val ? "#fff" : "#888",
+                    fontWeight: form.split === val ? 700 : 500,
+                    fontSize: 12, cursor: "pointer", fontFamily: "inherit",
+                    transition: "all 0.15s",
                   }}
-                  onClick={() => set("recurring", val)}
+                  onClick={() => set("split", val)}
                 >
                   {label}
                 </button>
-              )
-            )}
+              ))}
+            </div>
+
+            <div>
+              <label style={{ ...styles.fieldLabel, marginBottom: 5 }}>Charged to</label>
+              <select style={styles.input} value={form.account} onChange={(e) => set("account", e.target.value)}>
+                {["Navy Platinum", "Best Buy Visa", "Debit Card", "Klarna", "Affirm", "Cash", "Zelle"].map((a) => (
+                  <option key={a}>{a}</option>
+                ))}
+              </select>
+            </div>
           </div>
 
-          {(!form.recurring || form.recurring === "none") && (
-            <>
-              <label style={styles.fieldLabel}>Due date (optional)</label>
+          {/* ── Group 4: WHEN ── */}
+          <div style={groupCard}>
+            {groupLabel("When", "#7BBFB0", isRecurring ? <span style={styles.newBadge}>RECURRING</span> : null)}
+
+            {/* Transaction date — defaults to today, expandable to pick another */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                {!isToday && <div style={{ width: 7, height: 7, borderRadius: 999, background: "#E05C6E", flexShrink: 0 }} />}
+                <span style={{ fontSize: 14, fontWeight: 700, color: isToday ? "#2D1B5E" : "#E05C6E" }}>{dateDisplay}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (showDatePicker && !isToday) set("date", todayStr);
+                  setShowDatePicker(p => !p);
+                }}
+                style={{ fontSize: 12, fontWeight: 700, color: "#9B7ED4", background: "none", border: "none", cursor: "pointer", padding: "4px 0" }}
+              >
+                {showDatePicker ? (isToday ? "Done" : "Reset to today") : "Different date"}
+              </button>
+            </div>
+            {showDatePicker && (
               <input
                 style={styles.input}
                 type="date"
-                value={form.dueDate}
-                onChange={(e) => set("dueDate", e.target.value)}
+                value={form.date}
+                max={todayStr}
+                onChange={(e) => set("date", e.target.value)}
               />
-            </>
-          )}
+            )}
 
-          {form.recurring && form.recurring !== "none" && (
-          <div style={styles.dueDateBox}>
-            <div style={styles.twoCol}>
-              <div style={{ flex: 1 }}>
-                <label style={styles.fieldLabel}>First due date</label>
-                <input
-                  style={styles.input}
-                  type="date"
-                  value={form.dueDate}
-                  onChange={(e) => set("dueDate", e.target.value)}
-                />
+            {/* Frequency */}
+            <div>
+              <label style={styles.fieldLabel}>Frequency</label>
+              <div style={{ display: "flex", gap: 6 }}>
+                {[["none", "One-time"], ["weekly", "Weekly"], ["biweekly", "Biweekly"], ["monthly", "Monthly"]].map(([val, label]) => (
+                  <button
+                    key={val}
+                    type="button"
+                    style={{ ...styles.freqBtn, ...(form.recurring === val ? styles.freqBtnActive : {}) }}
+                    onClick={() => set("recurring", val)}
+                  >
+                    {label}
+                  </button>
+                ))}
               </div>
-              {form.recurring && form.recurring !== "none" && (
-                <div style={{ flex: 1 }}>
-                  <label style={styles.fieldLabel}>Auto-advance to</label>
-                  <div style={styles.previewPill}>
-                    Next: <strong>{formatHistoryDate(previewNextDue)}</strong>
-                  </div>
-                </div>
-              )}
             </div>
 
-              <>
-                <div style={styles.endDateDivider} />
+            {/* One-time: optional due date */}
+            {!isRecurring && (
+              <div>
+                <label style={styles.fieldLabel}>Due date (optional)</label>
+                <input style={styles.input} type="date" value={form.dueDate} onChange={(e) => set("dueDate", e.target.value)} />
+              </div>
+            )}
 
-                <label style={styles.fieldLabel}>End date (optional)</label>
-                <input
-                  style={styles.input}
-                  type="date"
-                  value={form.endDate}
-                  min={form.dueDate || undefined}
-                  onChange={(e) => set("endDate", e.target.value)}
-                />
-
-                <label style={styles.fieldLabel}>Repeat count (optional)</label>
-                <input
-                  style={styles.input}
-                  type="number"
-                  min="1"
-                  placeholder="e.g. 8"
-                  value={form.repeatCount}
-                  onChange={(e) => set("repeatCount", e.target.value)}
-                />
-
-                <p style={styles.hintText}>
-                  Stops repeating when end date is reached or repeat count runs out.
-                </p>
-              </>
-          </div>
-          )}
-
-          {/* Who Pays */}
-          <div style={styles.sectionLabelRow}>
-            <span style={styles.sectionLabel}>Who pays?</span>
+            {/* Recurring: start + end side by side, then auto-advance preview */}
+            {isRecurring && (
+              <div style={{ background: "#F3EEFF", borderRadius: 12, padding: "12px 12px 10px", display: "flex", flexDirection: "column", gap: 10 }}>
+                <div style={styles.twoCol}>
+                  <div style={{ flex: 1 }}>
+                    <label style={styles.fieldLabel}>Start date</label>
+                    <input style={styles.input} type="date" value={form.dueDate} onChange={(e) => set("dueDate", e.target.value)} />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <label style={styles.fieldLabel}>End date (optional)</label>
+                    <input style={styles.input} type="date" value={form.endDate} min={form.dueDate || undefined} onChange={(e) => set("endDate", e.target.value)} />
+                  </div>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, paddingTop: 2 }}>
+                  <span style={{ fontSize: 12, color: "#AAA", fontWeight: 500 }}>Auto-advances to</span>
+                  <span style={{ fontSize: 13, fontWeight: 800, color: previewNextDue ? "#5B3FA6" : "#CCC" }}>
+                    {previewNextDue ? formatHistoryDate(previewNextDue) : "set start date first"}
+                  </span>
+                </div>
+              </div>
+            )}
           </div>
 
-          <div style={styles.splitRow}>
-            {(
-              user === "cam"
-                ? [["cam", "I pay", "#E8A0B0"], ["ella", "Emmanuella pays", "#7BBFB0"], ["split", "Split 50/50", "#C4A8D4"]]
-                : [["mine", "I pay", "#7BBFB0"], ["cam", "Cam pays", "#E8A0B0"], ["split", "Split 50/50", "#C4A8D4"]]
-            ).map(([val, label, color]) => (
-              <button
-                key={val}
-                type="button"
-                style={{
-                  ...styles.splitOption,
-                  background: form.split === val ? color : "#F5F0FB",
-                  color: form.split === val ? "#fff" : "#666",
-                  fontWeight: form.split === val ? 700 : 500,
-                }}
-                onClick={() => set("split", val)}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-
-          <label style={styles.fieldLabel}>Account</label>
-          <select style={styles.input} value={form.account} onChange={(e) => set("account", e.target.value)}>
-            {["Navy Platinum", "Best Buy Visa", "Debit Card", "Klarna", "Affirm", "Cash", "Zelle"].map((a) => (
-              <option key={a}>{a}</option>
-            ))}
-          </select>
-
-          <div style={styles.sectionLabelRow}>
-            <span style={styles.sectionLabel}>Category</span>
-          </div>
-
-          <div style={styles.catRow}>
-            {CATEGORIES.map((c) => (
-              <button
-                key={c}
-                type="button"
-                style={{
-                  ...styles.catChip,
-                  background: form.category === c ? "#2D1B5E" : "#F5F0FB",
-                  color: form.category === c ? "#fff" : "#666",
-                  borderColor: form.category === c ? "#2D1B5E" : "#E5DFF5",
-                }}
-                onClick={() => set("category", c)}
-              >
-                {c}
-              </button>
-            ))}
-          </div>
-
+          {/* ── Save ── */}
           <button
-            style={styles.saveBtn}
+            style={{ ...styles.saveBtn, opacity: (!form.description || !form.amount) ? 0.45 : 1 }}
             onClick={() => {
               if (!form.description || !form.amount) return;
-              const repeatCountNum = form.repeatCount ? parseInt(form.repeatCount, 10) : null;
-
               const data = {
                 ...form,
                 amount: parseFloat(form.amount),
                 nextDue: form.dueDate || null,
-                repeatCount: repeatCountNum,
-                repeatCountRemaining: repeatCountNum,
               };
-
               if (!data.dueDate) delete data.dueDate;
               if (!data.endDate) delete data.endDate;
-
-              if (!repeatCountNum) {
-                delete data.repeatCount;
-                delete data.repeatCountRemaining;
-              }
-
               onSave(data);
             }}
             type="button"
           >
             Save Expense
           </button>
+
         </div>
       </div>
     </div>
