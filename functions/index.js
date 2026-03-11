@@ -16,7 +16,11 @@ async function getToken(userId) {
 
 async function sendPush(userId, title, body, data = {}) {
   const token = await getToken(userId);
-  if (!token) return;
+  if (!token) {
+    console.warn(`sendPush: no FCM token for user "${userId}" — they need to open the app and accept notifications`);
+    return;
+  }
+  console.log(`sendPush: sending "${title}" to ${userId}`);
   try {
     await getMessaging().send({
       token,
