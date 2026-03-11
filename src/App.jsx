@@ -541,6 +541,12 @@ function getUrgencyLevel(e) {
   const days = getDaysUntilDue(e.nextDue || e.dueDate);
   if (days === null) return null;
   if (days < 0) return "overdue";
+  // Mandatory expenses get an earlier critical window (7 days) and warning window (14 days)
+  if (e.mandatory) {
+    if (days <= 7) return "critical";
+    if (days <= 14) return "warning";
+    return null;
+  }
   if (days <= 3) return "critical";
   if (days <= 7) return "warning";
   return null;
@@ -1558,6 +1564,13 @@ function DashboardRecentChargesList({ items = [], onOpenTarget, user, searching 
                   textOverflow: "ellipsis",
                 }}
               >
+                {e.mandatory && (
+                  <span title="Mandatory" style={{ display: "inline-block", marginRight: 5, verticalAlign: "middle" }}>
+                    <svg width={11} height={11} viewBox="0 0 24 24" fill="#E05C6E" style={{ display: "block" }}>
+                      <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/>
+                    </svg>
+                  </span>
+                )}
                 {e.description}
               </p>
               <p style={{ margin: "3px 0 0", fontSize: 11, color: "#999" }}>
@@ -2851,6 +2864,13 @@ function CamNotificationsPanel({ expenses = [], payments = [], onClose, onNaviga
       return diffDays <= 14;
     })
     .sort((a, b) => {
+      // Mandatory overdue first, then mandatory upcoming, then by date
+      const aOverdue = getUrgencyLevel(a) === "overdue";
+      const bOverdue = getUrgencyLevel(b) === "overdue";
+      if (a.mandatory && aOverdue && !(b.mandatory && bOverdue)) return -1;
+      if (b.mandatory && bOverdue && !(a.mandatory && aOverdue)) return 1;
+      if (a.mandatory && !b.mandatory) return -1;
+      if (b.mandatory && !a.mandatory) return 1;
       const da = a.nextDue || a.dueDate;
       const db = b.nextDue || b.dueDate;
       return new Date(da) - new Date(db);
@@ -2956,18 +2976,28 @@ function CamNotificationsPanel({ expenses = [], payments = [], onClose, onNaviga
             <p style={{ fontSize: 11, fontWeight: 800, color: "#999", textTransform: "uppercase", letterSpacing: 0.8, margin: "0 0 8px" }}>Upcoming Payments</p>
             {upcoming.map((e) => {
               const overdue = getUrgencyLevel(e) === "overdue";
-              const accentColor = overdue ? "#E05C6E" : "#9B7ED4";
-              const bgColor = overdue ? "#FFF5F6" : "#F8F4FF";
+              const accentColor = e.mandatory && overdue ? "#C0192E" : overdue ? "#E05C6E" : e.mandatory ? "#C0192E" : "#9B7ED4";
+              const bgColor = e.mandatory ? (overdue ? "#FFF0F2" : "#FFF5F6") : overdue ? "#FFF5F6" : "#F8F4FF";
+              const borderColor = e.mandatory ? "#F8A0B0" : overdue ? "#F8C4CD" : "#EDE5FA";
               return (
                 <div
                   key={e.id}
-                  style={{ background: bgColor, borderRadius: 14, padding: "12px 14px", marginBottom: 8, border: `1.5px solid ${overdue ? "#F8C4CD" : "#EDE5FA"}`, cursor: "pointer" }}
+                  style={{ background: bgColor, borderRadius: 14, padding: "12px 14px", marginBottom: 8, border: `1.5px solid ${borderColor}`, cursor: "pointer" }}
                   onClick={() => { onNavigate("urgent"); onClose(); }}
                 >
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                     <div style={{ minWidth: 0, flex: 1 }}>
-                      <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#1A1030", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.description}</p>
-                      <p style={{ margin: "3px 0 0", fontSize: 11, fontWeight: 700, color: accentColor }}>{dueLabel(e)}</p>
+                      <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 2 }}>
+                        {e.mandatory && (
+                          <svg width={11} height={11} viewBox="0 0 24 24" fill={accentColor} style={{ flexShrink: 0 }}>
+                            <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/>
+                          </svg>
+                        )}
+                        <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#1A1030", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.description}</p>
+                      </div>
+                      <p style={{ margin: 0, fontSize: 11, fontWeight: 700, color: accentColor }}>
+                        {e.mandatory && overdue ? "⚠ MANDATORY — Overdue" : e.mandatory ? "Mandatory · " + dueLabel(e) : dueLabel(e)}
+                      </p>
                     </div>
                     <span style={{ fontSize: 15, fontWeight: 800, color: accentColor, flexShrink: 0, marginLeft: 10 }}>${camAmt(e).toFixed(2)}</span>
                   </div>
@@ -5393,8 +5423,12 @@ function AddExpenseModal({ onSave, onClose, user }) {
     account: "Navy Platinum",
     category: "Groceries",
     recurring: "none",
+    mandatory: false,
+    note: "",
+    referenceNum: "",
   });
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showNotes, setShowNotes] = useState(false);
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const previewNextDue =
     form.recurring && form.recurring !== "none" && form.dueDate
@@ -5483,6 +5517,53 @@ function AddExpenseModal({ onSave, onClose, user }) {
                   {c}
                 </button>
               ))}
+            </div>
+
+            {/* Extra details — inline below category */}
+            <div>
+              <button
+                type="button"
+                onClick={() => setShowNotes(p => !p)}
+                style={{ display: "flex", alignItems: "center", gap: 5, background: "none", border: "none", cursor: "pointer", padding: "2px 0", color: showNotes ? "#5B3FA6" : "#BBB" }}
+              >
+                <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/>
+                  <line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
+                </svg>
+                <span style={{ fontSize: 12, fontWeight: 700 }}>{showNotes ? "Hide details" : "Add details"}</span>
+                <svg width={11} height={11} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" style={{ transform: showNotes ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s" }}>
+                  <polyline points="6 9 12 15 18 9"/>
+                </svg>
+              </button>
+
+              {showNotes && (
+                <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+                  {/* Reference number */}
+                  <div style={{ position: "relative" }}>
+                    <div style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", display: "flex", alignItems: "center", pointerEvents: "none" }}>
+                      <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="#C4A8D4" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z"/>
+                        <line x1="7" y1="7" x2="7.01" y2="7"/>
+                      </svg>
+                    </div>
+                    <input
+                      autoFocus
+                      placeholder="Reference # — e.g. TXN-4821, Order ID…"
+                      value={form.referenceNum}
+                      onChange={(e) => set("referenceNum", e.target.value)}
+                      style={{ display: "block", width: "100%", boxSizing: "border-box", padding: "11px 14px 11px 34px", borderRadius: 12, border: "1.5px solid #E5DFF5", background: "#FDFBFF", fontSize: 13, fontWeight: 600, color: "#2D1B5E", fontFamily: "inherit", outline: "none" }}
+                    />
+                  </div>
+
+                  {/* Notes */}
+                  <textarea
+                    placeholder="Extra context, links, reminders…"
+                    value={form.note}
+                    onChange={(e) => set("note", e.target.value)}
+                    style={{ display: "block", width: "100%", boxSizing: "border-box", padding: "11px 14px", borderRadius: 12, border: "1.5px solid #E5DFF5", background: "#FDFBFF", fontSize: 13, fontWeight: 500, color: "#2D1B5E", fontFamily: "inherit", outline: "none", resize: "none", minHeight: 72, lineHeight: 1.5 }}
+                  />
+                </div>
+              )}
             </div>
           </div>
 
@@ -5614,6 +5695,39 @@ function AddExpenseModal({ onSave, onClose, user }) {
                 </div>
               </div>
             )}
+
+            {/* Mandatory toggle */}
+            <button
+              type="button"
+              onClick={() => set("mandatory", !form.mandatory)}
+              style={{
+                display: "flex", alignItems: "center", justifyContent: "space-between",
+                padding: "10px 12px", borderRadius: 12, border: "1.5px solid",
+                borderColor: form.mandatory ? "#E05C6E" : "#E5DFF5",
+                background: form.mandatory ? "#FFF5F6" : "#FAFBFF",
+                cursor: "pointer", width: "100%", textAlign: "left",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <svg width={15} height={15} viewBox="0 0 24 24" fill={form.mandatory ? "#E05C6E" : "#CCC"}>
+                  <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/>
+                </svg>
+                <div>
+                  <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: form.mandatory ? "#E05C6E" : "#2D1B5E" }}>Mandatory</p>
+                  <p style={{ margin: 0, fontSize: 11, color: "#AAA" }}>Cannot be late — alerts Cameron earlier</p>
+                </div>
+              </div>
+              <div style={{
+                width: 36, height: 20, borderRadius: 999, background: form.mandatory ? "#E05C6E" : "#DDD",
+                position: "relative", transition: "background 0.2s", flexShrink: 0,
+              }}>
+                <div style={{
+                  position: "absolute", top: 2, left: form.mandatory ? 18 : 2,
+                  width: 16, height: 16, borderRadius: "50%", background: "#fff",
+                  transition: "left 0.2s", boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
+                }} />
+              </div>
+            </button>
           </div>
 
           {/* ── Save ── */}
@@ -5628,6 +5742,8 @@ function AddExpenseModal({ onSave, onClose, user }) {
               };
               if (!data.dueDate) delete data.dueDate;
               if (!data.endDate) delete data.endDate;
+              if (!data.note) delete data.note;
+              if (!data.referenceNum) delete data.referenceNum;
               onSave(data);
             }}
             type="button"
@@ -5739,6 +5855,7 @@ function EditExpenseModal({ expense, onSave, onDelete, onClose }) {
     referenceNum: expense.referenceNum || "",
     account: expense.account || "Navy Platinum",
     note: expense.note || "",
+    mandatory: expense.mandatory || false,
   });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const recurring = form.recurring && form.recurring !== "none";
@@ -5863,6 +5980,39 @@ function EditExpenseModal({ expense, onSave, onDelete, onClose }) {
             onChange={(e) => set("note", e.target.value)}
           />
 
+          {/* Mandatory toggle */}
+          <button
+            type="button"
+            onClick={() => set("mandatory", !form.mandatory)}
+            style={{
+              display: "flex", alignItems: "center", justifyContent: "space-between",
+              padding: "10px 12px", borderRadius: 12, border: "1.5px solid",
+              borderColor: form.mandatory ? "#E05C6E" : "#E5DFF5",
+              background: form.mandatory ? "#FFF5F6" : "#FAFBFF",
+              cursor: "pointer", width: "100%", textAlign: "left", marginBottom: 4,
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <svg width={15} height={15} viewBox="0 0 24 24" fill={form.mandatory ? "#E05C6E" : "#CCC"}>
+                <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/>
+              </svg>
+              <div>
+                <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: form.mandatory ? "#E05C6E" : "#2D1B5E" }}>Mandatory</p>
+                <p style={{ margin: 0, fontSize: 11, color: "#AAA" }}>Cannot be late — alerts Cameron earlier</p>
+              </div>
+            </div>
+            <div style={{
+              width: 36, height: 20, borderRadius: 999, background: form.mandatory ? "#E05C6E" : "#DDD",
+              position: "relative", transition: "background 0.2s", flexShrink: 0,
+            }}>
+              <div style={{
+                position: "absolute", top: 2, left: form.mandatory ? 18 : 2,
+                width: 16, height: 16, borderRadius: "50%", background: "#fff",
+                transition: "left 0.2s", boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
+              }} />
+            </div>
+          </button>
+
           <button
             style={styles.saveBtn}
             type="button"
@@ -5876,6 +6026,7 @@ function EditExpenseModal({ expense, onSave, onDelete, onClose }) {
                 referenceNum: form.referenceNum || null,
                 account: form.account,
                 note: form.note,
+                mandatory: form.mandatory,
                 endDate: recurring ? (form.endDate || null) : null,
               };
               if (form.dueDate) {
