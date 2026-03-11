@@ -3409,6 +3409,53 @@ function CamNotificationsPanel({ expenses = [], payments = [], onClose, onNaviga
   );
 }
 
+// ── PUSH NOTIFICATION ENABLE BANNER ───────────────────────────────────
+function NotifEnableBanner({ user, notifPermission, setNotifPermission }) {
+  const [msg, setMsg] = useState(null);
+
+  async function handleEnable() {
+    const { isSupported } = await import("firebase/messaging");
+    const supported = await isSupported();
+    if (!supported) {
+      setMsg("Open the app from your Home Screen icon (not Safari) to enable notifications.");
+      return;
+    }
+    const { initPushNotifications } = await import("./pushNotifications");
+    await initPushNotifications(user);
+    const perm = typeof Notification !== "undefined" ? Notification.permission : "granted";
+    setNotifPermission(perm);
+    if (perm === "granted") setMsg(null);
+    else if (perm === "denied") setMsg(null); // banner text will update
+  }
+
+  return (
+    <div style={{ margin: "12px 16px 0", padding: "12px 16px", borderRadius: 14, background: "rgba(196,181,253,0.13)", border: "1px solid rgba(196,181,253,0.25)" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <span style={{ fontSize: 20 }}>🔔</span>
+        <div style={{ flex: 1 }}>
+          <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: "#C4B5FD" }}>Enable Notifications</p>
+          <p style={{ margin: "2px 0 0", fontSize: 12, color: "#888" }}>
+            {notifPermission === "denied"
+              ? "Blocked — go to Settings › Safari › this site to allow"
+              : "Get alerts for payments and expenses"}
+          </p>
+        </div>
+        {notifPermission !== "denied" && (
+          <button
+            style={{ padding: "7px 14px", borderRadius: 20, border: "none", background: "#C4B5FD", color: "#0A0F1E", fontSize: 12, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}
+            onClick={handleEnable}
+          >
+            Enable
+          </button>
+        )}
+      </div>
+      {msg && (
+        <p style={{ margin: "8px 0 0", fontSize: 12, color: "#F59E0B", lineHeight: 1.4 }}>{msg}</p>
+      )}
+    </div>
+  );
+}
+
 // ── DASHBOARD ─────────────────────────────────────────────────────────
 function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, payments, syncingPayments, urgentCount, targetSummaries, onOpenTarget, onAddExpense, onLogPayment, onQuickPay, onConfirm, onResolveDispute, onRejectPayment, onDismissRejectedPayment, onNavigate, onLogout, onSwitchView, viewingAsCam, onLogPaymentForKey, onDisputeExpense }) {
   const pending = payments.filter((p) => !p.confirmed && !p.rejected);
@@ -3419,6 +3466,9 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
   const [searchVal, setSearchVal] = useState("");
   const [notifOpen, setNotifOpen] = useState(false);
   const [plansOpen, setPlansOpen] = useState(false);
+  const [notifPermission, setNotifPermission] = useState(() =>
+    typeof Notification !== "undefined" ? Notification.permission : "granted"
+  );
 
   const sortedByDate = (expenses || [])
     .filter((e) => e.status !== "paid")
@@ -3630,6 +3680,11 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
             </button>
           )}
         </div>
+      )}
+
+      {/* Push notification enable banner */}
+      {notifPermission !== "granted" && (
+        <NotifEnableBanner user={user} notifPermission={notifPermission} setNotifPermission={setNotifPermission} />
       )}
 
       {/* Balance Banner — Emma */}
