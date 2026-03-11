@@ -1,45 +1,47 @@
-import { getToken, isSupported } from "firebase/messaging";
+import { getMessaging, getToken, isSupported } from "firebase/messaging";
+import { app } from "./firebase";
 import { saveDeviceToken } from "./data";
 
-// Get this from Firebase Console → Project Settings → Cloud Messaging → Web Push certificates → Key pair
 const VAPID_KEY = import.meta.env.VITE_FIREBASE_VAPID_KEY;
 
-/**
- * Call once after the user is identified.
- * Requests notification permission, gets the FCM web push token,
- * and saves it to Firestore so Cloud Functions can reach this device.
- *
- * Only works on iOS 16.4+ when the app is added to the Home Screen.
- * Silently does nothing on unsupported browsers or if permission is denied.
- *
- * @param {string} userId  "cam" | "ella"
- */
 export async function initPushNotifications(userId) {
   try {
-    // Check browser support
-    const supported = await isSupported();
-    if (!supported) return;
-
-    // Need a VAPID key to proceed
-    if (!VAPID_KEY) {
-      console.warn("VITE_FIREBASE_VAPID_KEY not set — push notifications disabled");
+    // Must be HTTPS + Home Screen PWA on iOS 16.4+
+    if (!("Notification" in window)) {
+      console.warn("Push: Notification API not available");
       return;
     }
 
-    // Request permission
+    if (!VAPID_KEY) {
+      console.warn("Push: VITE_FIREBASE_VAPID_KEY is not set");
+      return;
+    }
+
+    // Check Firebase messaging support (returns false in plain Safari, true in PWA)
+    const supported = await isSupported();
+    if (!supported) {
+      console.warn("Push: firebase/messaging not supported in this environment (open as Home Screen app on iOS 16.4+)");
+      return;
+    }
+
+    // Request permission — shows the iOS "Allow Notifications?" prompt
     const permission = await Notification.requestPermission();
+    console.log("Push: permission =", permission);
     if (permission !== "granted") return;
 
-    // Dynamically get the messaging instance (it may still be initializing)
-    const { messaging } = await import("./firebase");
-    if (!messaging) return;
+    // Register service worker
+    if (!("serviceWorker" in navigator)) {
+      console.warn("Push: service workers not supported");
+      return;
+    }
 
-    // Register the service worker first (required for background push)
     const registration = await navigator.serviceWorker.register("/firebase-messaging-sw.js", {
       scope: "/",
     });
+    console.log("Push: service worker registered", registration.scope);
 
-    // Get the FCM token
+    // Get FCM token — this is what the Cloud Functions use to send pushes
+    const messaging = getMessaging(app);
     const token = await getToken(messaging, {
       vapidKey: VAPID_KEY,
       serviceWorkerRegistration: registration,
@@ -47,9 +49,11 @@ export async function initPushNotifications(userId) {
 
     if (token) {
       await saveDeviceToken(userId, token);
+      console.log("Push: token saved for", userId);
+    } else {
+      console.warn("Push: getToken returned empty — check VAPID key and service worker");
     }
   } catch (err) {
-    // Non-fatal — push notifications are best-effort
-    console.warn("Push notification init failed:", err.message);
+    console.warn("Push: init failed —", err.message);
   }
 }
