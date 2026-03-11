@@ -3088,6 +3088,7 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchVal, setSearchVal] = useState("");
   const [notifOpen, setNotifOpen] = useState(false);
+  const [plansOpen, setPlansOpen] = useState(false);
 
   const sortedByDate = (expenses || [])
     .slice()
@@ -3339,8 +3340,8 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
       )}
 
 
-      {/* Progress */}
-      {(planTargets.length > 0 || oneTimeTargets.length > 0) && (
+      {/* Progress — Cameron only; Emma gets it inside the unified Recent Activity card */}
+      {user !== "emma" && (planTargets.length > 0 || oneTimeTargets.length > 0) && (
         <div style={styles.section}>
           <div style={{ ...styles.sectionHeader, justifyContent: "space-between" }}>
             <span style={styles.sectionTitle}>Progress</span>
@@ -3557,30 +3558,163 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
       )}
 
 
-      {/* Recent / Search Results */}
-      <div style={styles.section}>
-        <div style={{...styles.sectionHeader, justifyContent: "space-between"}}>
-          <span style={styles.sectionTitle}>
-            {tokens.length
-              ? `${filtered.length} result${filtered.length !== 1 ? "s" : ""}`
-              : user === "cam" ? "Your charges" : "Recent charges"}
-          </span>
-          {!tokens.length && (
-            <button style={styles.seeAll} onClick={() => onNavigate("expenses")}>
-              {user === "cam" ? "View all" : "See all"}
-            </button>
+      {/* ── Emma: unified Recent Activity card ── */}
+      {user === "emma" && (
+        <div style={{ margin: "0 16px 16px", background: "#fff", borderRadius: 22, border: "1.5px solid #F0EAF8", boxShadow: "0 2px 16px rgba(45,27,94,0.07)", overflow: "hidden" }}>
+
+          {/* Card header */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 16px 8px" }}>
+            <span style={{ fontSize: 15, fontWeight: 900, color: "#1A1030", letterSpacing: -0.2 }}>
+              {tokens.length ? `${filtered.length} result${filtered.length !== 1 ? "s" : ""}` : "Recent Activity"}
+            </span>
+            {!tokens.length && (
+              <button style={{ background: "none", border: "none", fontSize: 12, fontWeight: 700, color: "#9B7ED4", cursor: "pointer", padding: 0 }} onClick={() => onNavigate("expenses")}>
+                See all
+              </button>
+            )}
+          </div>
+
+          {/* Recent transactions — always first */}
+          {tokens.length && filtered.length === 0 ? (
+            <div style={{ textAlign: "center", padding: "28px 20px" }}>
+              <p style={{ fontSize: 30, margin: 0 }}>🔍</p>
+              <p style={{ fontWeight: 700, color: "#2D1B5E", fontSize: 14, margin: "10px 0 4px" }}>No results</p>
+              <p style={{ color: "#999", fontSize: 12, margin: 0 }}>Try a different amount, date, or description</p>
+            </div>
+          ) : (
+            <div style={{ paddingBottom: 4 }}>
+              <DashboardRecentChargesList items={searchedRecent} onOpenTarget={onOpenTarget} user={user} searching={tokens.length > 0} />
+            </div>
+          )}
+
+          {/* Plan progress — expandable, below charges */}
+          {!tokens.length && (planTargets.length > 0 || oneTimeTargets.length > 0) && (
+            <div style={{ borderTop: "1px solid #F5F0FB" }}>
+
+              {/* Toggle row */}
+              <button
+                type="button"
+                onClick={() => setPlansOpen(o => !o)}
+                style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", padding: "11px 16px", background: "none", border: "none", cursor: "pointer", textAlign: "left" }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <div style={{ width: 24, height: 24, borderRadius: 8, background: plansOpen ? "#F0EBF9" : "#F5F0FB", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="#9B7ED4" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>
+                    </svg>
+                  </div>
+                  <span style={{ fontSize: 13, fontWeight: 800, color: "#2D1B5E" }}>Plan progress</span>
+                  {!plansOpen && (
+                    <span style={{ fontSize: 11, color: "#BBB", fontWeight: 600 }}>
+                      {planTargets.length} plan{planTargets.length !== 1 ? "s" : ""}{oneTimeTargets.length > 0 ? ` · ${oneTimeTargets.length} one-time` : ""}
+                    </span>
+                  )}
+                </div>
+                <svg
+                  width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#C4A8D4" strokeWidth={2.5} strokeLinecap="round"
+                  style={{ transform: plansOpen ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.25s ease" }}
+                >
+                  <polyline points="6 9 12 15 18 9"/>
+                </svg>
+              </button>
+
+              {/* Animated content */}
+              <AnimatePresence initial={false}>
+                {plansOpen && (
+                  <motion.div
+                    key="plans-panel"
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: "auto", opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.28, ease: [0.4, 0, 0.2, 1] }}
+                    style={{ overflow: "hidden" }}
+                  >
+                    <div style={{ padding: "4px 16px 14px", display: "flex", flexDirection: "column", gap: 12 }}>
+
+                      {/* Plans */}
+                      {planTargets.map((p) => {
+                        const charged = Number(p.charged || 0);
+                        const paid = Number(p.paid || 0);
+                        const remaining = Number(p.remaining || 0);
+                        const pct = charged > 0 ? Math.max(0, Math.min(1, paid / charged)) : 0;
+                        return (
+                          <div key={p.key} onClick={() => onOpenTarget && onOpenTarget(p.key)} style={{ cursor: "pointer" }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
+                              <span style={{ fontSize: 13, fontWeight: 700, color: "#1A1030" }}>{p.label}</span>
+                              <span style={{ fontSize: 12, fontWeight: 800, color: pct >= 1 ? "#5CA89A" : "#9B7ED4" }}>
+                                {pct >= 1 ? "Fully paid ✓" : `$${remaining.toFixed(2)} left`}
+                              </span>
+                            </div>
+                            <div style={{ height: 5, borderRadius: 999, background: "#F0EAF8", overflow: "hidden" }}>
+                              <div style={{ height: "100%", borderRadius: 999, width: `${pct * 100}%`, background: pct >= 1 ? "linear-gradient(90deg, #7BBFB0, #5CA89A)" : "linear-gradient(90deg, #C4A8D4, #7B52C0)", transition: "width 0.5s" }} />
+                            </div>
+                            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 3 }}>
+                              <span style={{ fontSize: 10, color: "#BBB", fontWeight: 600 }}>Paid ${paid.toFixed(2)}</span>
+                              <span style={{ fontSize: 10, color: "#BBB", fontWeight: 600 }}>Total ${charged.toFixed(2)}</span>
+                            </div>
+                          </div>
+                        );
+                      })}
+
+                      {/* One-time pills */}
+                      {oneTimeTargets.length > 0 && (
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                          {oneTimeTargets.slice(0, 10).map(t => {
+                            const rem = Number(t.remaining || 0);
+                            const isPaid = rem <= 0;
+                            return (
+                              <button
+                                key={t.key} type="button"
+                                onClick={() => onOpenTarget && onOpenTarget(t.key)}
+                                style={{
+                                  display: "flex", alignItems: "center", gap: 5,
+                                  padding: "5px 11px", borderRadius: 999, cursor: "pointer",
+                                  background: isPaid ? "#EEF5EC" : "#F5F0FB",
+                                  border: `1.5px solid ${isPaid ? "#A8D5B0" : "#E5DFF5"}`,
+                                }}
+                              >
+                                {isPaid && <svg width={10} height={10} viewBox="0 0 24 24" fill="#5CA89A"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>}
+                                <span style={{ fontSize: 11, fontWeight: 700, color: isPaid ? "#5CA89A" : "#2D1B5E", whiteSpace: "nowrap" }}>{t.label}</span>
+                                {!isPaid && <span style={{ fontSize: 11, color: "#9B7ED4", fontWeight: 700 }}>${rem.toFixed(2)}</span>}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
           )}
         </div>
-        {tokens.length && filtered.length === 0 ? (
-          <div style={{ textAlign: "center", padding: "32px 20px" }}>
-            <p style={{ fontSize: 32, margin: 0 }}>🔍</p>
-            <p style={{ fontWeight: 700, color: "#2D1B5E", fontSize: 14, margin: "10px 0 4px" }}>No results</p>
-            <p style={{ color: "#999", fontSize: 12, margin: 0 }}>Try a different amount, date, or description</p>
+      )}
+
+      {/* ── Cameron: original Recent charges section ── */}
+      {user !== "emma" && (
+        <div style={styles.section}>
+          <div style={{...styles.sectionHeader, justifyContent: "space-between"}}>
+            <span style={styles.sectionTitle}>
+              {tokens.length
+                ? `${filtered.length} result${filtered.length !== 1 ? "s" : ""}`
+                : "Your charges"}
+            </span>
+            {!tokens.length && (
+              <button style={styles.seeAll} onClick={() => onNavigate("expenses")}>View all</button>
+            )}
           </div>
-        ) : (
-          <DashboardRecentChargesList items={searchedRecent} onOpenTarget={onOpenTarget} user={user} searching={tokens.length > 0} />
-        )}
-      </div>
+          {tokens.length && filtered.length === 0 ? (
+            <div style={{ textAlign: "center", padding: "32px 20px" }}>
+              <p style={{ fontSize: 32, margin: 0 }}>🔍</p>
+              <p style={{ fontWeight: 700, color: "#2D1B5E", fontSize: 14, margin: "10px 0 4px" }}>No results</p>
+              <p style={{ color: "#999", fontSize: 12, margin: 0 }}>Try a different amount, date, or description</p>
+            </div>
+          ) : (
+            <DashboardRecentChargesList items={searchedRecent} onOpenTarget={onOpenTarget} user={user} searching={tokens.length > 0} />
+          )}
+        </div>
+      )}
 
       <div style={{height: 80}} />
 
