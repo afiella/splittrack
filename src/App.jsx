@@ -1164,6 +1164,11 @@ export default function App() {
           payments={payments}
           onBack={() => { setScreen("dashboard"); setActiveTargetKey(null); }}
           onEditExpense={(exp) => setEditingExpense(exp)}
+          onLogPaymentForKey={(key, amount) => {
+            setPaymentDraftKey(key || "general");
+            setPaymentDraftAmount(amount ?? null);
+            setModal("logPayment");
+          }}
         />
       )}
       {screen === "history" && (
@@ -6997,7 +7002,7 @@ iconBtn: {
 };
 // ── TARGET DETAILS SCREEN ────────────────────────────────────────────
 
-function TargetDetailsScreen({ user, targetKey, targetSummaries, expenses, payments, onBack, onEditExpense }) {
+function TargetDetailsScreen({ user, targetKey, targetSummaries, expenses, payments, onBack, onEditExpense, onLogPaymentForKey }) {
   const summary = targetSummaries && targetKey ? targetSummaries.get(targetKey) : null;
 
   const title = summary?.label || "Details";
@@ -7085,7 +7090,15 @@ function TargetDetailsScreen({ user, targetKey, targetSummaries, expenses, payme
             .slice()
             .sort((a, b) => new Date(b.date) - new Date(a.date))
             .map((e) => (
-              <ExpenseRow key={e.id} expense={e} detailed user={user} onEdit={onEditExpense} />
+              <ExpenseRow
+                key={e.id}
+                expense={e}
+                user={user}
+                onEdit={onEditExpense}
+                targetSummaries={targetSummaries}
+                payments={payments}
+                onLogPaymentForKey={onLogPaymentForKey}
+              />
             ))
         )}
       </div>
@@ -7113,6 +7126,17 @@ function TargetDetailsScreen({ user, targetKey, targetSummaries, expenses, payme
       <p style={{ color: "#7A5A10", fontSize: 13, margin: 0 }}>
         Pending payments will reduce the balance once Emmanuella confirms them.
       </p>
+    </div>
+  )}
+
+  {user === "cam" && remaining > 0.005 && typeof onLogPaymentForKey === "function" && (
+    <div style={{ marginBottom: 14 }}>
+      <QuickPayButtons
+        targetKey={targetKey}
+        myShare={Number(summary?.suggested ?? remaining)}
+        remaining={remaining}
+        onLogPaymentForKey={onLogPaymentForKey}
+      />
     </div>
   )}
 
