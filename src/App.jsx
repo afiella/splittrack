@@ -1093,7 +1093,19 @@ export default function App() {
 
   return (
     <div style={{ ...styles.app, paddingTop: (realUser === "emma" && viewAs === "cam") ? 36 : 0 }}>
-      <style>{`@keyframes stSpin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}`}</style>
+      <style>{`
+        @keyframes stSpin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+        @keyframes lgSettle{0%{transform:scaleX(1) scaleY(1)}30%{transform:scaleX(1.07) scaleY(0.88)}60%{transform:scaleX(0.97) scaleY(1.04)}80%{transform:scaleX(1.01) scaleY(0.99)}100%{transform:scaleX(1) scaleY(1)}}
+        @keyframes lgShimmer{0%{opacity:0;transform:translateX(-100%) skewX(-12deg)}20%{opacity:1}100%{opacity:0;transform:translateX(280%) skewX(-12deg)}}
+        .lg-pill{position:absolute;top:3px;bottom:3px;border-radius:11px;pointer-events:none;transition:left .4s cubic-bezier(.34,1.56,.64,1),width .4s cubic-bezier(.34,1.56,.64,1);backdrop-filter:blur(20px) saturate(180%);-webkit-backdrop-filter:blur(20px) saturate(180%);background:linear-gradient(145deg,rgba(255,255,255,0.32) 0%,rgba(255,255,255,0.12) 100%);border:1px solid rgba(255,255,255,0.45);box-shadow:0 2px 12px rgba(0,0,0,0.14),0 1px 0 rgba(255,255,255,0.6) inset,0 -1px 0 rgba(0,0,0,0.06) inset;overflow:hidden}
+        .lg-pill::after{content:'';position:absolute;top:0;bottom:0;width:40%;background:linear-gradient(90deg,transparent,rgba(255,255,255,0.55),transparent);animation:lgShimmer .7s ease forwards .05s}
+        .lg-pill.lg-settle{animation:lgSettle .4s cubic-bezier(.34,1.56,.64,1) forwards}
+        .lg-btn{position:relative;z-index:1;background:transparent;border:none;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;transition:color .22s ease,opacity .22s ease}
+        .lg-btn:active{transform:scale(0.94);transition:transform .1s ease}
+        .lg-chip-active{backdrop-filter:blur(16px) saturate(160%);-webkit-backdrop-filter:blur(16px) saturate(160%);box-shadow:0 2px 10px rgba(0,0,0,0.13),inset 0 1px 0 rgba(255,255,255,0.45)}
+        .lg-nav-pill{position:absolute;border-radius:14px;pointer-events:none;transition:left .42s cubic-bezier(.34,1.56,.64,1),width .42s cubic-bezier(.34,1.56,.64,1),top .42s cubic-bezier(.34,1.56,.64,1),height .42s cubic-bezier(.34,1.56,.64,1);backdrop-filter:blur(20px) saturate(180%);-webkit-backdrop-filter:blur(20px) saturate(180%);background:linear-gradient(145deg,rgba(255,255,255,0.22),rgba(255,255,255,0.08));border:1px solid rgba(255,255,255,0.35);box-shadow:0 2px 12px rgba(0,0,0,0.12),inset 0 1px 0 rgba(255,255,255,0.4);overflow:hidden}
+        .lg-nav-pill::after{content:'';position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,0.3),transparent);background-size:200% 100%;animation:lgShimmer .6s ease forwards .05s}
+      `}</style>
       <AnimatePresence>
         {updateAvailable && <UpdateBanner onTap={() => window.location.reload()} />}
       </AnimatePresence>
@@ -4766,17 +4778,21 @@ function ExpensesScreen({
                 : [["all","All"],["unpaid","Unpaid"],["overdue","Overdue"],["paid","Paid"]]
               ).map(([val, label]) => {
                 const isActive = statusFilter === val;
-                const accentColor =
-                  val === "overdue" ? { background: "#E05C6E", borderColor: "#E05C6E", color: "#fff" } :
-                  null;
+                const isOverdue = val === "overdue";
                 return (
                   <button
                     key={val}
                     type="button"
+                    className={isActive ? "lg-chip-active" : ""}
                     onClick={() => setStatusFilter(val)}
                     style={{
                       ...island.chip,
-                      ...(isActive ? { ...island.chipActive, ...(accentColor || {}) } : {}),
+                      transition: "background 0.22s ease, color 0.22s ease, border-color 0.22s ease, transform 0.1s ease",
+                      ...(isActive ? {
+                        ...island.chipActive,
+                        ...(isOverdue ? { background: "#E05C6E", borderColor: "#E05C6E", color: "#fff" } : {}),
+                        transform: "scale(1.04)",
+                      } : {}),
                     }}
                   >
                     {label}
@@ -4801,6 +4817,7 @@ function ExpensesScreen({
                   <button
                     key={val}
                     type="button"
+                    className={sortBy === val ? "lg-chip-active" : ""}
                     onClick={() => setSortBy(val)}
                     style={{
                       flexShrink: 0,
@@ -4814,6 +4831,9 @@ function ExpensesScreen({
                       fontSize: 11,
                       cursor: "pointer",
                       whiteSpace: "nowrap",
+                      transition: "background 0.22s ease, color 0.22s ease, border-color 0.22s ease, transform 0.1s ease",
+                      transform: sortBy === val ? "scale(1.05)" : "scale(1)",
+                      fontFamily: "inherit",
                     }}
                   >
                     {label}
@@ -6314,26 +6334,14 @@ function AddExpenseModal({ onSave, onClose, user }) {
           <div style={groupCard}>
             {groupLabel("Who Pays", "#C0485A")}
 
-            <div style={{ display: "flex", gap: 8 }}>
-              {splitOptions.map(([val, label, color]) => (
-                <button
-                  key={val}
-                  type="button"
-                  style={{
-                    flex: 1, padding: "11px 6px", borderRadius: 12, border: "1.5px solid",
-                    borderColor: form.split === val ? color : "#DDD5C5",
-                    background: form.split === val ? color : "#EEE9E0",
-                    color: form.split === val ? "#fff" : "#888",
-                    fontWeight: form.split === val ? 700 : 500,
-                    fontSize: 12, cursor: "pointer", fontFamily: "inherit",
-                    transition: "all 0.15s",
-                  }}
-                  onClick={() => set("split", val)}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
+            <LiquidSegmented
+              options={splitOptions.map(([v, l]) => [v, l])}
+              value={form.split}
+              onChange={(v) => set("split", v)}
+              containerStyle={{ background: "rgba(0,49,75,0.08)" }}
+              activeColor="#00314B"
+              inactiveColor="#888"
+            />
 
             <div>
               <label style={{ ...styles.fieldLabel, marginBottom: 5 }}>Charged to</label>
@@ -6542,17 +6550,15 @@ function QuickAddModal({ user, onSave, onClose }) {
         />
 
         {/* Split chips */}
-        <div style={{ display: "flex", gap: 8, marginBottom: 18 }}>
-          {splitOptions.map(([val, label]) => (
-            <button
-              key={val}
-              type="button"
-              onClick={() => setSplit(val)}
-              style={{ flex: 1, padding: "10px 6px", borderRadius: 12, border: "1.5px solid", borderColor: split === val ? "#00314B" : "#DDD5C5", background: split === val ? "#00314B" : "#F5F1EB", color: split === val ? "#fff" : "#888", fontWeight: 700, fontSize: 12, fontFamily: "inherit", cursor: "pointer" }}
-            >
-              {label}
-            </button>
-          ))}
+        <div style={{ marginBottom: 18 }}>
+          <LiquidSegmented
+            options={splitOptions}
+            value={split}
+            onChange={setSplit}
+            containerStyle={{ background: "rgba(0,49,75,0.08)" }}
+            activeColor="#00314B"
+            inactiveColor="#888"
+          />
         </div>
 
         {/* Save */}
@@ -6976,6 +6982,51 @@ function LogPaymentModal({ balance, onSave, onClose, user, targets = [], planSum
   );
 }
 
+// ── LIQUID GLASS SEGMENTED SELECTOR ──────────────────────────────────
+function LiquidSegmented({ options, value, onChange, containerStyle, itemStyle, activeColor, inactiveColor }) {
+  const containerRef = useRef(null);
+  const [pill, setPill] = useState({ left: 0, width: 0 });
+  const [settling, setSettling] = useState(false);
+  const prevValue = useRef(value);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const idx = options.findIndex(o => (Array.isArray(o) ? o[0] : o) === value);
+    const item = el.querySelectorAll('.lg-btn')[idx];
+    if (!item) return;
+    const cr = el.getBoundingClientRect();
+    const ir = item.getBoundingClientRect();
+    setPill({ left: ir.left - cr.left, width: ir.width });
+    if (prevValue.current !== value) {
+      setSettling(false);
+      requestAnimationFrame(() => { setSettling(true); setTimeout(() => setSettling(false), 450); });
+      prevValue.current = value;
+    }
+  }, [value, options]);
+
+  return (
+    <div ref={containerRef} style={{ position: "relative", display: "flex", borderRadius: 14, padding: "3px", background: "rgba(0,0,0,0.07)", gap: 0, ...containerStyle }}>
+      <div className={`lg-pill${settling ? " lg-settle" : ""}`} style={{ left: pill.left, width: pill.width }} />
+      {options.map(opt => {
+        const [val, label] = Array.isArray(opt) ? opt : [opt, opt];
+        const active = val === value;
+        return (
+          <button
+            key={val}
+            className="lg-btn"
+            type="button"
+            onClick={() => onChange(val)}
+            style={{ flex: 1, padding: "9px 6px", borderRadius: 11, fontWeight: 700, fontSize: 13, color: active ? (activeColor || "#1A1A1A") : (inactiveColor || "#888"), ...itemStyle }}
+          >
+            {label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 // ── BOTTOM NAV ────────────────────────────────────────────────────────
 function BottomNav({ screen, onNavigate, urgentCount = 0, hidden = false }) {
   const tabs = [
@@ -6984,16 +7035,34 @@ function BottomNav({ screen, onNavigate, urgentCount = 0, hidden = false }) {
     { id: "urgent", icon: icons.fire, label: "Urgent" },
     { id: "history", icon: icons.clock, label: "History" },
   ];
+  const navRef = useRef(null);
+  const [navPill, setNavPill] = useState({ left: 0, top: 0, width: 0, height: 0 });
+  const prevScreen = useRef(screen);
+
+  useEffect(() => {
+    const el = navRef.current;
+    if (!el) return;
+    const idx = tabs.findIndex(t => t.id === screen);
+    const btn = el.querySelectorAll("button")[idx];
+    if (!btn) return;
+    const nr = el.getBoundingClientRect();
+    const br = btn.getBoundingClientRect();
+    setNavPill({ left: br.left - nr.left + 4, top: br.top - nr.top + 4, width: br.width - 8, height: br.height - 8 });
+    prevScreen.current = screen;
+  }, [screen]); // eslint-disable-line react-hooks/exhaustive-deps
+
   if (hidden) return null;
   return (
-    <div style={styles.bottomNav}>
+    <div ref={navRef} style={{ ...styles.bottomNav, position: "fixed", overflow: "hidden" }}>
+      <div className="lg-nav-pill" style={{ left: navPill.left, top: navPill.top, width: navPill.width, height: navPill.height }} />
       {tabs.map(t => (
         <button
           key={t.id}
-          style={{ ...styles.navBtn, ...(screen === t.id ? styles.navBtnActive : {}) }}
+          className="lg-btn"
+          style={{ ...styles.navBtn, position: "relative", zIndex: 1 }}
           onClick={() => onNavigate(t.id)}
         >
-          <div style={{ position: "relative" }}>
+          <div style={{ position: "relative", transition: "transform 0.3s cubic-bezier(.34,1.56,.64,1)", transform: screen === t.id ? "scale(1.15) translateY(-1px)" : "scale(1)" }}>
             <Icon
               path={t.icon}
               size={20}
@@ -7006,36 +7075,12 @@ function BottomNav({ screen, onNavigate, urgentCount = 0, hidden = false }) {
               }
             />
             {t.id === "urgent" && urgentCount > 0 && (
-              <span
-                style={{
-                  position: "absolute",
-                  top: -4,
-                  right: -6,
-                  background: "#E05C6E",
-                  color: "#fff",
-                  borderRadius: 10,
-                  fontSize: 9,
-                  fontWeight: 800,
-                  padding: "1px 5px",
-                  minWidth: 14,
-                  textAlign: "center",
-                }}
-              >
+              <span style={{ position: "absolute", top: -4, right: -6, background: "#E05C6E", color: "#fff", borderRadius: 10, fontSize: 9, fontWeight: 800, padding: "1px 5px", minWidth: 14, textAlign: "center" }}>
                 {urgentCount}
               </span>
             )}
           </div>
-          <span
-            style={{
-              fontSize: 10,
-              color:
-                screen === t.id
-                  ? "#A6B49E"
-                  : t.id === "urgent" && urgentCount > 0
-                  ? "#E05C6E"
-                  : "#AAA",
-            }}
-          >
+          <span style={{ fontSize: 10, transition: "color 0.22s ease, font-weight 0.22s ease", color: screen === t.id ? "#A6B49E" : t.id === "urgent" && urgentCount > 0 ? "#E05C6E" : "#AAA", fontWeight: screen === t.id ? 700 : 400 }}>
             {t.label}
           </span>
         </button>
