@@ -14,6 +14,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
         FirebaseApp.configure()
 
+        // Register native plugins
+        CAPBridgeViewController.add(pluginType: AddExpensePlugin.self, jsName: "AddExpense", pluginName: "AddExpense")
+
         return true
     }
 
