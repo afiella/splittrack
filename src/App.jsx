@@ -3410,7 +3410,7 @@ function CamNotificationsPanel({ expenses = [], payments = [], onClose, onNaviga
 }
 
 // ── PUSH NOTIFICATION ENABLE BANNER ───────────────────────────────────
-function NotifEnableBanner({ user, notifPermission, setNotifPermission }) {
+function NotifEnableBanner({ user, notifPermission, setNotifPermission, setTokenSaved }) {
   const [msg, setMsg] = useState(null);
 
   async function handleEnable() {
@@ -3424,8 +3424,10 @@ function NotifEnableBanner({ user, notifPermission, setNotifPermission }) {
     await initPushNotifications(user);
     const perm = typeof Notification !== "undefined" ? Notification.permission : "granted";
     setNotifPermission(perm);
-    if (perm === "granted") setMsg(null);
-    else if (perm === "denied") setMsg(null); // banner text will update
+    if (perm === "granted") {
+      setMsg(null);
+      setTokenSaved(localStorage.getItem("fcmTokenSaved") === user);
+    }
   }
 
   return (
@@ -3469,6 +3471,7 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
   const [notifPermission, setNotifPermission] = useState(() =>
     typeof Notification !== "undefined" ? Notification.permission : "granted"
   );
+  const [tokenSaved, setTokenSaved] = useState(() => localStorage.getItem("fcmTokenSaved") === user);
 
   const sortedByDate = (expenses || [])
     .filter((e) => e.status !== "paid")
@@ -3683,8 +3686,8 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
       )}
 
       {/* Push notification enable banner */}
-      {notifPermission !== "granted" && (
-        <NotifEnableBanner user={user} notifPermission={notifPermission} setNotifPermission={setNotifPermission} />
+      {(!tokenSaved || notifPermission !== "granted") && (
+        <NotifEnableBanner user={user} notifPermission={notifPermission} setNotifPermission={setNotifPermission} setTokenSaved={setTokenSaved} />
       )}
 
       {/* Balance Banner — Emma */}

@@ -49,6 +49,7 @@ export async function initPushNotifications(userId) {
 
     if (token) {
       await saveDeviceToken(userId, token);
+      localStorage.setItem("fcmTokenSaved", userId);
       console.log("Push: token saved for", userId);
     } else {
       console.warn("Push: getToken returned empty — check VAPID key and service worker");
