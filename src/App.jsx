@@ -17,7 +17,7 @@ const INITIAL_PAYMENTS = [
 ];
 
 const SPLIT_LABELS = { mine: "I pay", cam: "Cam pays", ella: "Emmanuella pays", split: "Split 50/50" };
-const SPLIT_COLORS = { mine: "#7BBFB0", cam: "#E8A0B0", ella: "#7BBFB0", split: "#C4A8D4" };
+const SPLIT_COLORS = { mine: "#A6B49E", cam: "#E8A0B0", ella: "#A6B49E", split: "#D5BD96" };
 const CATEGORIES = ["Groceries", "Household", "Insurance", "Subscriptions", "Utilities", "Entertainment", "Other"];
 
 const EXPENSE_TEMPLATES = [
@@ -190,7 +190,7 @@ function renderNote(text, style = {}) {
         if (!content && i < lines.length - 1) return <div key={i} style={{ height: 4 }} />;
         return (
           <div key={i} style={{ display: "flex", gap: 6, alignItems: "flex-start" }}>
-            {isBullet && <span style={{ flexShrink: 0, fontWeight: 700, color: "#9B7ED4", marginTop: 1 }}>•</span>}
+            {isBullet && <span style={{ flexShrink: 0, fontWeight: 700, color: "#A6B7CB", marginTop: 1 }}>•</span>}
             <span>{content}</span>
           </div>
         );
@@ -242,9 +242,9 @@ function PaymentMethodIcon({ method }) {
     "Venmo":      { bg: "#008CFF", color: "#fff", label: "V" },
     "Zelle":      { bg: "#6D1ED4", color: "#fff", label: "Z" },
     "Cash App":   { bg: "#00C244", color: "#fff", label: "$" },
-    "Cash":       { bg: "#1E8449", color: "#fff", label: "$" },
+    "Cash":       { bg: "#2D5A4A", color: "#fff", label: "$" },
   };
-  const cfg = configs[method] || { bg: "#7BBFB0", color: "#fff", label: "P" };
+  const cfg = configs[method] || { bg: "#A6B49E", color: "#fff", label: "P" };
   return (
     <div style={{ width: 44, height: 44, borderRadius: 12, background: cfg.bg, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
       <span style={{ fontSize: method === "Apple Pay" ? 10 : 16, fontWeight: 900, color: cfg.color, letterSpacing: method === "Apple Pay" ? -0.3 : 0 }}>
@@ -627,7 +627,7 @@ function UpdateBanner({ onTap }) {
         left: 0,
         right: 0,
         zIndex: 99999,
-        background: "linear-gradient(90deg, #2D1B5E 0%, #5B3FA6 100%)",
+        background: "linear-gradient(90deg, #00314B 0%, #1B4D6B 100%)",
         color: "#fff",
         display: "flex",
         alignItems: "center",
@@ -636,10 +636,10 @@ function UpdateBanner({ onTap }) {
         cursor: "pointer",
         paddingTop: "calc(env(safe-area-inset-top, 0px) + 12px)",
         paddingBottom: 12,
-        boxShadow: "0 4px 24px rgba(45,27,94,0.4)",
+        boxShadow: "0 4px 24px rgba(0,49,75,0.4)",
       }}
     >
-      <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="#A8EFC4" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+      <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="#C5D9C2" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
         <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1M16 8l-4-4-4 4M12 4v12" />
       </svg>
       <span style={{ fontSize: 13, fontWeight: 700, letterSpacing: 0.2 }}>
@@ -1052,7 +1052,7 @@ export default function App() {
       {realUser === "emma" && (
         <div style={{
           position: "fixed", top: 0, left: 0, right: 0, zIndex: 9999,
-          background: viewAs === "cam" ? "#2D1B5E" : "transparent",
+          background: viewAs === "cam" ? "#00314B" : "transparent",
           display: "flex", alignItems: "center", justifyContent: "space-between",
           padding: viewAs === "cam" ? "8px 16px" : "0",
           height: viewAs === "cam" ? "auto" : 0,
@@ -1079,8 +1079,8 @@ export default function App() {
       {notification && (
         <div style={{
           ...styles.notification,
-          background: notification.type === "error" ? "#E8A0B0" : "#A8C5A0",
-          color: notification.type === "error" ? "#7A1C3E" : "#1A4A2E",
+          background: notification.type === "error" ? "#E8A0B0" : "#A6B49E",
+          color: notification.type === "error" ? "#7A1C3E" : "#1A3530",
         }}>
           {notification.msg}
         </div>
@@ -1245,7 +1245,7 @@ function LoginScreen() {
         <p style={styles.loginSubtitle}>Sign in to continue</p>
         <div style={styles.loginBtns}>
           <button
-            style={{ ...styles.loginBtn, background: "linear-gradient(135deg, #7BBFB0, #5CA89A)", opacity: loading ? 0.6 : 1 }}
+            style={{ ...styles.loginBtn, background: "linear-gradient(135deg, #A6B49E, #4E635E)", opacity: loading ? 0.6 : 1 }}
             onClick={handleGoogleSignIn}
             disabled={loading}
           >
@@ -1313,7 +1313,7 @@ function DashboardPendingCard({ pendingPayments = [], onConfirm, onResolveDisput
         background: "#fff",
         borderRadius: 20,
         padding: 14,
-        boxShadow: "0 4px 16px rgba(30,15,69,0.09)",
+        boxShadow: "0 4px 16px rgba(0,49,75,0.09)",
         border: "1.5px solid #ede4f5",
         display: "flex",
         flexDirection: "column",
@@ -1383,17 +1383,17 @@ function DashboardPendingCard({ pendingPayments = [], onConfirm, onResolveDisput
                             value={declineInput}
                             onChange={ev => setDeclineInput(ev.target.value)}
                             rows={2}
-                            style={{ width: "100%", padding: "8px 10px", borderRadius: 9, border: "1.5px solid #E5DFF5", fontSize: 11, fontFamily: "inherit", outline: "none", resize: "none", boxSizing: "border-box", marginBottom: 6, background: "#FDFBFF", color: "#1A1030" }}
+                            style={{ width: "100%", padding: "8px 10px", borderRadius: 9, border: "1.5px solid #DDD5C5", fontSize: 11, fontFamily: "inherit", outline: "none", resize: "none", boxSizing: "border-box", marginBottom: 6, background: "#F5F1EB", color: "#0A1E2B" }}
                           />
                           <div style={{ display: "flex", gap: 6 }}>
                             <button type="button"
                               onClick={() => { setDecliningId(null); setDeclineInput(""); }}
-                              style={{ flex: 1, padding: "7px 0", borderRadius: 9, border: "none", background: "#F0EBF9", color: "#888", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                              style={{ flex: 1, padding: "7px 0", borderRadius: 9, border: "none", background: "#EDE7DC", color: "#888", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
                               Cancel
                             </button>
                             <button type="button"
                               onClick={() => { onResolveDispute && onResolveDispute(p.id, "denied", declineInput.trim() || null); setExpandedDispute(null); setDecliningId(null); setDeclineInput(""); }}
-                              style={{ flex: 1, padding: "7px 0", borderRadius: 9, border: "none", background: "#2D1B5E", color: "#fff", fontSize: 11, fontWeight: 800, cursor: "pointer" }}>
+                              style={{ flex: 1, padding: "7px 0", borderRadius: 9, border: "none", background: "#00314B", color: "#fff", fontSize: 11, fontWeight: 800, cursor: "pointer" }}>
                               Send
                             </button>
                           </div>
@@ -1402,12 +1402,12 @@ function DashboardPendingCard({ pendingPayments = [], onConfirm, onResolveDisput
                         <div style={{ display: "flex", gap: 6 }}>
                           <button type="button"
                             onClick={() => { onResolveDispute && onResolveDispute(p.id, "accepted"); setExpandedDispute(null); }}
-                            style={{ flex: 1, padding: "7px 0", borderRadius: 9, border: "none", background: "linear-gradient(135deg, #7BBFB0, #5CA89A)", color: "#fff", fontSize: 11, fontWeight: 800, cursor: "pointer" }}>
+                            style={{ flex: 1, padding: "7px 0", borderRadius: 9, border: "none", background: "linear-gradient(135deg, #A6B49E, #4E635E)", color: "#fff", fontSize: 11, fontWeight: 800, cursor: "pointer" }}>
                             ✓ Accept
                           </button>
                           <button type="button"
                             onClick={() => { setDecliningId(p.id); setDeclineInput(""); }}
-                            style={{ flex: 1, padding: "7px 0", borderRadius: 9, border: "none", background: "#F5F0FB", color: "#888", fontSize: 11, fontWeight: 800, cursor: "pointer" }}>
+                            style={{ flex: 1, padding: "7px 0", borderRadius: 9, border: "none", background: "#EEE9E0", color: "#888", fontSize: 11, fontWeight: 800, cursor: "pointer" }}>
                             Decline
                           </button>
                         </div>
@@ -1426,7 +1426,7 @@ function DashboardPendingCard({ pendingPayments = [], onConfirm, onResolveDisput
                 role="button"
                 onClick={() => setSelectedIds((prev) => { const next = new Set(prev); if (next.has(p.id)) next.delete(p.id); else next.add(p.id); return next; })}
               >
-                <div style={{ width: 20, height: 20, borderRadius: 7, flexShrink: 0, border: selectedIds.has(p.id) ? "1.5px solid #7bbfb0" : "1.5px solid #d8eae7", background: selectedIds.has(p.id) ? "#7bbfb0" : "#f5fffd", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <div style={{ width: 20, height: 20, borderRadius: 7, flexShrink: 0, border: selectedIds.has(p.id) ? "1.5px solid #A6B49E" : "1.5px solid #d8eae7", background: selectedIds.has(p.id) ? "#A6B49E" : "#f5fffd", display: "flex", alignItems: "center", justifyContent: "center" }}>
                   {selectedIds.has(p.id) && <Icon path={icons.check} size={14} color="#fff" />}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
@@ -1436,7 +1436,7 @@ function DashboardPendingCard({ pendingPayments = [], onConfirm, onResolveDisput
                 <p style={{ fontSize: 11, fontWeight: 700, color: "#1e0f45", flexShrink: 0, margin: 0 }}>${Number(p.amount || 0).toFixed(2)}</p>
                 <button type="button"
                   onClick={(ev) => { ev.stopPropagation(); setSelectedIds((prev) => { const next = new Set(prev); next.add(p.id); return next; }); onConfirm(p.id); }}
-                  style={{ marginLeft: 6, background: "#7bbfb0", border: "none", borderRadius: 10, padding: "6px 8px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+                  style={{ marginLeft: 6, background: "#A6B49E", border: "none", borderRadius: 10, padding: "6px 8px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
                   aria-label="Confirm payment"
                 >
                   <Icon path={icons.check} size={14} color="#fff" />
@@ -1449,7 +1449,7 @@ function DashboardPendingCard({ pendingPayments = [], onConfirm, onResolveDisput
 
       {payments.length > 0 && (
         <button type="button"
-          style={{ width: "100%", marginTop: 8, background: "linear-gradient(135deg, #7bbfb0, #5ca898)", border: "none", borderRadius: 11, padding: 8, color: "#fff", fontSize: 11, fontWeight: 700, opacity: selectedCount === 0 ? 0.55 : 1, cursor: selectedCount === 0 ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}
+          style={{ width: "100%", marginTop: 8, background: "linear-gradient(135deg, #A6B49E, #4E635E)", border: "none", borderRadius: 11, padding: 8, color: "#fff", fontSize: 11, fontWeight: 700, opacity: selectedCount === 0 ? 0.55 : 1, cursor: selectedCount === 0 ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}
           onClick={confirmAll}
           disabled={selectedCount === 0}
         >
@@ -1507,7 +1507,7 @@ function DashboardRecentChargesList({ items = [], onOpenTarget, user, searching 
                 : "Unpaid";
         const dashStatusColor =
           e.status === "paid" || youIsCredit
-            ? "#7BBFB0"
+            ? "#A6B49E"
             : dashUrgency === "overdue"
               ? "#E05C6E"
               : "#C06A8A";
@@ -1515,7 +1515,7 @@ function DashboardRecentChargesList({ items = [], onOpenTarget, user, searching 
           e.status === "paid" || youIsCredit ? "100%" : dashUrgency === "overdue" ? "85%" : "55%";
         const dashStatusBg =
           e.status === "paid" || youIsCredit
-            ? "#EEF5EC"
+            ? "#EBF0E8"
             : dashUrgency === "overdue"
               ? "#FFF0F0"
               : "#FBEFF5";
@@ -1530,7 +1530,7 @@ function DashboardRecentChargesList({ items = [], onOpenTarget, user, searching 
             style={{
               width: "100%",
               background: "#fff",
-              border: "1px solid #F0EAF8",
+              border: "1px solid #EDE7DC",
               borderRadius: 16,
               padding: "12px 14px",
               display: "flex",
@@ -1558,7 +1558,7 @@ function DashboardRecentChargesList({ items = [], onOpenTarget, user, searching 
                   margin: 0,
                   fontSize: 13,
                   fontWeight: 800,
-                  color: "#2D1B5E",
+                  color: "#00314B",
                   whiteSpace: "nowrap",
                   overflow: "hidden",
                   textOverflow: "ellipsis",
@@ -1581,7 +1581,7 @@ function DashboardRecentChargesList({ items = [], onOpenTarget, user, searching 
             </div>
 
             <div style={{ textAlign: "right", flexShrink: 0 }}>
-              <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: "#2D1B5E" }}>
+              <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: "#00314B" }}>
                 ${Number(user === "cam" ? Math.abs(youAmt) : Number(e.amount || 0)).toFixed(2)}
               </p>
               {user === "emma" && camAmt !== 0 && (
@@ -1607,7 +1607,7 @@ function DashboardRecentChargesList({ items = [], onOpenTarget, user, searching 
     background: dashStatusBg,
     color:
       e.status === "paid" || youIsCredit
-        ? "#1E8449"
+        ? "#2D5A4A"
         : dashUrgency === "overdue"
           ? "#E05C6E"
           : "#C06A8A",
@@ -1644,7 +1644,7 @@ function DashboardRecentChargesList({ items = [], onOpenTarget, user, searching 
             </div>
 
             <div style={{ marginLeft: 6, flexShrink: 0 }}>
-              <Icon path={icons.forward} size={18} color="#C4A8D4" />
+              <Icon path={icons.forward} size={18} color="#D5BD96" />
             </div>
           </button>
         );
@@ -1692,7 +1692,7 @@ function getScheduleExpenses(expenses) {
   return results.sort((a, b) => a._dueDate - b._dueDate);
 }
 
-function ScheduleMiniPreview({ expenses, onViewFull, accentColor = "#A8EFC4" }) {
+function ScheduleMiniPreview({ expenses, onViewFull, accentColor = "#C5D9C2" }) {
   const scheduled = getScheduleExpenses(expenses);
   if (!scheduled.length) return null;
 
@@ -1800,13 +1800,13 @@ function FullCalendarSheet({ expenses, onClose }) {
         style={{ background: "#fff", borderRadius: "24px 24px 0 0", width: "100%", maxWidth: 430, maxHeight: "88vh", overflowY: "auto", paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 20px)" }}
         onClick={(ev) => ev.stopPropagation()}
       >
-        <div style={{ width: 40, height: 4, borderRadius: 999, background: "#E5DFF5", margin: "12px auto 0" }} />
+        <div style={{ width: 40, height: 4, borderRadius: 999, background: "#DDD5C5", margin: "12px auto 0" }} />
 
         {/* Month nav */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 20px 6px" }}>
-          <button type="button" onClick={() => setCurrentMonth(m => new Date(m.getFullYear(), m.getMonth() - 1, 1))} style={{ width: 36, height: 36, borderRadius: 999, border: "none", background: "#F5F0FB", cursor: "pointer", fontSize: 18, color: "#2D1B5E", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}>‹</button>
-          <p style={{ margin: 0, fontSize: 17, fontWeight: 800, color: "#2D1B5E" }}>{monthName} {year}</p>
-          <button type="button" onClick={() => setCurrentMonth(m => new Date(m.getFullYear(), m.getMonth() + 1, 1))} style={{ width: 36, height: 36, borderRadius: 999, border: "none", background: "#F5F0FB", cursor: "pointer", fontSize: 18, color: "#2D1B5E", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}>›</button>
+          <button type="button" onClick={() => setCurrentMonth(m => new Date(m.getFullYear(), m.getMonth() - 1, 1))} style={{ width: 36, height: 36, borderRadius: 999, border: "none", background: "#EEE9E0", cursor: "pointer", fontSize: 18, color: "#00314B", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}>‹</button>
+          <p style={{ margin: 0, fontSize: 17, fontWeight: 800, color: "#00314B" }}>{monthName} {year}</p>
+          <button type="button" onClick={() => setCurrentMonth(m => new Date(m.getFullYear(), m.getMonth() + 1, 1))} style={{ width: 36, height: 36, borderRadius: 999, border: "none", background: "#EEE9E0", cursor: "pointer", fontSize: 18, color: "#00314B", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}>›</button>
         </div>
 
         {/* Day labels */}
@@ -1829,11 +1829,11 @@ function FullCalendarSheet({ expenses, onClose }) {
               <div
                 key={key}
                 onClick={() => has && setSelectedDate(isSel ? null : key)}
-                style={{ textAlign: "center", padding: "6px 2px", borderRadius: 10, minHeight: 52, display: "flex", flexDirection: "column", alignItems: "center", gap: 2, background: isSel ? "#2D1B5E" : isToday ? "#F5F0FB" : "transparent", cursor: has ? "pointer" : "default", transition: "background 0.15s" }}
+                style={{ textAlign: "center", padding: "6px 2px", borderRadius: 10, minHeight: 52, display: "flex", flexDirection: "column", alignItems: "center", gap: 2, background: isSel ? "#00314B" : isToday ? "#EEE9E0" : "transparent", cursor: has ? "pointer" : "default", transition: "background 0.15s" }}
               >
-                <span style={{ fontSize: 14, fontWeight: isToday || isSel ? 800 : 400, color: isSel ? "#fff" : isToday ? "#2D1B5E" : "#1A1A1A" }}>{d}</span>
-                {has && <span style={{ fontSize: 9, fontWeight: 800, color: isSel ? "#A8EFC4" : "#7BBFB0" }}>${total >= 100 ? Math.round(total) : total.toFixed(0)}</span>}
-                {has && <div style={{ width: 4, height: 4, borderRadius: 999, background: isSel ? "#A8EFC4" : "#7BBFB0" }} />}
+                <span style={{ fontSize: 14, fontWeight: isToday || isSel ? 800 : 400, color: isSel ? "#fff" : isToday ? "#00314B" : "#1A1A1A" }}>{d}</span>
+                {has && <span style={{ fontSize: 9, fontWeight: 800, color: isSel ? "#C5D9C2" : "#A6B49E" }}>${total >= 100 ? Math.round(total) : total.toFixed(0)}</span>}
+                {has && <div style={{ width: 4, height: 4, borderRadius: 999, background: isSel ? "#C5D9C2" : "#A6B49E" }} />}
               </div>
             );
           })}
@@ -1850,15 +1850,15 @@ function FullCalendarSheet({ expenses, onClose }) {
               transition={{ type: "spring", stiffness: 300, damping: 28 }}
               style={{ overflow: "hidden" }}
             >
-              <div style={{ margin: "14px 16px 0", background: "#F8F4FF", borderRadius: 16, padding: "16px" }}>
-                <p style={{ margin: "0 0 12px", fontSize: 15, fontWeight: 800, color: "#2D1B5E" }}>{selectedDisplay}</p>
+              <div style={{ margin: "14px 16px 0", background: "#F2EDE4", borderRadius: 16, padding: "16px" }}>
+                <p style={{ margin: "0 0 12px", fontSize: 15, fontWeight: 800, color: "#00314B" }}>{selectedDisplay}</p>
                 {selectedExps.map((e, i) => (
                   <div key={(e.id || i) + String(e._dueDate)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: i > 0 ? 10 : 0, borderTop: i > 0 ? "1px solid #EDE4F5" : "none" }}>
                     <div>
                       <span style={{ fontSize: 13, color: "#444", fontWeight: 600 }}>{e.description}</span>
-                      {e._projected && <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, color: "#9B7ED4", background: "#EDE4F5", borderRadius: 4, padding: "1px 5px" }}>recurring</span>}
+                      {e._projected && <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, color: "#A6B7CB", background: "#EDE4F5", borderRadius: 4, padding: "1px 5px" }}>recurring</span>}
                     </div>
-                    <span style={{ fontSize: 14, fontWeight: 800, color: "#2D1B5E" }}>${e._amount.toFixed(2)}</span>
+                    <span style={{ fontSize: 14, fontWeight: 800, color: "#00314B" }}>${e._amount.toFixed(2)}</span>
                   </div>
                 ))}
               </div>
@@ -1866,7 +1866,7 @@ function FullCalendarSheet({ expenses, onClose }) {
           )}
         </AnimatePresence>
 
-        <button style={{ margin: "16px 16px 4px", width: "calc(100% - 32px)", padding: "13px", borderRadius: 14, border: "none", background: "#2D1B5E", color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer" }} onClick={onClose}>
+        <button style={{ margin: "16px 16px 4px", width: "calc(100% - 32px)", padding: "13px", borderRadius: 14, border: "none", background: "#00314B", color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer" }} onClick={onClose}>
           Close
         </button>
       </motion.div>
@@ -1908,7 +1908,7 @@ function EmmaBalanceBanner({ balance, totalOwed, totalPaid, camOwesThisMonth, em
         style={{
           margin: "0 16px",
           borderRadius: 24,
-          background: "linear-gradient(145deg, #3d6e3f 0%, #77a178 45%, #9bc49c 100%)",
+          background: "linear-gradient(145deg, #00314B 0%, #4E635E 45%, #A6B49E 100%)",
           boxShadow: "0 14px 40px rgba(119,161,120,0.35)",
           overflow: "hidden",
           cursor: "pointer",
@@ -1937,7 +1937,7 @@ function EmmaBalanceBanner({ balance, totalOwed, totalPaid, camOwesThisMonth, em
               <span style={{ fontSize: 11, color: "#d4f5d6", fontWeight: 800 }}>{pctLabel}%</span>
             </div>
             <div style={{ height: 7, borderRadius: 999, background: "rgba(255,255,255,0.18)", overflow: "hidden" }}>
-              <div style={{ width: `${pctLabel}%`, height: "100%", background: "linear-gradient(90deg, #d4f5d6, #7BBFB0)", borderRadius: 999, transition: "width 0.5s" }} />
+              <div style={{ width: `${pctLabel}%`, height: "100%", background: "linear-gradient(90deg, #d4f5d6, #A6B49E)", borderRadius: 999, transition: "width 0.5s" }} />
             </div>
           </div>
         </div>
@@ -2008,16 +2008,16 @@ function EmmaBalanceBanner({ balance, totalOwed, totalPaid, camOwesThisMonth, em
           <div style={{ background: "#fff", borderRadius: "24px 24px 0 0", padding: "24px 20px 44px", width: "100%", maxWidth: 430, maxHeight: "80vh", overflowY: "auto" }}
             onClick={(ev) => ev.stopPropagation()}>
 
-            <div style={{ width: 40, height: 4, borderRadius: 999, background: "#E5DFF5", margin: "0 auto 20px" }} />
+            <div style={{ width: 40, height: 4, borderRadius: 999, background: "#DDD5C5", margin: "0 auto 20px" }} />
 
-            <p style={{ margin: "0 0 18px", fontSize: 18, fontWeight: 900, color: "#2D1B5E" }}>{monthName} Details</p>
+            <p style={{ margin: "0 0 18px", fontSize: 18, fontWeight: 900, color: "#00314B" }}>{monthName} Details</p>
 
             {/* Monthly summary */}
             <div style={{ background: "#F3FAF3", borderRadius: 16, padding: "16px", marginBottom: 12 }}>
-              <p style={{ margin: "0 0 12px", fontSize: 11, fontWeight: 800, color: "#77a178", textTransform: "uppercase", letterSpacing: 0.5 }}>This Month</p>
+              <p style={{ margin: "0 0 12px", fontSize: 11, fontWeight: 800, color: "#4E635E", textTransform: "uppercase", letterSpacing: 0.5 }}>This Month</p>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
                 <span style={{ fontSize: 13, color: "#555" }}>Total charges</span>
-                <span style={{ fontSize: 13, fontWeight: 700, color: "#2D1B5E" }}>${totalThisMonth.toFixed(2)}</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: "#00314B" }}>${totalThisMonth.toFixed(2)}</span>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
                 <span style={{ fontSize: 13, color: "#555" }}>Cam owes this month</span>
@@ -2025,41 +2025,41 @@ function EmmaBalanceBanner({ balance, totalOwed, totalPaid, camOwesThisMonth, em
               </div>
               <div style={{ display: "flex", justifyContent: "space-between" }}>
                 <span style={{ fontSize: 13, color: "#555" }}>Your expenses this month</span>
-                <span style={{ fontSize: 13, fontWeight: 700, color: "#3d6e3f" }}>${Number(emmaPaidThisMonth || 0).toFixed(2)}</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: "#00314B" }}>${Number(emmaPaidThisMonth || 0).toFixed(2)}</span>
               </div>
             </div>
 
             {/* Insights */}
             <div style={{ background: "#F3FAF3", borderRadius: 16, padding: "16px", marginBottom: 12 }}>
-              <p style={{ margin: "0 0 12px", fontSize: 11, fontWeight: 800, color: "#77a178", textTransform: "uppercase", letterSpacing: 0.5 }}>Insights</p>
+              <p style={{ margin: "0 0 12px", fontSize: 11, fontWeight: 800, color: "#4E635E", textTransform: "uppercase", letterSpacing: 0.5 }}>Insights</p>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
                 <span style={{ fontSize: 13, color: "#555" }}>Cam still owes (total)</span>
                 <span style={{ fontSize: 13, fontWeight: 700, color: "#E05C6E" }}>${camUnpaid.toFixed(2)}</span>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
                 <span style={{ fontSize: 13, color: "#555" }}>Total expenses on file</span>
-                <span style={{ fontSize: 13, fontWeight: 700, color: "#2D1B5E" }}>{expenses.length} items</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: "#00314B" }}>{expenses.length} items</span>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between" }}>
                 <span style={{ fontSize: 13, color: "#555" }}>Confirmed payments</span>
-                <span style={{ fontSize: 13, fontWeight: 700, color: "#3d6e3f" }}>{confirmedPayments.length}</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: "#00314B" }}>{confirmedPayments.length}</span>
               </div>
             </div>
 
             {/* Overall progress */}
             <div style={{ background: "#F3FAF3", borderRadius: 16, padding: "16px", marginBottom: 16 }}>
-              <p style={{ margin: "0 0 12px", fontSize: 11, fontWeight: 800, color: "#77a178", textTransform: "uppercase", letterSpacing: 0.5 }}>Overall Progress</p>
+              <p style={{ margin: "0 0 12px", fontSize: 11, fontWeight: 800, color: "#4E635E", textTransform: "uppercase", letterSpacing: 0.5 }}>Overall Progress</p>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
                 <span style={{ fontSize: 13, color: "#555" }}>Paid ${totalPaid.toFixed(2)} of ${totalOwed.toFixed(2)}</span>
-                <span style={{ fontSize: 13, fontWeight: 800, color: "#3d6e3f" }}>{pctLabel}%</span>
+                <span style={{ fontSize: 13, fontWeight: 800, color: "#00314B" }}>{pctLabel}%</span>
               </div>
               <div style={{ height: 8, borderRadius: 999, background: "#d4f5d6", overflow: "hidden" }}>
-                <div style={{ width: `${pctLabel}%`, height: "100%", background: "linear-gradient(90deg, #7BBFB0, #3d6e3f)", borderRadius: 999, transition: "width 0.4s" }} />
+                <div style={{ width: `${pctLabel}%`, height: "100%", background: "linear-gradient(90deg, #A6B49E, #00314B)", borderRadius: 999, transition: "width 0.4s" }} />
               </div>
             </div>
 
             <button
-              style={{ width: "100%", padding: "13px", borderRadius: 14, border: "none", background: "#77a178", color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer" }}
+              style={{ width: "100%", padding: "13px", borderRadius: 14, border: "none", background: "#4E635E", color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer" }}
               onClick={() => setDetailsOpen(false)}
             >Close</button>
           </div>
@@ -2127,7 +2127,7 @@ function CamBalanceBanner({ balance, totalOwed, totalPaid, camOwesThisMonth, cam
         style={{
           margin: "0 16px",
           borderRadius: 24,
-          background: "linear-gradient(145deg, #1a4a70 0%, #3279a8 45%, #5ba3d4 100%)",
+          background: "linear-gradient(145deg, #00314B 0%, #1B4D6B 45%, #A6B7CB 100%)",
           boxShadow: "0 14px 40px rgba(50,121,168,0.35)",
           overflow: "hidden",
           cursor: "pointer",
@@ -2169,10 +2169,10 @@ function CamBalanceBanner({ balance, totalOwed, totalPaid, camOwesThisMonth, cam
               <span style={{ fontSize: 11, color: "rgba(255,255,255,0.65)", fontWeight: 600 }}>
                 Paid ${totalPaid.toFixed(2)} of ${totalOwed.toFixed(2)}
               </span>
-              <span style={{ fontSize: 11, color: "#A8EFC4", fontWeight: 800 }}>{pctLabel}%</span>
+              <span style={{ fontSize: 11, color: "#C5D9C2", fontWeight: 800 }}>{pctLabel}%</span>
             </div>
             <div style={{ height: 7, borderRadius: 999, background: "rgba(255,255,255,0.18)", overflow: "hidden" }}>
-              <div style={{ width: `${pctLabel}%`, height: "100%", background: "linear-gradient(90deg, #A8EFC4, #5DD8A0)", borderRadius: 999, transition: "width 0.5s" }} />
+              <div style={{ width: `${pctLabel}%`, height: "100%", background: "linear-gradient(90deg, #C5D9C2, #7AAE96)", borderRadius: 999, transition: "width 0.5s" }} />
             </div>
           </div>
         </div>
@@ -2196,13 +2196,13 @@ function CamBalanceBanner({ balance, totalOwed, totalPaid, camOwesThisMonth, cam
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 7 }}>
               <span style={{ fontSize: 13, color: "rgba(255,255,255,0.75)" }}>Paid this month</span>
-              <span style={{ fontSize: 13, fontWeight: 700, color: "#A8EFC4" }}>${Number(camPaidThisMonth || 0).toFixed(2)}</span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: "#C5D9C2" }}>${Number(camPaidThisMonth || 0).toFixed(2)}</span>
             </div>
             <div style={{ display: "flex", justifyContent: "space-between" }}>
               <span style={{ fontSize: 13, color: "rgba(255,255,255,0.75)" }}>Remaining balance</span>
               <span style={{ fontSize: 13, fontWeight: 800, color: "#fff" }}>${balance.toFixed(2)}</span>
             </div>
-            <ScheduleMiniPreview expenses={expenses} onViewFull={() => setScheduleOpen(true)} accentColor="#A8EFC4" />
+            <ScheduleMiniPreview expenses={expenses} onViewFull={() => setScheduleOpen(true)} accentColor="#C5D9C2" />
           </div>
           </motion.div>
         )}
@@ -2246,14 +2246,14 @@ function CamBalanceBanner({ balance, totalOwed, totalPaid, camOwesThisMonth, cam
           onClick={() => setDisputeOpen(false)}>
           <div style={{ background: "#fff", borderRadius: "24px 24px 0 0", padding: "24px 20px 40px", width: "100%", maxWidth: 430 }}
             onClick={(ev) => ev.stopPropagation()}>
-            <p style={{ margin: "0 0 6px", fontSize: 17, fontWeight: 800, color: "#2D1B5E" }}>Dispute a Transaction</p>
+            <p style={{ margin: "0 0 6px", fontSize: 17, fontWeight: 800, color: "#00314B" }}>Dispute a Transaction</p>
             <p style={{ margin: "0 0 20px", fontSize: 13, color: "#888" }}>Find the charge in your expenses or history and let Emmanuella know.</p>
             <button
-              style={{ width: "100%", padding: "13px", borderRadius: 14, border: "none", background: "#2D1B5E", color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer", marginBottom: 10 }}
+              style={{ width: "100%", padding: "13px", borderRadius: 14, border: "none", background: "#00314B", color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer", marginBottom: 10 }}
               onClick={() => { setDisputeOpen(false); onNavigate("expenses"); }}
             >Go to Expenses</button>
             <button
-              style={{ width: "100%", padding: "13px", borderRadius: 14, border: "1.5px solid #E5DFF5", background: "transparent", color: "#888", fontSize: 14, fontWeight: 600, cursor: "pointer" }}
+              style={{ width: "100%", padding: "13px", borderRadius: 14, border: "1.5px solid #DDD5C5", background: "transparent", color: "#888", fontSize: 14, fontWeight: 600, cursor: "pointer" }}
               onClick={() => { setDisputeOpen(false); onNavigate("history"); }}
             >Go to History</button>
           </div>
@@ -2268,16 +2268,16 @@ function CamBalanceBanner({ balance, totalOwed, totalPaid, camOwesThisMonth, cam
             onClick={(ev) => ev.stopPropagation()}>
 
             {/* Handle */}
-            <div style={{ width: 40, height: 4, borderRadius: 999, background: "#E5DFF5", margin: "0 auto 20px" }} />
+            <div style={{ width: 40, height: 4, borderRadius: 999, background: "#DDD5C5", margin: "0 auto 20px" }} />
 
-            <p style={{ margin: "0 0 18px", fontSize: 18, fontWeight: 900, color: "#2D1B5E" }}>{monthName} Details</p>
+            <p style={{ margin: "0 0 18px", fontSize: 18, fontWeight: 900, color: "#00314B" }}>{monthName} Details</p>
 
             {/* Monthly summary */}
-            <div style={{ background: "#F8F4FF", borderRadius: 16, padding: "16px", marginBottom: 12 }}>
-              <p style={{ margin: "0 0 12px", fontSize: 11, fontWeight: 800, color: "#9B7ED4", textTransform: "uppercase", letterSpacing: 0.5 }}>This Month</p>
+            <div style={{ background: "#F2EDE4", borderRadius: 16, padding: "16px", marginBottom: 12 }}>
+              <p style={{ margin: "0 0 12px", fontSize: 11, fontWeight: 800, color: "#A6B7CB", textTransform: "uppercase", letterSpacing: 0.5 }}>This Month</p>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
                 <span style={{ fontSize: 13, color: "#555" }}>Total charges</span>
-                <span style={{ fontSize: 13, fontWeight: 700, color: "#2D1B5E" }}>${totalThisMonth.toFixed(2)}</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: "#00314B" }}>${totalThisMonth.toFixed(2)}</span>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
                 <span style={{ fontSize: 13, color: "#555" }}>You owe this month</span>
@@ -2285,41 +2285,41 @@ function CamBalanceBanner({ balance, totalOwed, totalPaid, camOwesThisMonth, cam
               </div>
               <div style={{ display: "flex", justifyContent: "space-between" }}>
                 <span style={{ fontSize: 13, color: "#555" }}>Paid this month</span>
-                <span style={{ fontSize: 13, fontWeight: 700, color: "#1E8449" }}>${camPaidThisMonth.toFixed(2)}</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: "#2D5A4A" }}>${camPaidThisMonth.toFixed(2)}</span>
               </div>
             </div>
 
             {/* Insights */}
-            <div style={{ background: "#F8F4FF", borderRadius: 16, padding: "16px", marginBottom: 12 }}>
-              <p style={{ margin: "0 0 12px", fontSize: 11, fontWeight: 800, color: "#9B7ED4", textTransform: "uppercase", letterSpacing: 0.5 }}>Insights</p>
+            <div style={{ background: "#F2EDE4", borderRadius: 16, padding: "16px", marginBottom: 12 }}>
+              <p style={{ margin: "0 0 12px", fontSize: 11, fontWeight: 800, color: "#A6B7CB", textTransform: "uppercase", letterSpacing: 0.5 }}>Insights</p>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
                 <span style={{ fontSize: 13, color: "#555" }}>Total still owed</span>
                 <span style={{ fontSize: 13, fontWeight: 700, color: "#E05C6E" }}>${camUnpaid.toFixed(2)}</span>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
                 <span style={{ fontSize: 13, color: "#555" }}>Total expenses on file</span>
-                <span style={{ fontSize: 13, fontWeight: 700, color: "#2D1B5E" }}>{expenses.length} items</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: "#00314B" }}>{expenses.length} items</span>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between" }}>
                 <span style={{ fontSize: 13, color: "#555" }}>Confirmed payments</span>
-                <span style={{ fontSize: 13, fontWeight: 700, color: "#2D1B5E" }}>{confirmedPayments.length}</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: "#00314B" }}>{confirmedPayments.length}</span>
               </div>
             </div>
 
             {/* Overall progress */}
-            <div style={{ background: "#F8F4FF", borderRadius: 16, padding: "16px" }}>
-              <p style={{ margin: "0 0 12px", fontSize: 11, fontWeight: 800, color: "#9B7ED4", textTransform: "uppercase", letterSpacing: 0.5 }}>Overall Progress</p>
+            <div style={{ background: "#F2EDE4", borderRadius: 16, padding: "16px" }}>
+              <p style={{ margin: "0 0 12px", fontSize: 11, fontWeight: 800, color: "#A6B7CB", textTransform: "uppercase", letterSpacing: 0.5 }}>Overall Progress</p>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
                 <span style={{ fontSize: 13, color: "#555" }}>Paid ${totalPaid.toFixed(2)} of ${totalOwed.toFixed(2)}</span>
-                <span style={{ fontSize: 13, fontWeight: 800, color: "#1E8449" }}>{pctLabel}%</span>
+                <span style={{ fontSize: 13, fontWeight: 800, color: "#2D5A4A" }}>{pctLabel}%</span>
               </div>
-              <div style={{ height: 8, borderRadius: 999, background: "#E5DFF5", overflow: "hidden" }}>
-                <div style={{ width: `${pctLabel}%`, height: "100%", background: "linear-gradient(90deg, #7BBFB0, #1E8449)", borderRadius: 999, transition: "width 0.4s" }} />
+              <div style={{ height: 8, borderRadius: 999, background: "#DDD5C5", overflow: "hidden" }}>
+                <div style={{ width: `${pctLabel}%`, height: "100%", background: "linear-gradient(90deg, #A6B49E, #2D5A4A)", borderRadius: 999, transition: "width 0.4s" }} />
               </div>
             </div>
 
             <button
-              style={{ marginTop: 16, width: "100%", padding: "13px", borderRadius: 14, border: "none", background: "#2D1B5E", color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer" }}
+              style={{ marginTop: 16, width: "100%", padding: "13px", borderRadius: 14, border: "none", background: "#00314B", color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer" }}
               onClick={() => setDetailsOpen(false)}
             >Close</button>
           </div>
@@ -2372,11 +2372,11 @@ function DisputeModal({ expense, onSubmit, onClose }) {
         position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)",
         width: "100%", maxWidth: 430, background: "#fff", borderRadius: "24px 24px 0 0",
         zIndex: 901, paddingBottom: "max(28px, env(safe-area-inset-bottom))",
-        maxHeight: "88vh", overflowY: "auto", boxShadow: "0 -8px 40px rgba(45,27,94,0.18)",
+        maxHeight: "88vh", overflowY: "auto", boxShadow: "0 -8px 40px rgba(0,49,75,0.18)",
       }}>
         {/* Handle */}
         <div style={{ display: "flex", justifyContent: "center", padding: "12px 0 4px" }}>
-          <div style={{ width: 40, height: 4, borderRadius: 2, background: "#E5DFF5" }} />
+          <div style={{ width: 40, height: 4, borderRadius: 2, background: "#DDD5C5" }} />
         </div>
 
         {/* Header */}
@@ -2386,12 +2386,12 @@ function DisputeModal({ expense, onSubmit, onClose }) {
               <div style={{ width: 32, height: 32, borderRadius: 10, background: "#FFF0F0", display: "flex", alignItems: "center", justifyContent: "center" }}>
                 <Icon path={icons.flag} size={16} color="#E05C6E" />
               </div>
-              <p style={{ margin: 0, fontSize: 20, fontWeight: 900, color: "#1A1030" }}>Dispute Charge</p>
+              <p style={{ margin: 0, fontSize: 20, fontWeight: 900, color: "#0A1E2B" }}>Dispute Charge</p>
             </div>
             <p style={{ margin: 0, fontSize: 12, color: "#999" }}>Let Emmanuella know there's an issue</p>
           </div>
           <button onClick={onClose} type="button"
-            style={{ background: "#E8E0F4", border: "none", borderRadius: 10, width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", fontSize: 18, fontWeight: 700, color: "#6B5B8E", flexShrink: 0 }}>
+            style={{ background: "#E0D8CC", border: "none", borderRadius: 10, width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", fontSize: 18, fontWeight: 700, color: "#6B5B8E", flexShrink: 0 }}>
             ✕
           </button>
         </div>
@@ -2401,7 +2401,7 @@ function DisputeModal({ expense, onSubmit, onClose }) {
           {expense && (
             <div style={{ background: "linear-gradient(135deg, #FFF5F6, #FFF0F0)", border: "1.5px solid #F8C4CD", borderRadius: 16, padding: "14px 16px", marginBottom: 20 }}>
               <p style={{ margin: "0 0 2px", fontSize: 12, color: "#E05C6E", fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.6 }}>Charge you're disputing</p>
-              <p style={{ margin: "0 0 4px", fontSize: 16, fontWeight: 800, color: "#1A1030" }}>{expense.description}</p>
+              <p style={{ margin: "0 0 4px", fontSize: 16, fontWeight: 800, color: "#0A1E2B" }}>{expense.description}</p>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <span style={{ fontSize: 12, color: "#999" }}>{expense.date}</span>
                 <span style={{ fontSize: 18, fontWeight: 900, color: "#E05C6E" }}>${camShare.toFixed(2)}</span>
@@ -2417,8 +2417,8 @@ function DisputeModal({ expense, onSubmit, onClose }) {
                 onClick={() => setSelectedReason(r)}
                 style={{
                   padding: "13px 16px", borderRadius: 14, border: "2px solid",
-                  borderColor: selectedReason === r ? "#E05C6E" : "#E5DFF5",
-                  background: selectedReason === r ? "#FFF5F6" : "#FDFBFF",
+                  borderColor: selectedReason === r ? "#E05C6E" : "#DDD5C5",
+                  background: selectedReason === r ? "#FFF5F6" : "#F5F1EB",
                   color: selectedReason === r ? "#E05C6E" : "#555",
                   fontSize: 14, fontWeight: selectedReason === r ? 700 : 500,
                   cursor: "pointer", textAlign: "left", display: "flex", alignItems: "center", justifyContent: "space-between",
@@ -2439,9 +2439,9 @@ function DisputeModal({ expense, onSubmit, onClose }) {
             onChange={e => setDetails(e.target.value)}
             rows={3}
             style={{
-              width: "100%", padding: "12px 14px", borderRadius: 14, border: "1.5px solid #E5DFF5",
-              fontSize: 14, color: "#1A1030", outline: "none", resize: "none",
-              fontFamily: "inherit", background: "#FDFBFF", boxSizing: "border-box", marginBottom: 20,
+              width: "100%", padding: "12px 14px", borderRadius: 14, border: "1.5px solid #DDD5C5",
+              fontSize: 14, color: "#0A1E2B", outline: "none", resize: "none",
+              fontFamily: "inherit", background: "#F5F1EB", boxSizing: "border-box", marginBottom: 20,
             }}
           />
 
@@ -2450,7 +2450,7 @@ function DisputeModal({ expense, onSubmit, onClose }) {
             onClick={handleSubmit}
             style={{
               width: "100%", padding: "16px", borderRadius: 16, border: "none",
-              background: canSubmit ? "linear-gradient(135deg, #E05C6E, #C0405A)" : "#E5DFF5",
+              background: canSubmit ? "linear-gradient(135deg, #E05C6E, #C0405A)" : "#DDD5C5",
               color: canSubmit ? "#fff" : "#AAA",
               fontSize: 16, fontWeight: 800, cursor: canSubmit ? "pointer" : "default",
             }}>
@@ -2552,7 +2552,7 @@ function CamQuickPayModal({ expenses = [], targetSummaries, onSubmit, onClose })
     position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)",
     width: "100%", maxWidth: 430, background: "#fff", borderRadius: "24px 24px 0 0",
     zIndex: 901, paddingBottom: "max(28px, env(safe-area-inset-bottom))",
-    maxHeight: "88vh", overflowY: "auto", boxShadow: "0 -8px 40px rgba(45,27,94,0.18)",
+    maxHeight: "88vh", overflowY: "auto", boxShadow: "0 -8px 40px rgba(0,49,75,0.18)",
   };
 
   return (
@@ -2561,7 +2561,7 @@ function CamQuickPayModal({ expenses = [], targetSummaries, onSubmit, onClose })
       <div style={sheetStyle}>
         {/* Handle */}
         <div style={{ display: "flex", justifyContent: "center", padding: "12px 0 4px" }}>
-          <div style={{ width: 40, height: 4, borderRadius: 2, background: "#E5DFF5" }} />
+          <div style={{ width: 40, height: 4, borderRadius: 2, background: "#DDD5C5" }} />
         </div>
 
         {/* Header */}
@@ -2569,17 +2569,17 @@ function CamQuickPayModal({ expenses = [], targetSummaries, onSubmit, onClose })
           <div>
             {step !== "amount" && (
               <button onClick={() => { if (step === "confirm") setStep("target"); else if (step === "target") setStep("amount"); }}
-                style={{ background: "none", border: "none", color: "#9B7ED4", fontSize: 13, fontWeight: 700, cursor: "pointer", padding: 0, marginBottom: 2 }}>
+                style={{ background: "none", border: "none", color: "#A6B7CB", fontSize: 13, fontWeight: 700, cursor: "pointer", padding: 0, marginBottom: 2 }}>
                 ← Back
               </button>
             )}
-            <p style={{ margin: 0, fontSize: 20, fontWeight: 900, color: "#1A1030" }}>Quick Payment</p>
+            <p style={{ margin: 0, fontSize: 20, fontWeight: 900, color: "#0A1E2B" }}>Quick Payment</p>
             <p style={{ margin: "2px 0 0", fontSize: 12, color: "#999" }}>
               {step === "amount" ? "How much are you paying?" : step === "target" ? "Where should it go?" : "Review & confirm"}
             </p>
           </div>
           <button onClick={onClose} type="button"
-            style={{ background: "#E8E0F4", border: "none", borderRadius: 10, width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", fontSize: 18, fontWeight: 700, color: "#6B5B8E", lineHeight: 1 }}>
+            style={{ background: "#E0D8CC", border: "none", borderRadius: 10, width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", fontSize: 18, fontWeight: 700, color: "#6B5B8E", lineHeight: 1 }}>
             ✕
           </button>
         </div>
@@ -2594,9 +2594,9 @@ function CamQuickPayModal({ expenses = [], targetSummaries, onSubmit, onClose })
                   onClick={() => { setSelectedAmt(amt); setCustomVal(""); }}
                   style={{
                     flex: 1, padding: "18px 0", borderRadius: 16, border: "2px solid",
-                    borderColor: selectedAmt === amt ? "#2D1B5E" : "#E5DFF5",
-                    background: selectedAmt === amt ? "#2D1B5E" : "#FDFBFF",
-                    color: selectedAmt === amt ? "#fff" : "#2D1B5E",
+                    borderColor: selectedAmt === amt ? "#00314B" : "#DDD5C5",
+                    background: selectedAmt === amt ? "#00314B" : "#F5F1EB",
+                    color: selectedAmt === amt ? "#fff" : "#00314B",
                     fontSize: 22, fontWeight: 900, cursor: "pointer", transition: "all 0.15s",
                   }}>
                   ${amt}
@@ -2606,9 +2606,9 @@ function CamQuickPayModal({ expenses = [], targetSummaries, onSubmit, onClose })
                 onClick={() => setSelectedAmt("custom")}
                 style={{
                   flex: 1, padding: "18px 0", borderRadius: 16, border: "2px solid",
-                  borderColor: selectedAmt === "custom" ? "#9B7ED4" : "#E5DFF5",
-                  background: selectedAmt === "custom" ? "#F5F0FB" : "#FDFBFF",
-                  color: selectedAmt === "custom" ? "#9B7ED4" : "#888",
+                  borderColor: selectedAmt === "custom" ? "#A6B7CB" : "#DDD5C5",
+                  background: selectedAmt === "custom" ? "#EEE9E0" : "#F5F1EB",
+                  color: selectedAmt === "custom" ? "#A6B7CB" : "#888",
                   fontSize: 15, fontWeight: 800, cursor: "pointer", transition: "all 0.15s",
                 }}>
                 Custom
@@ -2618,12 +2618,12 @@ function CamQuickPayModal({ expenses = [], targetSummaries, onSubmit, onClose })
             {/* Custom amount input */}
             {selectedAmt === "custom" && (
               <div style={{ position: "relative", display: "flex", alignItems: "center", marginBottom: 16 }}>
-                <span style={{ position: "absolute", left: 16, fontSize: 22, fontWeight: 900, color: "#2D1B5E", pointerEvents: "none" }}>$</span>
+                <span style={{ position: "absolute", left: 16, fontSize: 22, fontWeight: 900, color: "#00314B", pointerEvents: "none" }}>$</span>
                 <input
                   autoFocus type="number" min="0.01" step="0.01" placeholder="0.00"
                   value={customVal}
                   onChange={e => setCustomVal(e.target.value)}
-                  style={{ width: "100%", padding: "16px 16px 16px 36px", borderRadius: 14, border: "2px solid #C4A8D4", fontSize: 22, fontWeight: 900, color: "#2D1B5E", outline: "none", boxSizing: "border-box", background: "#FDFBFF" }}
+                  style={{ width: "100%", padding: "16px 16px 16px 36px", borderRadius: 14, border: "2px solid #D5BD96", fontSize: 22, fontWeight: 900, color: "#00314B", outline: "none", boxSizing: "border-box", background: "#F5F1EB" }}
                 />
               </div>
             )}
@@ -2636,8 +2636,8 @@ function CamQuickPayModal({ expenses = [], targetSummaries, onSubmit, onClose })
                   onClick={() => setMethod(m)}
                   style={{
                     padding: "7px 14px", borderRadius: 999, border: "1.5px solid",
-                    borderColor: method === m ? "#2D1B5E" : "#E5DFF5",
-                    background: method === m ? "#2D1B5E" : "#fff",
+                    borderColor: method === m ? "#00314B" : "#DDD5C5",
+                    background: method === m ? "#00314B" : "#fff",
                     color: method === m ? "#fff" : "#888",
                     fontSize: 12, fontWeight: 700, cursor: "pointer",
                   }}>
@@ -2651,7 +2651,7 @@ function CamQuickPayModal({ expenses = [], targetSummaries, onSubmit, onClose })
               onClick={() => setStep("target")}
               style={{
                 width: "100%", padding: "16px", borderRadius: 16, border: "none",
-                background: canProceedAmount ? "linear-gradient(135deg, #2D1B5E, #6B3FA0)" : "#E5DFF5",
+                background: canProceedAmount ? "linear-gradient(135deg, #00314B, #1B4D6B)" : "#DDD5C5",
                 color: canProceedAmount ? "#fff" : "#AAA",
                 fontSize: 16, fontWeight: 800, cursor: canProceedAmount ? "pointer" : "default",
               }}>
@@ -2663,9 +2663,9 @@ function CamQuickPayModal({ expenses = [], targetSummaries, onSubmit, onClose })
         {/* ── STEP 2: Target ── */}
         {step === "target" && (
           <div style={{ padding: "0 20px 24px" }}>
-            <div style={{ background: "#F5F0FB", borderRadius: 14, padding: "12px 16px", marginBottom: 20, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div style={{ background: "#EEE9E0", borderRadius: 14, padding: "12px 16px", marginBottom: 20, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <span style={{ fontSize: 13, color: "#888", fontWeight: 600 }}>Paying</span>
-              <span style={{ fontSize: 20, fontWeight: 900, color: "#2D1B5E" }}>${finalAmount.toFixed(2)} via {method}</span>
+              <span style={{ fontSize: 20, fontWeight: 900, color: "#00314B" }}>${finalAmount.toFixed(2)} via {method}</span>
             </div>
 
             {/* Option A: Clear overdue */}
@@ -2673,16 +2673,16 @@ function CamQuickPayModal({ expenses = [], targetSummaries, onSubmit, onClose })
               onClick={() => { setTargetMode("overdue"); setSelectedExpIds(new Set()); }}
               style={{
                 width: "100%", marginBottom: 12, padding: "16px", borderRadius: 16,
-                border: "2px solid", borderColor: targetMode === "overdue" ? "#E05C6E" : "#E5DFF5",
+                border: "2px solid", borderColor: targetMode === "overdue" ? "#E05C6E" : "#DDD5C5",
                 background: targetMode === "overdue" ? "#FFF5F6" : "#fff",
                 textAlign: "left", cursor: "pointer",
               }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <div style={{ width: 36, height: 36, borderRadius: 12, background: targetMode === "overdue" ? "#E05C6E" : "#F5F0FB", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <div style={{ width: 36, height: 36, borderRadius: 12, background: targetMode === "overdue" ? "#E05C6E" : "#EEE9E0", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                   <Icon path={icons.fire} size={18} color={targetMode === "overdue" ? "#fff" : "#E05C6E"} />
                 </div>
                 <div>
-                  <p style={{ margin: 0, fontSize: 14, fontWeight: 800, color: "#1A1030" }}>Clear overdue balances</p>
+                  <p style={{ margin: 0, fontSize: 14, fontWeight: 800, color: "#0A1E2B" }}>Clear overdue balances</p>
                   <p style={{ margin: "2px 0 0", fontSize: 11, color: "#888" }}>
                     {overdueExps.length > 0
                       ? `Clears ${overdueExps.length} overdue charge${overdueExps.length !== 1 ? "s" : ""}, smallest first`
@@ -2710,16 +2710,16 @@ function CamQuickPayModal({ expenses = [], targetSummaries, onSubmit, onClose })
               onClick={() => setTargetMode("specific")}
               style={{
                 width: "100%", padding: "16px", borderRadius: 16,
-                border: "2px solid", borderColor: targetMode === "specific" ? "#9B7ED4" : "#E5DFF5",
-                background: targetMode === "specific" ? "#F5F0FB" : "#fff",
+                border: "2px solid", borderColor: targetMode === "specific" ? "#A6B7CB" : "#DDD5C5",
+                background: targetMode === "specific" ? "#EEE9E0" : "#fff",
                 textAlign: "left", cursor: "pointer", marginBottom: 16,
               }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <div style={{ width: 36, height: 36, borderRadius: 12, background: targetMode === "specific" ? "#9B7ED4" : "#F5F0FB", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                  <Icon path={icons.list} size={18} color={targetMode === "specific" ? "#fff" : "#9B7ED4"} />
+                <div style={{ width: 36, height: 36, borderRadius: 12, background: targetMode === "specific" ? "#A6B7CB" : "#EEE9E0", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <Icon path={icons.list} size={18} color={targetMode === "specific" ? "#fff" : "#A6B7CB"} />
                 </div>
                 <div>
-                  <p style={{ margin: 0, fontSize: 14, fontWeight: 800, color: "#1A1030" }}>Specific transaction</p>
+                  <p style={{ margin: 0, fontSize: 14, fontWeight: 800, color: "#0A1E2B" }}>Specific transaction</p>
                   <p style={{ margin: "2px 0 0", fontSize: 11, color: "#888" }}>Choose which charge this goes toward</p>
                 </div>
               </div>
@@ -2731,12 +2731,12 @@ function CamQuickPayModal({ expenses = [], targetSummaries, onSubmit, onClose })
                 {/* Budget bar */}
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
                   <p style={{ fontSize: 11, fontWeight: 800, color: "#999", textTransform: "uppercase", letterSpacing: 0.8, margin: 0 }}>Select charges</p>
-                  <span style={{ fontSize: 12, fontWeight: 800, color: remainingBudget < 0.01 ? "#5CA89A" : "#9B7ED4" }}>
+                  <span style={{ fontSize: 12, fontWeight: 800, color: remainingBudget < 0.01 ? "#4E635E" : "#A6B7CB" }}>
                     ${selectedTotal.toFixed(2)} / ${finalAmount.toFixed(2)}
                   </span>
                 </div>
-                <div style={{ height: 5, borderRadius: 999, background: "#E5DFF5", overflow: "hidden", marginBottom: 12 }}>
-                  <div style={{ height: "100%", borderRadius: 999, background: remainingBudget < 0.01 ? "#5CA89A" : "#9B7ED4", width: `${Math.min(100, (selectedTotal / finalAmount) * 100)}%`, transition: "width 0.2s" }} />
+                <div style={{ height: 5, borderRadius: 999, background: "#DDD5C5", overflow: "hidden", marginBottom: 12 }}>
+                  <div style={{ height: "100%", borderRadius: 999, background: remainingBudget < 0.01 ? "#4E635E" : "#A6B7CB", width: `${Math.min(100, (selectedTotal / finalAmount) * 100)}%`, transition: "width 0.2s" }} />
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                   {camUnpaid.length === 0 && (
@@ -2753,20 +2753,20 @@ function CamQuickPayModal({ expenses = [], targetSummaries, onSubmit, onClose })
                         style={{
                           display: "flex", alignItems: "center", justifyContent: "space-between",
                           padding: "12px 14px", borderRadius: 14, border: "2px solid",
-                          borderColor: isSelected ? "#9B7ED4" : isOverdue ? "#F8C4CD" : "#E5DFF5",
-                          background: isSelected ? "#F0EBF9" : wouldExceed ? "#F8F8F8" : isOverdue ? "#FFF8F8" : "#FDFBFF",
+                          borderColor: isSelected ? "#A6B7CB" : isOverdue ? "#F8C4CD" : "#DDD5C5",
+                          background: isSelected ? "#EDE7DC" : wouldExceed ? "#F8F8F8" : isOverdue ? "#FFF8F8" : "#F5F1EB",
                           cursor: wouldExceed ? "not-allowed" : "pointer", textAlign: "left",
                           opacity: wouldExceed ? 0.45 : 1,
                         }}>
                         <div style={{ minWidth: 0, flex: 1 }}>
-                          <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: "#1A1030", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.description}</p>
+                          <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: "#0A1E2B", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.description}</p>
                           <p style={{ margin: "2px 0 0", fontSize: 11, color: isOverdue ? "#E05C6E" : "#999", fontWeight: 600 }}>
                             {isOverdue ? "Overdue · " : ""}{formatShortDate(e.nextDue || e.dueDate || e.date)}
                           </p>
                         </div>
                         <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0, marginLeft: 10 }}>
-                          <span style={{ fontSize: 14, fontWeight: 800, color: isOverdue ? "#E05C6E" : "#2D1B5E" }}>${share.toFixed(2)}</span>
-                          {isSelected && <Icon path={icons.check} size={16} color="#9B7ED4" />}
+                          <span style={{ fontSize: 14, fontWeight: 800, color: isOverdue ? "#E05C6E" : "#00314B" }}>${share.toFixed(2)}</span>
+                          {isSelected && <Icon path={icons.check} size={16} color="#A6B7CB" />}
                         </div>
                       </button>
                     );
@@ -2780,7 +2780,7 @@ function CamQuickPayModal({ expenses = [], targetSummaries, onSubmit, onClose })
               onClick={() => canConfirm && setStep("confirm")}
               style={{
                 width: "100%", padding: "16px", borderRadius: 16, border: "none",
-                background: canConfirm ? "linear-gradient(135deg, #2D1B5E, #6B3FA0)" : "#E5DFF5",
+                background: canConfirm ? "linear-gradient(135deg, #00314B, #1B4D6B)" : "#DDD5C5",
                 color: canConfirm ? "#fff" : "#AAA",
                 fontSize: 16, fontWeight: 800, cursor: canConfirm ? "pointer" : "default",
               }}>
@@ -2792,7 +2792,7 @@ function CamQuickPayModal({ expenses = [], targetSummaries, onSubmit, onClose })
         {/* ── STEP 3: Confirm ── */}
         {step === "confirm" && (
           <div style={{ padding: "0 20px 24px" }}>
-            <div style={{ background: "linear-gradient(135deg, #2D1B5E, #6B3FA0)", borderRadius: 20, padding: "20px", marginBottom: 20, color: "#fff" }}>
+            <div style={{ background: "linear-gradient(135deg, #00314B, #1B4D6B)", borderRadius: 20, padding: "20px", marginBottom: 20, color: "#fff" }}>
               <p style={{ margin: "0 0 4px", fontSize: 12, fontWeight: 700, opacity: 0.7, textTransform: "uppercase", letterSpacing: 0.8 }}>You're paying</p>
               <p style={{ margin: "0 0 16px", fontSize: 34, fontWeight: 900 }}>${finalAmount.toFixed(2)}</p>
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, opacity: 0.85 }}>
@@ -2806,7 +2806,7 @@ function CamQuickPayModal({ expenses = [], targetSummaries, onSubmit, onClose })
                 <p style={{ margin: "0 0 10px", fontSize: 11, fontWeight: 800, color: "#E05C6E", textTransform: "uppercase", letterSpacing: 0.8 }}>Breakdown</p>
                 {overduePlan.map(({ e, pay }) => (
                   <div key={e.id} style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-                    <span style={{ fontSize: 13, color: "#1A1030", fontWeight: 600 }}>{e.description}</span>
+                    <span style={{ fontSize: 13, color: "#0A1E2B", fontWeight: 600 }}>{e.description}</span>
                     <span style={{ fontSize: 13, fontWeight: 800, color: "#E05C6E" }}>${pay.toFixed(2)}</span>
                   </div>
                 ))}
@@ -2814,18 +2814,18 @@ function CamQuickPayModal({ expenses = [], targetSummaries, onSubmit, onClose })
             )}
 
             {targetMode === "specific" && selectedExps.length > 0 && (
-              <div style={{ background: "#F5F0FB", borderRadius: 14, padding: "12px 16px", marginBottom: 20 }}>
-                <p style={{ margin: "0 0 10px", fontSize: 11, fontWeight: 800, color: "#9B7ED4", textTransform: "uppercase", letterSpacing: 0.8 }}>Applied to</p>
+              <div style={{ background: "#EEE9E0", borderRadius: 14, padding: "12px 16px", marginBottom: 20 }}>
+                <p style={{ margin: "0 0 10px", fontSize: 11, fontWeight: 800, color: "#A6B7CB", textTransform: "uppercase", letterSpacing: 0.8 }}>Applied to</p>
                 {selectedExps.map(e => (
                   <div key={e.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                    <span style={{ fontSize: 13, fontWeight: 700, color: "#1A1030", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "70%" }}>{e.description}</span>
-                    <span style={{ fontSize: 13, fontWeight: 800, color: "#9B7ED4" }}>${camShare(e).toFixed(2)}</span>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: "#0A1E2B", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "70%" }}>{e.description}</span>
+                    <span style={{ fontSize: 13, fontWeight: 800, color: "#A6B7CB" }}>${camShare(e).toFixed(2)}</span>
                   </div>
                 ))}
                 {selectedExps.length > 1 && (
-                  <div style={{ borderTop: "1px solid #E5DFF5", marginTop: 6, paddingTop: 6, display: "flex", justifyContent: "space-between" }}>
+                  <div style={{ borderTop: "1px solid #DDD5C5", marginTop: 6, paddingTop: 6, display: "flex", justifyContent: "space-between" }}>
                     <span style={{ fontSize: 12, fontWeight: 800, color: "#666" }}>Total</span>
-                    <span style={{ fontSize: 13, fontWeight: 900, color: "#2D1B5E" }}>${selectedTotal.toFixed(2)}</span>
+                    <span style={{ fontSize: 13, fontWeight: 900, color: "#00314B" }}>${selectedTotal.toFixed(2)}</span>
                   </div>
                 )}
               </div>
@@ -2836,7 +2836,7 @@ function CamQuickPayModal({ expenses = [], targetSummaries, onSubmit, onClose })
             </p>
 
             <button type="button" onClick={handleConfirm}
-              style={{ width: "100%", padding: "16px", borderRadius: 16, border: "none", background: "linear-gradient(135deg, #7BBFB0, #5CA89A)", color: "#fff", fontSize: 16, fontWeight: 800, cursor: "pointer" }}>
+              style={{ width: "100%", padding: "16px", borderRadius: 16, border: "none", background: "linear-gradient(135deg, #A6B49E, #4E635E)", color: "#fff", fontSize: 16, fontWeight: 800, cursor: "pointer" }}>
               Confirm Payment ✓
             </button>
           </div>
@@ -2944,19 +2944,19 @@ function CamNotificationsPanel({ expenses = [], payments = [], onClose, onNaviga
       }}>
         {/* Handle */}
         <div style={{ display: "flex", justifyContent: "center", padding: "10px 0 6px" }}>
-          <div style={{ width: 36, height: 4, borderRadius: 2, background: "#E5DFF5" }} />
+          <div style={{ width: 36, height: 4, borderRadius: 2, background: "#DDD5C5" }} />
         </div>
 
         {/* Header */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 18px 14px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <Icon path={icons.bell} size={18} color="#E05C6E" />
-            <span style={{ fontSize: 16, fontWeight: 800, color: "#1A1030" }}>Notifications</span>
+            <span style={{ fontSize: 16, fontWeight: 800, color: "#0A1E2B" }}>Notifications</span>
           </div>
           <button
             onClick={onClose}
             type="button"
-            style={{ background: "#F5F0FB", border: "none", borderRadius: 10, width: 30, height: 30, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
+            style={{ background: "#EEE9E0", border: "none", borderRadius: 10, width: 30, height: 30, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
           >
             <Icon path={icons.x} size={16} color="#888" />
           </button>
@@ -2965,7 +2965,7 @@ function CamNotificationsPanel({ expenses = [], payments = [], onClose, onNaviga
         {!hasAny && (
           <div style={{ padding: "32px 24px", textAlign: "center" }}>
             <div style={{ fontSize: 32, marginBottom: 8 }}>🎉</div>
-            <p style={{ fontSize: 15, fontWeight: 700, color: "#2D1B5E", margin: "0 0 4px" }}>You're all caught up!</p>
+            <p style={{ fontSize: 15, fontWeight: 700, color: "#00314B", margin: "0 0 4px" }}>You're all caught up!</p>
             <p style={{ fontSize: 13, color: "#999", margin: 0 }}>No upcoming payments or pending activity.</p>
           </div>
         )}
@@ -2976,9 +2976,9 @@ function CamNotificationsPanel({ expenses = [], payments = [], onClose, onNaviga
             <p style={{ fontSize: 11, fontWeight: 800, color: "#999", textTransform: "uppercase", letterSpacing: 0.8, margin: "0 0 8px" }}>Upcoming Payments</p>
             {upcoming.map((e) => {
               const overdue = getUrgencyLevel(e) === "overdue";
-              const accentColor = e.mandatory && overdue ? "#C0192E" : overdue ? "#E05C6E" : e.mandatory ? "#C0192E" : "#9B7ED4";
-              const bgColor = e.mandatory ? (overdue ? "#FFF0F2" : "#FFF5F6") : overdue ? "#FFF5F6" : "#F8F4FF";
-              const borderColor = e.mandatory ? "#F8A0B0" : overdue ? "#F8C4CD" : "#EDE5FA";
+              const accentColor = e.mandatory && overdue ? "#C0192E" : overdue ? "#E05C6E" : e.mandatory ? "#C0192E" : "#A6B7CB";
+              const bgColor = e.mandatory ? (overdue ? "#FFF0F2" : "#FFF5F6") : overdue ? "#FFF5F6" : "#F2EDE4";
+              const borderColor = e.mandatory ? "#F8A0B0" : overdue ? "#F8C4CD" : "#E0D8CC";
               return (
                 <div
                   key={e.id}
@@ -2993,7 +2993,7 @@ function CamNotificationsPanel({ expenses = [], payments = [], onClose, onNaviga
                             <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/>
                           </svg>
                         )}
-                        <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#1A1030", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.description}</p>
+                        <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#0A1E2B", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.description}</p>
                       </div>
                       <p style={{ margin: 0, fontSize: 11, fontWeight: 700, color: accentColor }}>
                         {e.mandatory && overdue ? "⚠ MANDATORY — Overdue" : e.mandatory ? "Mandatory · " + dueLabel(e) : dueLabel(e)}
@@ -3015,7 +3015,7 @@ function CamNotificationsPanel({ expenses = [], payments = [], onClose, onNaviga
               <div key={p.id || i} style={{ background: "#FFFBF0", borderRadius: 14, padding: "12px 14px", marginBottom: 8, border: "1.5px solid #F5E6B0" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <div>
-                    <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#1A1030" }}>Payment via {p.method || "—"}</p>
+                    <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#0A1E2B" }}>Payment via {p.method || "—"}</p>
                     <p style={{ margin: "3px 0 0", fontSize: 11, fontWeight: 600, color: "#C48A00" }}>Pending · waiting for confirmation</p>
                   </div>
                   <span style={{ fontSize: 15, fontWeight: 800, color: "#C48A00" }}>${Number(p.amount || 0).toFixed(2)}</span>
@@ -3031,10 +3031,10 @@ function CamNotificationsPanel({ expenses = [], payments = [], onClose, onNaviga
           <div style={{ padding: "8px 16px 4px" }}>
             <p style={{ fontSize: 11, fontWeight: 800, color: "#999", textTransform: "uppercase", letterSpacing: 0.8, margin: "0 0 8px" }}>Recently Confirmed</p>
             {recentlyConfirmed.map((p, i) => (
-              <div key={p.id || i} style={{ background: "#F0FFF6", borderRadius: 14, padding: "12px 14px", marginBottom: 8, border: "1.5px solid #A8EFC4" }}>
+              <div key={p.id || i} style={{ background: "#F0FFF6", borderRadius: 14, padding: "12px 14px", marginBottom: 8, border: "1.5px solid #C5D9C2" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <div>
-                    <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#1A1030" }}>Payment confirmed</p>
+                    <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#0A1E2B" }}>Payment confirmed</p>
                     <p style={{ margin: "3px 0 0", fontSize: 11, fontWeight: 600, color: "#2E9E60" }}>via {p.method || "—"} · {formatShortDate(p.date)}</p>
                   </div>
                   <span style={{ fontSize: 15, fontWeight: 800, color: "#2E9E60" }}>${Number(p.amount || 0).toFixed(2)}</span>
@@ -3056,7 +3056,7 @@ function CamNotificationsPanel({ expenses = [], payments = [], onClose, onNaviga
                     <Icon path={icons.flag} size={16} color="#C48A00" />
                   </div>
                   <div style={{ flex: 1 }}>
-                    <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: "#1A1030" }}>Dispute declined</p>
+                    <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: "#0A1E2B" }}>Dispute declined</p>
                     <p style={{ margin: "2px 0 4px", fontSize: 11, color: "#C48A00", fontWeight: 600 }}>
                       {p.disputeDescription || "charge"} · {formatShortDate(p.date)}
                     </p>
@@ -3197,7 +3197,7 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
               return (
                 <button
                   type="button"
-                  style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center", width: 38, height: 38, borderRadius: "50%", border: "none", background: notifOpen ? "#E05C6E" : "#2D1B5E", cursor: "pointer", boxShadow: "0 3px 10px rgba(45,27,94,0.3)" }}
+                  style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center", width: 38, height: 38, borderRadius: "50%", border: "none", background: notifOpen ? "#E05C6E" : "#00314B", cursor: "pointer", boxShadow: "0 3px 10px rgba(0,49,75,0.3)" }}
                   onClick={() => setNotifOpen((o) => !o)}
                   aria-label="Notifications"
                 >
@@ -3244,7 +3244,7 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
                 padding: "6px 12px",
                 minWidth: 40,
                 height: 32,
-                background: searchOpen ? "#2D1B5E" : "rgba(255,255,255,0.7)",
+                background: searchOpen ? "#00314B" : "rgba(255,255,255,0.7)",
                 color: searchOpen ? "#fff" : "#888",
               }}
               onClick={() => {
@@ -3263,7 +3263,7 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
           )}
           {onSwitchView ? (
             <button
-              style={{ ...styles.logoutBtn, background: viewingAsCam ? "#2D1B5E" : "rgba(255,255,255,0.7)", color: viewingAsCam ? "#C4B5FD" : "#888", fontWeight: 700 }}
+              style={{ ...styles.logoutBtn, background: viewingAsCam ? "#00314B" : "rgba(255,255,255,0.7)", color: viewingAsCam ? "#C4B5FD" : "#888", fontWeight: 700 }}
               onClick={onSwitchView}
             >
               {viewingAsCam ? "My view" : "Cam's view"}
@@ -3429,7 +3429,7 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
             background: "#fff",
             borderRadius: 20,
             padding: 14,
-            boxShadow: "0 4px 16px rgba(30,15,69,0.09)",
+            boxShadow: "0 4px 16px rgba(0,49,75,0.09)",
             border: "1.5px solid #ede4f5",
             display: "flex",
             alignItems: "center",
@@ -3455,7 +3455,7 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
               <Icon path={icons.clock} size={18} color="#C8A020" />
             </div>
             <div style={{ minWidth: 0 }}>
-              <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: "#2D1B5E" }}>
+              <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: "#00314B" }}>
                 Pending confirmation
               </p>
               <p style={{ margin: "3px 0 0", fontSize: 11, color: "#888" }}>
@@ -3471,9 +3471,9 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
 
       {/* Syncing indicator */}
       {syncingPayments && (
-        <div style={{ ...styles.alertBox, background: "#EEF5EC", borderColor: "#A8C5A0" }}>
-          <Icon path={icons.clock} size={16} color="#1E8449" />
-          <p style={{ color: "#1A4A2E", fontSize: 13, margin: 0 }}>
+        <div style={{ ...styles.alertBox, background: "#EBF0E8", borderColor: "#A6B49E" }}>
+          <Icon path={icons.clock} size={16} color="#2D5A4A" />
+          <p style={{ color: "#1A3530", fontSize: 13, margin: 0 }}>
             Syncing your latest payment…
           </p>
         </div>
@@ -3482,13 +3482,13 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
       {/* Action Buttons */}
       {user !== "emma" && user !== "cam" && (
         <div style={styles.actionRow}>
-          <button style={{...styles.actionBtn, background: "linear-gradient(135deg, #7BBFB0, #5CA89A)"}} onClick={onAddExpense}>
+          <button style={{...styles.actionBtn, background: "linear-gradient(135deg, #A6B49E, #4E635E)"}} onClick={onAddExpense}>
             <Icon path={icons.plus} size={18} color="#fff" />
             <span>Add Expense</span>
           </button>
           <button style={{
             ...styles.actionBtn,
-            background: "linear-gradient(135deg, #C4A8D4, #A88CC0)",
+            background: "linear-gradient(135deg, #D5BD96, #7A9BB5)",
           }} onClick={onLogPayment}>
             <Icon path={icons.wallet} size={18} color="#fff" />
             <span>{user === "cam" ? "Log My Payment" : "Record Payment"}</span>
@@ -3499,15 +3499,15 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
 
       {/* ── Emma: unified Recent Activity card ── */}
       {user === "emma" && (
-        <div style={{ margin: "0 16px 28px", background: "#fff", borderRadius: 22, border: "1.5px solid #F0EAF8", boxShadow: "0 2px 16px rgba(45,27,94,0.07)", overflow: "hidden" }}>
+        <div style={{ margin: "0 16px 28px", background: "#fff", borderRadius: 22, border: "1.5px solid #EDE7DC", boxShadow: "0 2px 16px rgba(0,49,75,0.07)", overflow: "hidden" }}>
 
           {/* Card header */}
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 16px 8px" }}>
-            <span style={{ fontSize: 15, fontWeight: 900, color: "#1A1030", letterSpacing: -0.2 }}>
+            <span style={{ fontSize: 15, fontWeight: 900, color: "#0A1E2B", letterSpacing: -0.2 }}>
               {tokens.length ? `${filtered.length} result${filtered.length !== 1 ? "s" : ""}` : "Recent Activity"}
             </span>
             {!tokens.length && (
-              <button style={{ background: "none", border: "none", fontSize: 12, fontWeight: 700, color: "#9B7ED4", cursor: "pointer", padding: 0 }} onClick={() => onNavigate("expenses")}>
+              <button style={{ background: "none", border: "none", fontSize: 12, fontWeight: 700, color: "#A6B7CB", cursor: "pointer", padding: 0 }} onClick={() => onNavigate("expenses")}>
                 See all
               </button>
             )}
@@ -3517,7 +3517,7 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
           {tokens.length && filtered.length === 0 ? (
             <div style={{ textAlign: "center", padding: "28px 20px" }}>
               <p style={{ fontSize: 30, margin: 0 }}>🔍</p>
-              <p style={{ fontWeight: 700, color: "#2D1B5E", fontSize: 14, margin: "10px 0 4px" }}>No results</p>
+              <p style={{ fontWeight: 700, color: "#00314B", fontSize: 14, margin: "10px 0 4px" }}>No results</p>
               <p style={{ color: "#999", fontSize: 12, margin: 0 }}>Try a different amount, date, or description</p>
             </div>
           ) : (
@@ -3528,7 +3528,7 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
 
           {/* Plan progress — expandable, below charges */}
           {!tokens.length && (planTargets.length > 0 || oneTimeTargets.length > 0) && (
-            <div style={{ borderTop: "1px solid #F5F0FB" }}>
+            <div style={{ borderTop: "1px solid #EEE9E0" }}>
 
               {/* Toggle row */}
               <button
@@ -3537,12 +3537,12 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
                 style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", padding: "11px 16px", background: "none", border: "none", cursor: "pointer", textAlign: "left" }}
               >
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <div style={{ width: 24, height: 24, borderRadius: 8, background: plansOpen ? "#F0EBF9" : "#F5F0FB", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                    <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="#9B7ED4" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+                  <div style={{ width: 24, height: 24, borderRadius: 8, background: plansOpen ? "#EDE7DC" : "#EEE9E0", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="#A6B7CB" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
                       <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>
                     </svg>
                   </div>
-                  <span style={{ fontSize: 13, fontWeight: 800, color: "#2D1B5E" }}>Plan progress</span>
+                  <span style={{ fontSize: 13, fontWeight: 800, color: "#00314B" }}>Plan progress</span>
                   {!plansOpen && (
                     <span style={{ fontSize: 11, color: "#BBB", fontWeight: 600 }}>
                       {planTargets.length} plan{planTargets.length !== 1 ? "s" : ""}{oneTimeTargets.length > 0 ? ` · ${oneTimeTargets.length} one-time` : ""}
@@ -3550,7 +3550,7 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
                   )}
                 </div>
                 <svg
-                  width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#C4A8D4" strokeWidth={2.5} strokeLinecap="round"
+                  width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#D5BD96" strokeWidth={2.5} strokeLinecap="round"
                   style={{ transform: plansOpen ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.25s ease" }}
                 >
                   <polyline points="6 9 12 15 18 9"/>
@@ -3579,13 +3579,13 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
                         return (
                           <div key={p.key} onClick={() => onOpenTarget && onOpenTarget(p.key)} style={{ cursor: "pointer" }}>
                             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
-                              <span style={{ fontSize: 13, fontWeight: 700, color: "#1A1030" }}>{p.label}</span>
-                              <span style={{ fontSize: 12, fontWeight: 800, color: pct >= 1 ? "#5CA89A" : "#9B7ED4" }}>
+                              <span style={{ fontSize: 13, fontWeight: 700, color: "#0A1E2B" }}>{p.label}</span>
+                              <span style={{ fontSize: 12, fontWeight: 800, color: pct >= 1 ? "#4E635E" : "#A6B7CB" }}>
                                 {pct >= 1 ? "Fully paid ✓" : `$${remaining.toFixed(2)} left`}
                               </span>
                             </div>
-                            <div style={{ height: 5, borderRadius: 999, background: "#F0EAF8", overflow: "hidden" }}>
-                              <div style={{ height: "100%", borderRadius: 999, width: `${pct * 100}%`, background: pct >= 1 ? "linear-gradient(90deg, #7BBFB0, #5CA89A)" : "linear-gradient(90deg, #C4A8D4, #7B52C0)", transition: "width 0.5s" }} />
+                            <div style={{ height: 5, borderRadius: 999, background: "#EDE7DC", overflow: "hidden" }}>
+                              <div style={{ height: "100%", borderRadius: 999, width: `${pct * 100}%`, background: pct >= 1 ? "linear-gradient(90deg, #A6B49E, #4E635E)" : "linear-gradient(90deg, #D5BD96, #1B4D6B)", transition: "width 0.5s" }} />
                             </div>
                             <div style={{ display: "flex", justifyContent: "space-between", marginTop: 3 }}>
                               <span style={{ fontSize: 10, color: "#BBB", fontWeight: 600 }}>Paid ${paid.toFixed(2)}</span>
@@ -3608,13 +3608,13 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
                                 style={{
                                   display: "flex", alignItems: "center", gap: 5,
                                   padding: "5px 11px", borderRadius: 999, cursor: "pointer",
-                                  background: isPaid ? "#EEF5EC" : "#F5F0FB",
-                                  border: `1.5px solid ${isPaid ? "#A8D5B0" : "#E5DFF5"}`,
+                                  background: isPaid ? "#EBF0E8" : "#EEE9E0",
+                                  border: `1.5px solid ${isPaid ? "#B8CDB5" : "#DDD5C5"}`,
                                 }}
                               >
-                                {isPaid && <svg width={10} height={10} viewBox="0 0 24 24" fill="#5CA89A"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>}
-                                <span style={{ fontSize: 11, fontWeight: 700, color: isPaid ? "#5CA89A" : "#2D1B5E", whiteSpace: "nowrap" }}>{t.label}</span>
-                                {!isPaid && <span style={{ fontSize: 11, color: "#9B7ED4", fontWeight: 700 }}>${rem.toFixed(2)}</span>}
+                                {isPaid && <svg width={10} height={10} viewBox="0 0 24 24" fill="#4E635E"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>}
+                                <span style={{ fontSize: 11, fontWeight: 700, color: isPaid ? "#4E635E" : "#00314B", whiteSpace: "nowrap" }}>{t.label}</span>
+                                {!isPaid && <span style={{ fontSize: 11, color: "#A6B7CB", fontWeight: 700 }}>${rem.toFixed(2)}</span>}
                               </button>
                             );
                           })}
@@ -3632,15 +3632,15 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
 
       {/* ── Cameron: unified Recent Activity card (same pattern as Emma) ── */}
       {user !== "emma" && (
-        <div style={{ margin: "20px 16px 28px", background: "#fff", borderRadius: 22, border: "1.5px solid #F0EAF8", boxShadow: "0 2px 16px rgba(45,27,94,0.07)", overflow: "hidden" }}>
+        <div style={{ margin: "20px 16px 28px", background: "#fff", borderRadius: 22, border: "1.5px solid #EDE7DC", boxShadow: "0 2px 16px rgba(0,49,75,0.07)", overflow: "hidden" }}>
 
           {/* Card header */}
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 16px 8px" }}>
-            <span style={{ fontSize: 15, fontWeight: 900, color: "#1A1030", letterSpacing: -0.2 }}>
+            <span style={{ fontSize: 15, fontWeight: 900, color: "#0A1E2B", letterSpacing: -0.2 }}>
               {tokens.length ? `${filtered.length} result${filtered.length !== 1 ? "s" : ""}` : "Recent Activity"}
             </span>
             {!tokens.length && (
-              <button style={{ background: "none", border: "none", fontSize: 12, fontWeight: 700, color: "#9B7ED4", cursor: "pointer", padding: 0 }} onClick={() => onNavigate("expenses")}>
+              <button style={{ background: "none", border: "none", fontSize: 12, fontWeight: 700, color: "#A6B7CB", cursor: "pointer", padding: 0 }} onClick={() => onNavigate("expenses")}>
                 View all
               </button>
             )}
@@ -3650,7 +3650,7 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
           {tokens.length && filtered.length === 0 ? (
             <div style={{ textAlign: "center", padding: "28px 20px" }}>
               <p style={{ fontSize: 30, margin: 0 }}>🔍</p>
-              <p style={{ fontWeight: 700, color: "#2D1B5E", fontSize: 14, margin: "10px 0 4px" }}>No results</p>
+              <p style={{ fontWeight: 700, color: "#00314B", fontSize: 14, margin: "10px 0 4px" }}>No results</p>
               <p style={{ color: "#999", fontSize: 12, margin: 0 }}>Try a different amount, date, or description</p>
             </div>
           ) : (
@@ -3661,19 +3661,19 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
 
           {/* Plan progress — expandable */}
           {!tokens.length && (planTargets.length > 0 || oneTimeTargets.length > 0) && (
-            <div style={{ borderTop: "1px solid #F5F0FB" }}>
+            <div style={{ borderTop: "1px solid #EEE9E0" }}>
               <button
                 type="button"
                 onClick={() => setPlansOpen(o => !o)}
                 style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", padding: "11px 16px", background: "none", border: "none", cursor: "pointer", textAlign: "left" }}
               >
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <div style={{ width: 24, height: 24, borderRadius: 8, background: plansOpen ? "#F0EBF9" : "#F5F0FB", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                    <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="#9B7ED4" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+                  <div style={{ width: 24, height: 24, borderRadius: 8, background: plansOpen ? "#EDE7DC" : "#EEE9E0", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="#A6B7CB" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
                       <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>
                     </svg>
                   </div>
-                  <span style={{ fontSize: 13, fontWeight: 800, color: "#2D1B5E" }}>Plan progress</span>
+                  <span style={{ fontSize: 13, fontWeight: 800, color: "#00314B" }}>Plan progress</span>
                   {!plansOpen && (
                     <span style={{ fontSize: 11, color: "#BBB", fontWeight: 600 }}>
                       {planTargets.length} plan{planTargets.length !== 1 ? "s" : ""}{oneTimeTargets.length > 0 ? ` · ${oneTimeTargets.length} one-time` : ""}
@@ -3681,7 +3681,7 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
                   )}
                 </div>
                 <svg
-                  width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#C4A8D4" strokeWidth={2.5} strokeLinecap="round"
+                  width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#D5BD96" strokeWidth={2.5} strokeLinecap="round"
                   style={{ transform: plansOpen ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.25s ease" }}
                 >
                   <polyline points="6 9 12 15 18 9"/>
@@ -3707,13 +3707,13 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
                         return (
                           <div key={p.key} onClick={() => onOpenTarget && onOpenTarget(p.key)} style={{ cursor: "pointer" }}>
                             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
-                              <span style={{ fontSize: 13, fontWeight: 700, color: "#1A1030" }}>{p.label}</span>
-                              <span style={{ fontSize: 12, fontWeight: 800, color: pct >= 1 ? "#5CA89A" : "#9B7ED4" }}>
+                              <span style={{ fontSize: 13, fontWeight: 700, color: "#0A1E2B" }}>{p.label}</span>
+                              <span style={{ fontSize: 12, fontWeight: 800, color: pct >= 1 ? "#4E635E" : "#A6B7CB" }}>
                                 {pct >= 1 ? "Fully paid ✓" : `$${remaining.toFixed(2)} left`}
                               </span>
                             </div>
-                            <div style={{ height: 5, borderRadius: 999, background: "#F0EAF8", overflow: "hidden" }}>
-                              <div style={{ height: "100%", borderRadius: 999, width: `${pct * 100}%`, background: pct >= 1 ? "linear-gradient(90deg, #7BBFB0, #5CA89A)" : "linear-gradient(90deg, #C4A8D4, #7B52C0)", transition: "width 0.5s" }} />
+                            <div style={{ height: 5, borderRadius: 999, background: "#EDE7DC", overflow: "hidden" }}>
+                              <div style={{ height: "100%", borderRadius: 999, width: `${pct * 100}%`, background: pct >= 1 ? "linear-gradient(90deg, #A6B49E, #4E635E)" : "linear-gradient(90deg, #D5BD96, #1B4D6B)", transition: "width 0.5s" }} />
                             </div>
                             <div style={{ display: "flex", justifyContent: "space-between", marginTop: 3 }}>
                               <span style={{ fontSize: 10, color: "#BBB", fontWeight: 600 }}>Paid ${paid.toFixed(2)}</span>
@@ -3734,13 +3734,13 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
                                 style={{
                                   display: "flex", alignItems: "center", gap: 5,
                                   padding: "5px 11px", borderRadius: 999, cursor: "pointer",
-                                  background: isPaid ? "#EEF5EC" : "#F5F0FB",
-                                  border: `1.5px solid ${isPaid ? "#A8D5B0" : "#E5DFF5"}`,
+                                  background: isPaid ? "#EBF0E8" : "#EEE9E0",
+                                  border: `1.5px solid ${isPaid ? "#B8CDB5" : "#DDD5C5"}`,
                                 }}
                               >
-                                {isPaid && <svg width={10} height={10} viewBox="0 0 24 24" fill="#5CA89A"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>}
-                                <span style={{ fontSize: 11, fontWeight: 700, color: isPaid ? "#5CA89A" : "#2D1B5E", whiteSpace: "nowrap" }}>{t.label}</span>
-                                {!isPaid && <span style={{ fontSize: 11, color: "#9B7ED4", fontWeight: 700 }}>${rem.toFixed(2)}</span>}
+                                {isPaid && <svg width={10} height={10} viewBox="0 0 24 24" fill="#4E635E"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>}
+                                <span style={{ fontSize: 11, fontWeight: 700, color: isPaid ? "#4E635E" : "#00314B", whiteSpace: "nowrap" }}>{t.label}</span>
+                                {!isPaid && <span style={{ fontSize: 11, color: "#A6B7CB", fontWeight: 700 }}>${rem.toFixed(2)}</span>}
                               </button>
                             );
                           })}
@@ -3793,7 +3793,7 @@ function UrgentScreen({ expenses, user, onBack, onMarkPaid, onLogPaymentForKey }
             minWidth: 40,
             height: 32,
             background: "rgba(255,255,255,0.7)",
-            color: "#2D1B5E",
+            color: "#00314B",
           }}
           onClick={onBack}
           aria-label="Back"
@@ -3814,7 +3814,7 @@ function UrgentScreen({ expenses, user, onBack, onMarkPaid, onLogPaymentForKey }
         {sorted.length === 0 ? (
           <div style={{ textAlign: "center", padding: "60px 20px" }}>
             <p style={{ fontSize: 48, margin: 0 }}>✅</p>
-            <p style={{ fontWeight: 700, color: "#2D1B5E", fontSize: 18, margin: "12px 0 4px" }}>
+            <p style={{ fontWeight: 700, color: "#00314B", fontSize: 18, margin: "12px 0 4px" }}>
               All clear!
             </p>
             <p style={{ color: "#999", fontSize: 13, margin: 0 }}>No overdue or upcoming payments</p>
@@ -3869,7 +3869,7 @@ function UrgentScreen({ expenses, user, onBack, onMarkPaid, onLogPaymentForKey }
                       </span>
                       <span style={{ fontSize: 11, color: u.badge, fontWeight: 700 }}>{dueLabel}</span>
                     </div>
-                    <p style={{ fontSize: 14, fontWeight: 700, color: "#2D1B5E", margin: "0 0 2px" }}>
+                    <p style={{ fontSize: 14, fontWeight: 700, color: "#00314B", margin: "0 0 2px" }}>
                       {e.description}
                     </p>
                     <p style={{ fontSize: 11, color: "#888", margin: 0 }}>
@@ -3880,7 +3880,7 @@ function UrgentScreen({ expenses, user, onBack, onMarkPaid, onLogPaymentForKey }
                     </p>
                   </div>
                   <div style={{ textAlign: "right", flexShrink: 0 }}>
-                    <p style={{ fontSize: 18, fontWeight: 800, color: "#2D1B5E", margin: 0 }}>
+                    <p style={{ fontSize: 18, fontWeight: 800, color: "#00314B", margin: 0 }}>
                       ${Number(e.amount || 0).toFixed(2)}
                     </p>
                     {camAmt > 0 && (
@@ -3907,12 +3907,12 @@ function UrgentScreen({ expenses, user, onBack, onMarkPaid, onLogPaymentForKey }
                   >
                     {e.referenceNum && (
                       <p style={{ fontSize: 12, color: "#888", margin: "0 0 6px" }}>
-                        <span style={{ fontWeight: 700, color: "#2D1B5E" }}>Ref #</span> {e.referenceNum}
+                        <span style={{ fontWeight: 700, color: "#00314B" }}>Ref #</span> {e.referenceNum}
                       </p>
                     )}
                     {e.note && (
                       <div style={{ marginBottom: isCam ? 12 : 0 }}>
-                        <p style={{ fontSize: 11, fontWeight: 700, color: "#9B7ED4", margin: "0 0 4px", textTransform: "uppercase", letterSpacing: 0.4 }}>Note</p>
+                        <p style={{ fontSize: 11, fontWeight: 700, color: "#A6B7CB", margin: "0 0 4px", textTransform: "uppercase", letterSpacing: 0.4 }}>Note</p>
                         {renderNote(e.note)}
                       </div>
                     )}
@@ -4128,9 +4128,9 @@ function ExpensesScreen({
     },
     card: {
       background: "rgba(255,255,255,0.85)",
-      border: "1px solid #F0EAF8",
+      border: "1px solid #EDE7DC",
       borderRadius: 22,
-      boxShadow: "0 8px 30px rgba(45,27,94,0.10)",
+      boxShadow: "0 8px 30px rgba(0,49,75,0.10)",
       overflow: "hidden",
     },
     headerRow: {
@@ -4151,7 +4151,7 @@ function ExpensesScreen({
       borderRadius: 12,
       border: "none",
       background: "rgba(255,255,255,0.7)",
-      color: "#2D1B5E",
+      color: "#00314B",
       cursor: "pointer",
     },
     title: {
@@ -4160,7 +4160,7 @@ function ExpensesScreen({
       textAlign: "center",
       fontSize: 16,
       fontWeight: 900,
-      color: isCam ? "#7A1C3E" : "#2D1B5E",
+      color: isCam ? "#7A1C3E" : "#00314B",
       margin: 0,
     },
     rightRow: { display: "flex", gap: 8, alignItems: "center", flexShrink: 0 },
@@ -4174,8 +4174,8 @@ function ExpensesScreen({
       height: 32,
       borderRadius: 12,
       border: "none",
-      background: search.searchActive ? (isCam ? "#E05C6E" : "#2D1B5E") : "rgba(255,255,255,0.7)",
-      color: search.searchActive ? "#fff" : isCam ? "#E05C6E" : "#2D1B5E",
+      background: search.searchActive ? (isCam ? "#E05C6E" : "#00314B") : "rgba(255,255,255,0.7)",
+      color: search.searchActive ? "#fff" : isCam ? "#E05C6E" : "#00314B",
       cursor: "pointer",
     },
     addBtn: {
@@ -4183,7 +4183,7 @@ function ExpensesScreen({
       height: 40,
       borderRadius: 14,
       border: "none",
-      background: "linear-gradient(135deg, #7BBFB0, #5CA89A)",
+      background: "linear-gradient(135deg, #A6B49E, #4E635E)",
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
@@ -4191,7 +4191,7 @@ function ExpensesScreen({
     },
     pillWrap: { padding: "0 12px 12px" },
     maroonPill: {
-      background: "linear-gradient(135deg, #1a4a70, #3279a8)",
+      background: "linear-gradient(135deg, #00314B, #1B4D6B)",
       borderRadius: 22,
       padding: "14px 16px",
       color: "#fff",
@@ -4202,7 +4202,7 @@ function ExpensesScreen({
       flexShrink: 0,
       padding: "6px 14px",
       borderRadius: 999,
-      border: "1.5px solid #E5DFF5",
+      border: "1.5px solid #DDD5C5",
       background: "#fff",
       fontSize: 13,
       fontWeight: 800,
@@ -4211,9 +4211,9 @@ function ExpensesScreen({
       whiteSpace: "nowrap",
     },
     chipActive: {
-      background: isCam ? "#FFF0F0" : "#2D1B5E",
+      background: isCam ? "#FFF0F0" : "#00314B",
       color: isCam ? "#E05C6E" : "#fff",
-      borderColor: isCam ? "#E8A0B0" : "#2D1B5E",
+      borderColor: isCam ? "#E8A0B0" : "#00314B",
     },
     searchRow: { padding: "10px 12px 12px" },
     searchFieldWrap: { position: "relative", display: "flex", alignItems: "center" },
@@ -4222,10 +4222,10 @@ function ExpensesScreen({
       width: "100%",
       padding: "10px 36px 10px 34px",
       borderRadius: 12,
-      border: "1.5px solid #E5DFF5",
+      border: "1.5px solid #DDD5C5",
       background: "#fff",
       fontSize: 15,
-      color: "#2D1B5E",
+      color: "#00314B",
       outline: "none",
     },
     searchClearBtn: {
@@ -4264,7 +4264,7 @@ function ExpensesScreen({
               }}
               aria-label="Back"
             >
-              <Icon path={icons.back} size={18} color={isCam ? "#7A1C3E" : "#2D1B5E"} />
+              <Icon path={icons.back} size={18} color={isCam ? "#7A1C3E" : "#00314B"} />
             </button>
 
             <h2 style={island.title}>{isCam ? "My charges" : "All Expenses"}</h2>
@@ -4279,7 +4279,7 @@ function ExpensesScreen({
                 {search.searchActive ? (
                   <Icon path={icons.x} size={18} color="#fff" />
                 ) : (
-                  <Icon path={icons.search} size={18} color={isCam ? "#E05C6E" : "#2D1B5E"} />
+                  <Icon path={icons.search} size={18} color={isCam ? "#E05C6E" : "#00314B"} />
                 )}
               </button>
 
@@ -4407,9 +4407,9 @@ function ExpensesScreen({
                       padding: "4px 12px",
                       borderRadius: 999,
                       border: "1.5px solid",
-                      borderColor: sortBy === val ? (isCam ? "#E05C6E" : "#2D1B5E") : "#E5DFF5",
-                      background: sortBy === val ? (isCam ? "#FFF0F0" : "#F0EAF8") : "transparent",
-                      color: sortBy === val ? (isCam ? "#E05C6E" : "#2D1B5E") : "#AAA",
+                      borderColor: sortBy === val ? (isCam ? "#E05C6E" : "#00314B") : "#DDD5C5",
+                      background: sortBy === val ? (isCam ? "#FFF0F0" : "#EDE7DC") : "transparent",
+                      color: sortBy === val ? (isCam ? "#E05C6E" : "#00314B") : "#AAA",
                       fontWeight: sortBy === val ? 700 : 500,
                       fontSize: 11,
                       cursor: "pointer",
@@ -4432,7 +4432,7 @@ function ExpensesScreen({
                 </span>
               )}
               {dueDateSummary.next && (
-                <span style={{ fontSize: 11, fontWeight: 600, color: "#9B7ED4", background: "#F5F0FB", borderRadius: 8, padding: "3px 10px" }}>
+                <span style={{ fontSize: 11, fontWeight: 600, color: "#A6B7CB", background: "#EEE9E0", borderRadius: 8, padding: "3px 10px" }}>
                   Next due · {formatShortDate(dueDateSummary.next.nextDue || dueDateSummary.next.dueDate)} · {dueDateSummary.next.description}
                 </span>
               )}
@@ -4475,9 +4475,9 @@ function ExpensesScreen({
       {search.searchActive && search.searchQuery.length > 0 && listToRender.length === 0 ? (
         <div style={{ textAlign: "center", padding: "60px 20px" }}>
           <div style={{ fontSize: 48, marginBottom: 12 }}>
-            <Icon path={icons.search} size={48} color="#C4A8D4" />
+            <Icon path={icons.search} size={48} color="#D5BD96" />
           </div>
-          <p style={{ margin: 0, fontSize: 14, fontWeight: 900, color: "#2D1B5E" }}>No results found</p>
+          <p style={{ margin: 0, fontSize: 14, fontWeight: 900, color: "#00314B" }}>No results found</p>
           <p style={{ margin: "6px 0 0", fontSize: 12, color: "#888" }}>
             {isCam ? `No charges match "${search.searchQuery}"` : `No expenses match "${search.searchQuery}"`}
           </p>
@@ -4574,7 +4574,7 @@ function HistoryScreen({ expenses, payments, user, targets = [], onBack, onConfi
             minWidth: 40,
             height: 32,
             background: "rgba(255,255,255,0.7)",
-            color: "#2D1B5E",
+            color: "#00314B",
           }}
           onClick={onBack}
           aria-label="Back"
@@ -4593,7 +4593,7 @@ function HistoryScreen({ expenses, payments, user, targets = [], onBack, onConfi
           const lbl = paymentTargetLabel(item);
           const statusText = item.confirmed ? "confirmed" : "pending";
           return (
-            <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 14, padding: "14px 16px", borderBottom: "1px solid #F0EAF8" }}>
+            <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 14, padding: "14px 16px", borderBottom: "1px solid #EDE7DC" }}>
               <PaymentMethodIcon method={item.method} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 {/* Title row + amount */}
@@ -4601,7 +4601,7 @@ function HistoryScreen({ expenses, payments, user, targets = [], onBack, onConfi
                   <p style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "#1A1A1A", flex: 1, minWidth: 0 }}>
                     {item.method} Payment
                   </p>
-                  <p style={{ margin: 0, fontSize: 16, fontWeight: 800, color: "#1E8449", flexShrink: 0 }}>
+                  <p style={{ margin: 0, fontSize: 16, fontWeight: 800, color: "#2D5A4A", flexShrink: 0 }}>
                     -${Number(item.amount || 0).toFixed(2)}
                   </p>
                 </div>
@@ -4669,20 +4669,20 @@ function GroupSubRow({ expense: e, user, onMarkPaid, onEdit, isLast }) {
   const isPaid = e.status === "paid";
   const isOverdue = getUrgencyLevel(e) === "overdue";
   const statusLabel = isPaid ? "Paid" : isOverdue ? "Overdue" : "Unpaid";
-  const statusColor = isPaid ? "#1E8449" : isOverdue ? "#E05C6E" : "#888";
-  const statusBg = isPaid ? "#EEF5EC" : isOverdue ? "#FFF0F0" : "#F5F5F5";
+  const statusColor = isPaid ? "#2D5A4A" : isOverdue ? "#E05C6E" : "#888";
+  const statusBg = isPaid ? "#EBF0E8" : isOverdue ? "#FFF0F0" : "#F5F5F5";
   const displayDate = e.nextDue || e.dueDate || e.date;
 
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 0", borderBottom: isLast ? "none" : "1px solid #F5F0FB" }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 0", borderBottom: isLast ? "none" : "1px solid #EEE9E0" }}>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <p style={{ fontSize: 12, fontWeight: 600, color: "#2D1B5E", margin: 0 }}>{formatShortDate(displayDate)}</p>
+        <p style={{ fontSize: 12, fontWeight: 600, color: "#00314B", margin: 0 }}>{formatShortDate(displayDate)}</p>
       </div>
       <span style={{ fontSize: 10, fontWeight: 700, color: statusColor, background: statusBg, borderRadius: 6, padding: "2px 7px", flexShrink: 0 }}>{statusLabel}</span>
-      <p style={{ fontSize: 13, fontWeight: 700, color: "#2D1B5E", margin: 0, minWidth: 52, textAlign: "right" }}>${amt.toFixed(2)}</p>
+      <p style={{ fontSize: 13, fontWeight: 700, color: "#00314B", margin: 0, minWidth: 52, textAlign: "right" }}>${amt.toFixed(2)}</p>
       {user === "emma" && !isPaid && typeof onMarkPaid === "function" && (
         <button
-          style={{ fontSize: 11, fontWeight: 700, background: "#7BBFB0", color: "#fff", border: "none", borderRadius: 8, padding: "4px 10px", cursor: "pointer", flexShrink: 0 }}
+          style={{ fontSize: 11, fontWeight: 700, background: "#A6B49E", color: "#fff", border: "none", borderRadius: 8, padding: "4px 10px", cursor: "pointer", flexShrink: 0 }}
           onClick={(ev) => { ev.stopPropagation(); onMarkPaid(e.id); }}
         >
           Mark paid
@@ -4737,16 +4737,16 @@ function GroupExpenseRow({ gid, items, user, targetSummaries, onMarkPaid, onEdit
         <div style={{ ...fw.expenseInfo }}>
           <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
             <p style={{ ...fw.expenseDesc, margin: 0 }}>{description}</p>
-            <span style={{ fontSize: 10, fontWeight: 700, color: "#7B5EA7", background: "#F0EAF8", borderRadius: 6, padding: "2px 6px", flexShrink: 0 }}>
+            <span style={{ fontSize: 10, fontWeight: 700, color: "#7B5EA7", background: "#EDE7DC", borderRadius: 6, padding: "2px 6px", flexShrink: 0 }}>
               {items.length} installment{items.length !== 1 ? "s" : ""}
             </span>
           </div>
           <p style={{ ...fw.expenseMeta, marginTop: 3 }}>{paidCount}/{items.length} paid</p>
           <div style={{ width: "100%", height: 4, borderRadius: 999, background: "#F3EDF8", marginTop: 6, overflow: "hidden" }}>
-            <div style={{ width: `${Math.round(pct * 100)}%`, height: "100%", background: allPaid ? "#7BBFB0" : anyOverdue ? "#E05C6E" : "#9B7ED4", borderRadius: 999, transition: "width 0.3s" }} />
+            <div style={{ width: `${Math.round(pct * 100)}%`, height: "100%", background: allPaid ? "#A6B49E" : anyOverdue ? "#E05C6E" : "#A6B7CB", borderRadius: 999, transition: "width 0.3s" }} />
           </div>
           {nextDueDate && !allPaid && (
-            <p style={{ fontSize: 10, fontWeight: 700, margin: "4px 0 0", color: nextDueOverdue ? "#E05C6E" : "#9B7ED4" }}>
+            <p style={{ fontSize: 10, fontWeight: 700, margin: "4px 0 0", color: nextDueOverdue ? "#E05C6E" : "#A6B7CB" }}>
               {nextDueOverdue ? "Overdue · " : "Next due · "}{formatShortDate(nextDueDate)}
             </p>
           )}
@@ -4757,13 +4757,13 @@ function GroupExpenseRow({ gid, items, user, targetSummaries, onMarkPaid, onEdit
             <p style={{ fontSize: 10, color: "#E05C6E", fontWeight: 700, margin: "3px 0 0" }}>${remaining.toFixed(2)} left</p>
           )}
           {allPaid && (
-            <span style={{ fontSize: 10, fontWeight: 700, color: "#1E8449", background: "#EEF5EC", borderRadius: 6, padding: "2px 6px", marginTop: 3, display: "inline-block" }}>✓ Done</span>
+            <span style={{ fontSize: 10, fontWeight: 700, color: "#2D5A4A", background: "#EBF0E8", borderRadius: 6, padding: "2px 6px", marginTop: 3, display: "inline-block" }}>✓ Done</span>
           )}
         </div>
       </div>
 
       {expanded && (
-        <div style={{ borderTop: "1px solid #F5F0FB", padding: "2px 14px 10px" }}>
+        <div style={{ borderTop: "1px solid #EEE9E0", padding: "2px 14px 10px" }}>
           {items.map((e, i) => (
             <GroupSubRow
               key={e.id}
@@ -4835,7 +4835,7 @@ function QuickPayButtons({ targetKey, myShare, remaining, onLogPaymentForKey }) 
     return (
       <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
         <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
-          <span style={{ position: "absolute", left: 12, fontWeight: 700, color: "#2D1B5E", fontSize: 16, pointerEvents: "none" }}>$</span>
+          <span style={{ position: "absolute", left: 12, fontWeight: 700, color: "#00314B", fontSize: 16, pointerEvents: "none" }}>$</span>
           <input
             autoFocus
             type="number"
@@ -4848,12 +4848,12 @@ function QuickPayButtons({ targetKey, myShare, remaining, onLogPaymentForKey }) 
               if (e.key === "Enter") submitCustom();
               if (e.key === "Escape") { setCustomMode(false); setCustomVal(""); }
             }}
-            style={{ width: "100%", padding: "12px 80px 12px 28px", borderRadius: 12, border: "1.5px solid #C4A8D4", fontSize: 18, fontWeight: 700, color: "#2D1B5E", outline: "none", boxSizing: "border-box", background: "#FDFBFF" }}
+            style={{ width: "100%", padding: "12px 80px 12px 28px", borderRadius: 12, border: "1.5px solid #D5BD96", fontSize: 18, fontWeight: 700, color: "#00314B", outline: "none", boxSizing: "border-box", background: "#F5F1EB" }}
           />
           <button
             type="button"
             onClick={submitCustom}
-            style={{ position: "absolute", right: 8, padding: "6px 14px", borderRadius: 9, border: "none", background: "linear-gradient(135deg, #C4A8D4, #A88CC0)", color: "#fff", fontWeight: 700, fontSize: 12, cursor: "pointer" }}
+            style={{ position: "absolute", right: 8, padding: "6px 14px", borderRadius: 9, border: "none", background: "linear-gradient(135deg, #D5BD96, #7A9BB5)", color: "#fff", fontWeight: 700, fontSize: 12, cursor: "pointer" }}
           >
             Next →
           </button>
@@ -4874,7 +4874,7 @@ function QuickPayButtons({ targetKey, myShare, remaining, onLogPaymentForKey }) 
       <div style={{ display: "flex", gap: 8 }}>
         <button
           type="button"
-          style={{ flex: 1, padding: "10px 8px", borderRadius: 12, border: "none", background: "linear-gradient(135deg, #7BBFB0, #5CA89A)", color: "#fff", fontWeight: 700, fontSize: 12, cursor: "pointer", lineHeight: 1.2 }}
+          style={{ flex: 1, padding: "10px 8px", borderRadius: 12, border: "none", background: "linear-gradient(135deg, #A6B49E, #4E635E)", color: "#fff", fontWeight: 700, fontSize: 12, cursor: "pointer", lineHeight: 1.2 }}
           onClick={() => { setOpen(false); onLogPaymentForKey(targetKey, myShare); }}
         >
           Pay My Share{"\n"}
@@ -4882,7 +4882,7 @@ function QuickPayButtons({ targetKey, myShare, remaining, onLogPaymentForKey }) 
         </button>
         <button
           type="button"
-          style={{ flex: 1, padding: "10px 8px", borderRadius: 12, border: "none", background: "linear-gradient(135deg, #C4A8D4, #A88CC0)", color: "#fff", fontWeight: 700, fontSize: 12, cursor: "pointer", lineHeight: 1.2 }}
+          style={{ flex: 1, padding: "10px 8px", borderRadius: 12, border: "none", background: "linear-gradient(135deg, #D5BD96, #7A9BB5)", color: "#fff", fontWeight: 700, fontSize: 12, cursor: "pointer", lineHeight: 1.2 }}
           onClick={() => { setOpen(false); onLogPaymentForKey(targetKey, remaining); }}
         >
           Pay Remaining{"\n"}
@@ -4890,7 +4890,7 @@ function QuickPayButtons({ targetKey, myShare, remaining, onLogPaymentForKey }) 
         </button>
         <button
           type="button"
-          style={{ flex: 1, padding: "10px 8px", borderRadius: 12, border: "1.5px solid #E5DFF5", background: "#F5F0FB", color: "#2D1B5E", fontWeight: 700, fontSize: 12, cursor: "pointer", lineHeight: 1.2 }}
+          style={{ flex: 1, padding: "10px 8px", borderRadius: 12, border: "1.5px solid #DDD5C5", background: "#EEE9E0", color: "#00314B", fontWeight: 700, fontSize: 12, cursor: "pointer", lineHeight: 1.2 }}
           onClick={() => setCustomMode(true)}
         >
           Custom{"\n"}
@@ -4957,9 +4957,9 @@ function ExpandableExpenseRow({ expense: e, user, onDelete, onEdit, onMarkPaid, 
 
   const camStatusColor =
     e.status === "paid"
-      ? "#7BBFB0"
+      ? "#A6B49E"
       : camIsCredit
-        ? "#7BBFB0"
+        ? "#A6B49E"
         : urgency === "overdue"
           ? "#E05C6E"
           : "#E8A0B0";
@@ -5015,7 +5015,7 @@ function ExpandableExpenseRow({ expense: e, user, onDelete, onEdit, onMarkPaid, 
         ...fw.expenseCard,
         opacity: e._deleting ? 0.55 : e._marking ? 0.75 : 1,
         pointerEvents: e._deleting || e._marking ? "none" : "auto",
-        border: isCam ? "1.5px solid #F0EAF8" : fw.expenseCard.border,
+        border: isCam ? "1.5px solid #EDE7DC" : fw.expenseCard.border,
         boxShadow: isCam ? "0 2px 10px rgba(0,0,0,0.04)" : fw.expenseCard.boxShadow,
       }}
     >
@@ -5063,7 +5063,7 @@ function ExpandableExpenseRow({ expense: e, user, onDelete, onEdit, onMarkPaid, 
             const isOverdue = getUrgencyLevel(e) === "overdue";
             const isPaid = e.status === "paid";
             return (
-              <p style={{ fontSize: 10, fontWeight: 700, margin: "4px 0 0", color: isOverdue ? "#E05C6E" : isPaid ? "#B0B0B0" : "#9B7ED4" }}>
+              <p style={{ fontSize: 10, fontWeight: 700, margin: "4px 0 0", color: isOverdue ? "#E05C6E" : isPaid ? "#B0B0B0" : "#A6B7CB" }}>
                 {isOverdue ? "Overdue · " : isPaid ? "Was due · " : "Due · "}{formatShortDate(due)}
               </p>
             );
@@ -5094,13 +5094,13 @@ function ExpandableExpenseRow({ expense: e, user, onDelete, onEdit, onMarkPaid, 
       letterSpacing: 0.2,
       background:
         camStatusLabel === "Paid" || camStatusLabel === "Credit"
-          ? "#EEF5EC"
+          ? "#EBF0E8"
           : camStatusLabel === "Overdue"
             ? "#FFF0F0"
             : "#FBEFF5",
       color:
         camStatusLabel === "Paid" || camStatusLabel === "Credit"
-          ? "#1E8449"
+          ? "#2D5A4A"
           : camStatusLabel === "Overdue"
             ? "#E05C6E"
             : "#C06A8A",
@@ -5116,7 +5116,7 @@ function ExpandableExpenseRow({ expense: e, user, onDelete, onEdit, onMarkPaid, 
             <Icon
               path={expanded ? icons.chevronUp : icons.chevronDown}
               size={16}
-              color={expanded ? "#2D1B5E" : "#CCC"}
+              color={expanded ? "#00314B" : "#CCC"}
             />
           </div>
         </div>
@@ -5202,14 +5202,14 @@ function ExpandableExpenseRow({ expense: e, user, onDelete, onEdit, onMarkPaid, 
                   <div style={fw.payMetaRow}>
                     <div style={fw.payMetaStat}>
                       <div style={fw.payMetaLabel}>Paid</div>
-                      <div style={{ ...fw.payMetaVal, color: "#1E8449" }}>${Math.abs(tPaid).toFixed(2)}</div>
+                      <div style={{ ...fw.payMetaVal, color: "#2D5A4A" }}>${Math.abs(tPaid).toFixed(2)}</div>
                     </div>
 
                     <div style={fw.payMetaDivider} />
 
                     <div style={fw.payMetaStat}>
                       <div style={fw.payMetaLabel}>Remaining</div>
-                      <div style={{ ...fw.payMetaVal, color: tRemaining > 0.005 ? "#E05C6E" : "#1E8449" }}>${Math.max(0, tRemaining).toFixed(2)}</div>
+                      <div style={{ ...fw.payMetaVal, color: tRemaining > 0.005 ? "#E05C6E" : "#2D5A4A" }}>${Math.max(0, tRemaining).toFixed(2)}</div>
                     </div>
 
                     <div style={fw.payMetaDivider} />
@@ -5221,7 +5221,7 @@ function ExpandableExpenseRow({ expense: e, user, onDelete, onEdit, onMarkPaid, 
                   </div>
 
                   {e.split === "split" && (
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 10, paddingTop: 8, borderTop: "1px solid #F0EAF8" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 10, paddingTop: 8, borderTop: "1px solid #EDE7DC" }}>
                       <span style={{ fontSize: 11, color: "#BBB", fontWeight: 600 }}>Full expense (50/50 split)</span>
                       <span style={{ fontSize: 12, fontWeight: 700, color: "#AAA" }}>${Number(e.amount || 0).toFixed(2)}</span>
                     </div>
@@ -5238,8 +5238,8 @@ function ExpandableExpenseRow({ expense: e, user, onDelete, onEdit, onMarkPaid, 
   <div
     style={{
       ...fw.logPayBtn,
-      background: "#EEF5EC",
-      color: "#1E8449",
+      background: "#EBF0E8",
+      color: "#2D5A4A",
       cursor: "default",
       height: 40,
       padding: "0 12px",
@@ -5265,7 +5265,7 @@ function ExpandableExpenseRow({ expense: e, user, onDelete, onEdit, onMarkPaid, 
             if (!confirmed.length) return null;
             return (
               <div style={{ marginTop: 10, background: "#F4FBF7", borderRadius: 12, padding: "10px 12px" }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "#1E8449", marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.5 }}>Confirmed Payments</div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#2D5A4A", marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.5 }}>Confirmed Payments</div>
                 {confirmed.map((p, i) => (
                   <div key={p.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: i > 0 ? 6 : 0, borderTop: i > 0 ? "1px solid #E0F0E8" : "none" }}>
                     <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
@@ -5273,7 +5273,7 @@ function ExpandableExpenseRow({ expense: e, user, onDelete, onEdit, onMarkPaid, 
                       <span style={{ fontSize: 11, color: "#888" }}>{formatShortDate(p.date)}</span>
                       {p.note && renderNote(p.note, { fontSize: 11, color: "#888", marginTop: 1 })}
                     </div>
-                    <span style={{ fontSize: 14, fontWeight: 700, color: "#1E8449" }}>-${Number(p.amount || 0).toFixed(2)}</span>
+                    <span style={{ fontSize: 14, fontWeight: 700, color: "#2D5A4A" }}>-${Number(p.amount || 0).toFixed(2)}</span>
                   </div>
                 ))}
               </div>
@@ -5349,7 +5349,7 @@ function ExpandableExpenseRow({ expense: e, user, onDelete, onEdit, onMarkPaid, 
                       fontWeight: 700,
                       color:
                         noteSaveStatus === "saved"
-                          ? "#1E8449"
+                          ? "#2D5A4A"
                           : noteSaveStatus === "error"
                             ? "#E05C6E"
                             : "#888",
@@ -5383,7 +5383,7 @@ function ExpandableExpenseRow({ expense: e, user, onDelete, onEdit, onMarkPaid, 
                       marginTop: 6,
                       fontSize: 12,
                       fontWeight: 700,
-                      color: "#1E8449",
+                      color: "#2D5A4A",
                       opacity: noteSaveFading ? 0 : 1,
                       transition: "opacity 300ms ease",
                     }}
@@ -5398,10 +5398,10 @@ function ExpandableExpenseRow({ expense: e, user, onDelete, onEdit, onMarkPaid, 
           {typeof onEdit === "function" && user !== "cam" && (
             <button
               type="button"
-              style={{ width: "100%", marginTop: 8, padding: "9px", borderRadius: 12, border: "1.5px solid #E5DFF5", background: "#F5F0FB", color: "#2D1B5E", fontWeight: 700, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}
+              style={{ width: "100%", marginTop: 8, padding: "9px", borderRadius: 12, border: "1.5px solid #DDD5C5", background: "#EEE9E0", color: "#00314B", fontWeight: 700, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}
               onClick={() => onEdit(e)}
             >
-              <Icon path={icons.edit} size={15} color="#2D1B5E" />
+              <Icon path={icons.edit} size={15} color="#00314B" />
               Edit Expense
             </button>
           )}
@@ -5551,7 +5551,7 @@ function SearchBar({ expenses, onFilter }) {
         }}
         aria-label={visible ? "Close search" : "Search"}
       >
-        <Icon path={icons.search} size={16} color="#2D1B5E" />
+        <Icon path={icons.search} size={16} color="#00314B" />
       </button>
 
       {visible && (
@@ -5616,7 +5616,7 @@ function AddExpenseModal({ onSave, onClose, user }) {
 
   const groupCard = {
     borderRadius: 16,
-    border: "1.5px solid #F0EAF8",
+    border: "1.5px solid #EDE7DC",
     background: "#FAFBFF",
     padding: "14px 14px 10px",
     display: "flex",
@@ -5631,8 +5631,8 @@ function AddExpenseModal({ onSave, onClose, user }) {
   );
 
   const splitOptions = user === "cam"
-    ? [["cam", "I pay", "#E8A0B0"], ["ella", "Emmanuella pays", "#7BBFB0"], ["split", "Split 50/50", "#C4A8D4"]]
-    : [["mine", "I pay", "#7BBFB0"], ["cam", "Cam pays", "#E8A0B0"], ["split", "Split 50/50", "#C4A8D4"]];
+    ? [["cam", "I pay", "#E8A0B0"], ["ella", "Emmanuella pays", "#A6B49E"], ["split", "Split 50/50", "#D5BD96"]]
+    : [["mine", "I pay", "#A6B49E"], ["cam", "Cam pays", "#E8A0B0"], ["split", "Split 50/50", "#D5BD96"]];
 
   return (
     <div style={styles.modalOverlay}>
@@ -5654,7 +5654,7 @@ function AddExpenseModal({ onSave, onClose, user }) {
               <button
                 key={t.label}
                 type="button"
-                style={{ flexShrink: 0, padding: "7px 14px", borderRadius: 999, border: "1.5px solid #E5DFF5", background: "#F5F0FB", fontSize: 12, fontWeight: 700, color: "#2D1B5E", cursor: "pointer", whiteSpace: "nowrap" }}
+                style={{ flexShrink: 0, padding: "7px 14px", borderRadius: 999, border: "1.5px solid #DDD5C5", background: "#EEE9E0", fontSize: 12, fontWeight: 700, color: "#00314B", cursor: "pointer", whiteSpace: "nowrap" }}
                 onClick={() => setForm(f => ({ ...f, description: t.description, category: t.category, recurring: t.recurring, split: t.split, ...(t.amount ? { amount: t.amount } : {}) }))}
               >
                 {t.label}
@@ -5664,7 +5664,7 @@ function AddExpenseModal({ onSave, onClose, user }) {
 
           {/* ── Group 1: WHAT ── */}
           <div style={groupCard}>
-            {groupLabel("What", "#9B7ED4")}
+            {groupLabel("What", "#A6B7CB")}
 
             <input
               style={{ ...styles.input, fontSize: 16, fontWeight: 600 }}
@@ -5680,9 +5680,9 @@ function AddExpenseModal({ onSave, onClose, user }) {
                   type="button"
                   style={{
                     flexShrink: 0, padding: "6px 14px", borderRadius: 999, border: "1.5px solid",
-                    background: form.category === c ? "#2D1B5E" : "#F5F0FB",
+                    background: form.category === c ? "#00314B" : "#EEE9E0",
                     color: form.category === c ? "#fff" : "#666",
-                    borderColor: form.category === c ? "#2D1B5E" : "#E5DFF5",
+                    borderColor: form.category === c ? "#00314B" : "#DDD5C5",
                     fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap",
                   }}
                   onClick={() => set("category", c)}
@@ -5697,7 +5697,7 @@ function AddExpenseModal({ onSave, onClose, user }) {
               <button
                 type="button"
                 onClick={() => setShowNotes(p => !p)}
-                style={{ display: "flex", alignItems: "center", gap: 5, background: "none", border: "none", cursor: "pointer", padding: "2px 0", color: showNotes ? "#5B3FA6" : "#BBB" }}
+                style={{ display: "flex", alignItems: "center", gap: 5, background: "none", border: "none", cursor: "pointer", padding: "2px 0", color: showNotes ? "#1B4D6B" : "#BBB" }}
               >
                 <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
                   <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/>
@@ -5714,7 +5714,7 @@ function AddExpenseModal({ onSave, onClose, user }) {
                   {/* Reference number */}
                   <div style={{ position: "relative" }}>
                     <div style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", display: "flex", alignItems: "center", pointerEvents: "none" }}>
-                      <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="#C4A8D4" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                      <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="#D5BD96" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
                         <path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z"/>
                         <line x1="7" y1="7" x2="7.01" y2="7"/>
                       </svg>
@@ -5724,7 +5724,7 @@ function AddExpenseModal({ onSave, onClose, user }) {
                       placeholder="Reference # — e.g. TXN-4821, Order ID…"
                       value={form.referenceNum}
                       onChange={(e) => set("referenceNum", e.target.value)}
-                      style={{ display: "block", width: "100%", boxSizing: "border-box", padding: "11px 14px 11px 34px", borderRadius: 12, border: "1.5px solid #E5DFF5", background: "#FDFBFF", fontSize: 13, fontWeight: 600, color: "#2D1B5E", fontFamily: "inherit", outline: "none" }}
+                      style={{ display: "block", width: "100%", boxSizing: "border-box", padding: "11px 14px 11px 34px", borderRadius: 12, border: "1.5px solid #DDD5C5", background: "#F5F1EB", fontSize: 13, fontWeight: 600, color: "#00314B", fontFamily: "inherit", outline: "none" }}
                     />
                   </div>
 
@@ -5733,7 +5733,7 @@ function AddExpenseModal({ onSave, onClose, user }) {
                     placeholder="Extra context, links, reminders…"
                     value={form.note}
                     onChange={(e) => set("note", e.target.value)}
-                    style={{ display: "block", width: "100%", boxSizing: "border-box", padding: "11px 14px", borderRadius: 12, border: "1.5px solid #E5DFF5", background: "#FDFBFF", fontSize: 13, fontWeight: 500, color: "#2D1B5E", fontFamily: "inherit", outline: "none", resize: "none", minHeight: 72, lineHeight: 1.5 }}
+                    style={{ display: "block", width: "100%", boxSizing: "border-box", padding: "11px 14px", borderRadius: 12, border: "1.5px solid #DDD5C5", background: "#F5F1EB", fontSize: 13, fontWeight: 500, color: "#00314B", fontFamily: "inherit", outline: "none", resize: "none", minHeight: 72, lineHeight: 1.5 }}
                   />
                 </div>
               )}
@@ -5742,11 +5742,11 @@ function AddExpenseModal({ onSave, onClose, user }) {
 
           {/* ── Group 2: HOW MUCH ── */}
           <div style={groupCard}>
-            {groupLabel("How Much", "#5B3FA6")}
+            {groupLabel("How Much", "#1B4D6B")}
             <div style={{ position: "relative", width: "100%" }}>
-              <span style={{ position: "absolute", left: 16, top: "50%", transform: "translateY(-50%)", fontSize: 26, fontWeight: 800, color: "#C4A8D4", pointerEvents: "none" }}>$</span>
+              <span style={{ position: "absolute", left: 16, top: "50%", transform: "translateY(-50%)", fontSize: 26, fontWeight: 800, color: "#D5BD96", pointerEvents: "none" }}>$</span>
               <input
-                style={{ display: "block", width: "100%", boxSizing: "border-box", height: 64, paddingLeft: 44, paddingRight: 14, borderRadius: 12, border: "1.5px solid #E5DFF5", background: "#FDFBFF", outline: "none", fontSize: 34, fontWeight: 800, color: "#2D1B5E", letterSpacing: -0.5, fontFamily: "inherit" }}
+                style={{ display: "block", width: "100%", boxSizing: "border-box", height: 64, paddingLeft: 44, paddingRight: 14, borderRadius: 12, border: "1.5px solid #DDD5C5", background: "#F5F1EB", outline: "none", fontSize: 34, fontWeight: 800, color: "#00314B", letterSpacing: -0.5, fontFamily: "inherit" }}
                 type="number"
                 inputMode="decimal"
                 placeholder="0.00"
@@ -5767,8 +5767,8 @@ function AddExpenseModal({ onSave, onClose, user }) {
                   type="button"
                   style={{
                     flex: 1, padding: "11px 6px", borderRadius: 12, border: "1.5px solid",
-                    borderColor: form.split === val ? color : "#E5DFF5",
-                    background: form.split === val ? color : "#F5F0FB",
+                    borderColor: form.split === val ? color : "#DDD5C5",
+                    background: form.split === val ? color : "#EEE9E0",
                     color: form.split === val ? "#fff" : "#888",
                     fontWeight: form.split === val ? 700 : 500,
                     fontSize: 12, cursor: "pointer", fontFamily: "inherit",
@@ -5793,13 +5793,13 @@ function AddExpenseModal({ onSave, onClose, user }) {
 
           {/* ── Group 4: WHEN ── */}
           <div style={groupCard}>
-            {groupLabel("When", "#7BBFB0", isRecurring ? <span style={styles.newBadge}>RECURRING</span> : null)}
+            {groupLabel("When", "#A6B49E", isRecurring ? <span style={styles.newBadge}>RECURRING</span> : null)}
 
             {/* Transaction date — defaults to today, expandable to pick another */}
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 {!isToday && <div style={{ width: 7, height: 7, borderRadius: 999, background: "#E05C6E", flexShrink: 0 }} />}
-                <span style={{ fontSize: 14, fontWeight: 700, color: isToday ? "#2D1B5E" : "#E05C6E" }}>{dateDisplay}</span>
+                <span style={{ fontSize: 14, fontWeight: 700, color: isToday ? "#00314B" : "#E05C6E" }}>{dateDisplay}</span>
               </div>
               <button
                 type="button"
@@ -5807,7 +5807,7 @@ function AddExpenseModal({ onSave, onClose, user }) {
                   if (showDatePicker && !isToday) set("date", todayStr);
                   setShowDatePicker(p => !p);
                 }}
-                style={{ fontSize: 12, fontWeight: 700, color: "#9B7ED4", background: "none", border: "none", cursor: "pointer", padding: "4px 0" }}
+                style={{ fontSize: 12, fontWeight: 700, color: "#A6B7CB", background: "none", border: "none", cursor: "pointer", padding: "4px 0" }}
               >
                 {showDatePicker ? (isToday ? "Done" : "Reset to today") : "Different date"}
               </button>
@@ -5849,7 +5849,7 @@ function AddExpenseModal({ onSave, onClose, user }) {
 
             {/* Recurring: start + end side by side, then auto-advance preview */}
             {isRecurring && (
-              <div style={{ background: "#F3EEFF", borderRadius: 12, padding: "12px 12px 10px", display: "flex", flexDirection: "column", gap: 10 }}>
+              <div style={{ background: "#F0EAE0", borderRadius: 12, padding: "12px 12px 10px", display: "flex", flexDirection: "column", gap: 10 }}>
                 <div style={styles.twoCol}>
                   <div style={{ flex: 1 }}>
                     <label style={styles.fieldLabel}>Start date</label>
@@ -5862,7 +5862,7 @@ function AddExpenseModal({ onSave, onClose, user }) {
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 6, paddingTop: 2 }}>
                   <span style={{ fontSize: 12, color: "#AAA", fontWeight: 500 }}>Auto-advances to</span>
-                  <span style={{ fontSize: 13, fontWeight: 800, color: previewNextDue ? "#5B3FA6" : "#CCC" }}>
+                  <span style={{ fontSize: 13, fontWeight: 800, color: previewNextDue ? "#1B4D6B" : "#CCC" }}>
                     {previewNextDue ? formatHistoryDate(previewNextDue) : "set start date first"}
                   </span>
                 </div>
@@ -5876,7 +5876,7 @@ function AddExpenseModal({ onSave, onClose, user }) {
               style={{
                 display: "flex", alignItems: "center", justifyContent: "space-between",
                 padding: "10px 12px", borderRadius: 12, border: "1.5px solid",
-                borderColor: form.mandatory ? "#E05C6E" : "#E5DFF5",
+                borderColor: form.mandatory ? "#E05C6E" : "#DDD5C5",
                 background: form.mandatory ? "#FFF5F6" : "#FAFBFF",
                 cursor: "pointer", width: "100%", textAlign: "left",
               }}
@@ -5886,7 +5886,7 @@ function AddExpenseModal({ onSave, onClose, user }) {
                   <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/>
                 </svg>
                 <div>
-                  <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: form.mandatory ? "#E05C6E" : "#2D1B5E" }}>Mandatory</p>
+                  <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: form.mandatory ? "#E05C6E" : "#00314B" }}>Mandatory</p>
                   <p style={{ margin: 0, fontSize: 11, color: "#AAA" }}>Cannot be late — alerts Cameron earlier</p>
                 </div>
               </div>
@@ -5964,7 +5964,7 @@ function QuickAddModal({ user, onSave, onClose }) {
 
         {/* Amount — big, keyboard-first */}
         <div style={{ position: "relative", marginBottom: 12 }}>
-          <span style={{ position: "absolute", left: 16, top: "50%", transform: "translateY(-50%)", fontSize: 28, fontWeight: 800, color: "#C4A8D4", pointerEvents: "none" }}>$</span>
+          <span style={{ position: "absolute", left: 16, top: "50%", transform: "translateY(-50%)", fontSize: 28, fontWeight: 800, color: "#D5BD96", pointerEvents: "none" }}>$</span>
           <input
             autoFocus
             inputMode="decimal"
@@ -5973,7 +5973,7 @@ function QuickAddModal({ user, onSave, onClose }) {
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && document.getElementById("qa-desc")?.focus()}
-            style={{ width: "100%", boxSizing: "border-box", paddingLeft: 44, paddingRight: 16, height: 64, borderRadius: 16, border: "2px solid #E5DFF5", background: "#FDFBFF", fontSize: 32, fontWeight: 800, color: "#2D1B5E", fontFamily: "inherit", outline: "none" }}
+            style={{ width: "100%", boxSizing: "border-box", paddingLeft: 44, paddingRight: 16, height: 64, borderRadius: 16, border: "2px solid #DDD5C5", background: "#F5F1EB", fontSize: 32, fontWeight: 800, color: "#00314B", fontFamily: "inherit", outline: "none" }}
           />
         </div>
 
@@ -5984,7 +5984,7 @@ function QuickAddModal({ user, onSave, onClose }) {
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && handleSave()}
-          style={{ width: "100%", boxSizing: "border-box", padding: "14px 16px", borderRadius: 14, border: "1.5px solid #E5DFF5", background: "#FDFBFF", fontSize: 16, fontWeight: 600, color: "#2D1B5E", fontFamily: "inherit", outline: "none", marginBottom: 14 }}
+          style={{ width: "100%", boxSizing: "border-box", padding: "14px 16px", borderRadius: 14, border: "1.5px solid #DDD5C5", background: "#F5F1EB", fontSize: 16, fontWeight: 600, color: "#00314B", fontFamily: "inherit", outline: "none", marginBottom: 14 }}
         />
 
         {/* Split chips */}
@@ -5994,7 +5994,7 @@ function QuickAddModal({ user, onSave, onClose }) {
               key={val}
               type="button"
               onClick={() => setSplit(val)}
-              style={{ flex: 1, padding: "10px 6px", borderRadius: 12, border: "1.5px solid", borderColor: split === val ? "#2D1B5E" : "#E5DFF5", background: split === val ? "#2D1B5E" : "#FDFBFF", color: split === val ? "#fff" : "#888", fontWeight: 700, fontSize: 12, fontFamily: "inherit", cursor: "pointer" }}
+              style={{ flex: 1, padding: "10px 6px", borderRadius: 12, border: "1.5px solid", borderColor: split === val ? "#00314B" : "#DDD5C5", background: split === val ? "#00314B" : "#F5F1EB", color: split === val ? "#fff" : "#888", fontWeight: 700, fontSize: 12, fontFamily: "inherit", cursor: "pointer" }}
             >
               {label}
             </button>
@@ -6006,7 +6006,7 @@ function QuickAddModal({ user, onSave, onClose }) {
           type="button"
           disabled={!amount || !description.trim()}
           onClick={handleSave}
-          style={{ width: "100%", padding: "16px", borderRadius: 16, border: "none", background: amount && description.trim() ? "linear-gradient(135deg, #7BBFB0, #5CA89A)" : "#E5DFF5", color: amount && description.trim() ? "#fff" : "#BBB", fontWeight: 800, fontSize: 16, fontFamily: "inherit", cursor: amount && description.trim() ? "pointer" : "default", transition: "background 0.15s" }}
+          style={{ width: "100%", padding: "16px", borderRadius: 16, border: "none", background: amount && description.trim() ? "linear-gradient(135deg, #A6B49E, #4E635E)" : "#DDD5C5", color: amount && description.trim() ? "#fff" : "#BBB", fontWeight: 800, fontSize: 16, fontFamily: "inherit", cursor: amount && description.trim() ? "pointer" : "default", transition: "background 0.15s" }}
         >
           Add Expense
         </button>
@@ -6160,7 +6160,7 @@ function EditExpenseModal({ expense, onSave, onDelete, onClose }) {
             style={{
               display: "flex", alignItems: "center", justifyContent: "space-between",
               padding: "10px 12px", borderRadius: 12, border: "1.5px solid",
-              borderColor: form.mandatory ? "#E05C6E" : "#E5DFF5",
+              borderColor: form.mandatory ? "#E05C6E" : "#DDD5C5",
               background: form.mandatory ? "#FFF5F6" : "#FAFBFF",
               cursor: "pointer", width: "100%", textAlign: "left", marginBottom: 4,
             }}
@@ -6170,7 +6170,7 @@ function EditExpenseModal({ expense, onSave, onDelete, onClose }) {
                 <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/>
               </svg>
               <div>
-                <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: form.mandatory ? "#E05C6E" : "#2D1B5E" }}>Mandatory</p>
+                <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: form.mandatory ? "#E05C6E" : "#00314B" }}>Mandatory</p>
                 <p style={{ margin: 0, fontSize: 11, color: "#AAA" }}>Cannot be late — alerts Cameron earlier</p>
               </div>
             </div>
@@ -6261,9 +6261,9 @@ function LogPaymentModal({ balance, onSave, onClose, user, targets = [], planSum
             <button style={styles.closeBtn} onClick={onClose}><Icon path={icons.x} size={18} color="#C0485A" /></button>
           </div>
 
-          <div style={{ background: "#F5F0FB", borderRadius: 14, padding: "14px 16px", marginBottom: 20, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div style={{ background: "#EEE9E0", borderRadius: 14, padding: "14px 16px", marginBottom: 20, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <span style={{ fontSize: 13, color: "#888", fontWeight: 600 }}>Amount</span>
-            <span style={{ fontSize: 22, fontWeight: 900, color: "#2D1B5E" }}>${Number(initialAmount).toFixed(2)}</span>
+            <span style={{ fontSize: 22, fontWeight: 900, color: "#00314B" }}>${Number(initialAmount).toFixed(2)}</span>
           </div>
 
           <div style={styles.splitRow}>
@@ -6271,7 +6271,7 @@ function LogPaymentModal({ balance, onSave, onClose, user, targets = [], planSum
               <button key={m} style={{
                 ...styles.splitOption,
                 fontSize: 12,
-                background: form.method === m ? "#7BBFB0" : "#F5F0FB",
+                background: form.method === m ? "#A6B49E" : "#EEE9E0",
                 color: form.method === m ? "#fff" : "#666",
                 fontWeight: form.method === m ? 700 : 400,
               }} onClick={() => set("method", m)}>{m}</button>
@@ -6281,7 +6281,7 @@ function LogPaymentModal({ balance, onSave, onClose, user, targets = [], planSum
           {user === "cam" && <p style={{...styles.formNote, marginTop: 16}}>⚠️ Emmanuella will confirm once she receives it</p>}
 
           <button
-            style={{ ...styles.saveBtn, background: "linear-gradient(135deg, #7BBFB0, #5CA89A)", marginTop: 20 }}
+            style={{ ...styles.saveBtn, background: "linear-gradient(135deg, #A6B49E, #4E635E)", marginTop: 20 }}
             onClick={() => {
               const key = form.appliedToKey || "general";
               const legacyGroupId = key.startsWith("grp:") ? key.slice(4) : undefined;
@@ -6331,7 +6331,7 @@ function LogPaymentModal({ balance, onSave, onClose, user, targets = [], planSum
               </span>
               <button
                 type="button"
-                style={{ background: "none", border: "none", color: "#7BBFB0", fontWeight: 700, cursor: "pointer", fontSize: 12 }}
+                style={{ background: "none", border: "none", color: "#A6B49E", fontWeight: 700, cursor: "pointer", fontSize: 12 }}
                 onClick={() => {
                   const s = Math.max(0, Number(suggestedAmount || 0));
                   const cap = maxForTarget == null ? s : Math.min(s, maxForTarget);
@@ -6382,7 +6382,7 @@ function LogPaymentModal({ balance, onSave, onClose, user, targets = [], planSum
               <button key={m} style={{
                 ...styles.splitOption,
                 fontSize: 12,
-                background: form.method === m ? "#7BBFB0" : "#F5F0FB",
+                background: form.method === m ? "#A6B49E" : "#EEE9E0",
                 color: form.method === m ? "#fff" : "#666",
                 fontWeight: form.method === m ? 700 : 400,
               }} onClick={() => set("method", m)}>{m}</button>
@@ -6397,7 +6397,7 @@ function LogPaymentModal({ balance, onSave, onClose, user, targets = [], planSum
 
           {user === "cam" && <p style={styles.formNote}>⚠️ Emmanuella will confirm once she receives it</p>}
 
-          <button style={{...styles.saveBtn, background: "linear-gradient(135deg, #7BBFB0, #5CA89A)"}} onClick={() => {
+          <button style={{...styles.saveBtn, background: "linear-gradient(135deg, #A6B49E, #4E635E)"}} onClick={() => {
             if (!form.amount) return;
             const key = form.appliedToKey || "general";
             const legacyGroupId = key.startsWith("grp:") ? key.slice(4) : undefined;
@@ -6437,7 +6437,7 @@ function BottomNav({ screen, onNavigate, urgentCount = 0, hidden = false }) {
               size={20}
               color={
                 screen === t.id
-                  ? "#7BBFB0"
+                  ? "#A6B49E"
                   : t.id === "urgent" && urgentCount > 0
                   ? "#E05C6E"
                   : "#AAA"
@@ -6468,7 +6468,7 @@ function BottomNav({ screen, onNavigate, urgentCount = 0, hidden = false }) {
               fontSize: 10,
               color:
                 screen === t.id
-                  ? "#7BBFB0"
+                  ? "#A6B49E"
                   : t.id === "urgent" && urgentCount > 0
                   ? "#E05C6E"
                   : "#AAA",
@@ -6487,10 +6487,10 @@ const fw = {
   expenseCard: { background: "#fff", borderRadius: 16, marginBottom: 8, overflow: "hidden", boxShadow: "0 2px 8px rgba(0,0,0,0.06)" },
   expenseTop: { display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", cursor: "pointer" },
   expenseInfo: { flex: 1, minWidth: 0 },
-  expenseDesc: { fontSize: 13, fontWeight: 600, color: "#2D1B5E", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" },
+  expenseDesc: { fontSize: 13, fontWeight: 600, color: "#00314B", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" },
   expenseMeta: { fontSize: 11, color: "#999", margin: "2px 0 0" },
   expenseRight: { textAlign: "right", flexShrink: 0 },
-  expenseTotal: { fontSize: 14, fontWeight: 700, color: "#2D1B5E", margin: 0 },
+  expenseTotal: { fontSize: 14, fontWeight: 700, color: "#00314B", margin: 0 },
   expenseCam: { fontSize: 11, color: "#E8A0B0", margin: "1px 0 0", fontWeight: 600 },
   splitDot: { width: 8, height: 8, borderRadius: "50%", flexShrink: 0 },
   chevron: { display: "flex", alignItems: "center", justifyContent: "center", marginTop: 4 },
@@ -6501,7 +6501,7 @@ payPlanCard: {
   marginTop: 12,
   background: "#fff",
   borderRadius: 16,
-  border: "1px solid #F0EAF8",
+  border: "1px solid #EDE7DC",
   boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
   padding: "12px 12px",
 },
@@ -6525,7 +6525,7 @@ payPlanPill: {
 payPlanStepText: {
   fontSize: 12,
   fontWeight: 800,
-  color: "#2D1B5E",
+  color: "#00314B",
   whiteSpace: "nowrap",
   overflow: "hidden",
   textOverflow: "ellipsis",
@@ -6540,26 +6540,26 @@ payPlanCircle: {
   width: 10,
   height: 10,
   borderRadius: 999,
-  border: "2px solid #E5DFF5",
+  border: "2px solid #DDD5C5",
   background: "#fff",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
 },
 payPlanCircleDone: {
-  border: "2px solid #7BBFB0",
-  background: "#7BBFB0",
+  border: "2px solid #A6B49E",
+  background: "#A6B49E",
 },
 payPlanBarTrack: {
   height: 8,
   borderRadius: 999,
-  background: "#F5F0FB",
+  background: "#EEE9E0",
   overflow: "hidden",
 },
 payPlanBarFill: {
   height: "100%",
   borderRadius: 999,
-  background: "linear-gradient(135deg, #7BBFB0, #5CA89A)",
+  background: "linear-gradient(135deg, #A6B49E, #4E635E)",
 },
 payPlanNextRow: {
   marginTop: 10,
@@ -6591,7 +6591,7 @@ payPlanNextRight: {
 payPlanNextAmt: {
   fontSize: 14,
   fontWeight: 900,
-  color: "#2D1B5E",
+  color: "#00314B",
 },
 payPlanNextDate: {
   marginTop: 2,
@@ -6604,7 +6604,7 @@ payMetaCard: {
   marginTop: 10,
   background: "#fff",
   borderRadius: 16,
-  border: "1px solid #F0EAF8",
+  border: "1px solid #EDE7DC",
   boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
   padding: "12px 12px",
 },
@@ -6630,11 +6630,11 @@ payMetaLabel: {
 payMetaVal: {
   fontSize: 14,
   fontWeight: 900,
-  color: "#2D1B5E",
+  color: "#00314B",
 },
 payMetaDivider: {
   width: 1,
-  background: "#F0EAF8",
+  background: "#EDE7DC",
   margin: "0 10px",
 },
 logPayBtn: {
@@ -6649,46 +6649,46 @@ logPayBtn: {
   lineHeight: 1,
   cursor: "pointer",
   color: "#fff",
-  background: "linear-gradient(135deg, #C4A8D4, #A88CC0)",
+  background: "linear-gradient(135deg, #D5BD96, #7A9BB5)",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
   boxSizing: "border-box",
 },
 
-  expandPanel: { padding: "14px 16px 16px", borderTop: "1px solid #F5F0FB" },
+  expandPanel: { padding: "14px 16px 16px", borderTop: "1px solid #EEE9E0" },
   detailRow: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: "1px solid #F9F5FF" },
   detailLabel: { fontSize: 11, color: "#AAA", fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5 },
-  detailVal: { fontSize: 13, color: "#2D1B5E", fontWeight: 600 },
+  detailVal: { fontSize: 13, color: "#00314B", fontWeight: 600 },
   statusBadge: { fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 8 },
   splitChip: { fontSize: 11, fontWeight: 600, padding: "3px 10px", borderRadius: 8 },
 
-  noteInput: { width: "100%", maxWidth: "100%", boxSizing: "border-box", display: "block", padding: "12px 14px", borderRadius: 14, border: "1.5px solid #E5DFF5", fontSize: 15, lineHeight: 1.4, fontFamily: "inherit", outline: "none", marginTop: 8, background: "#fff" },
-  noteTextarea: { width: "100%", maxWidth: "100%", boxSizing: "border-box", display: "block", padding: "12px 14px", borderRadius: 14, border: "1.5px solid #E5DFF5", fontSize: 15, lineHeight: 1.45, fontFamily: "inherit", outline: "none", marginTop: 8, background: "#fff", resize: "vertical", minHeight: 84 },
-  noteSaveBtn: { flex: 1, marginTop: 0, padding: "8px 16px", borderRadius: 12, border: "none", background: "#7BBFB0", color: "#fff", fontWeight: 700, fontSize: 12, cursor: "pointer" },
+  noteInput: { width: "100%", maxWidth: "100%", boxSizing: "border-box", display: "block", padding: "12px 14px", borderRadius: 14, border: "1.5px solid #DDD5C5", fontSize: 15, lineHeight: 1.4, fontFamily: "inherit", outline: "none", marginTop: 8, background: "#fff" },
+  noteTextarea: { width: "100%", maxWidth: "100%", boxSizing: "border-box", display: "block", padding: "12px 14px", borderRadius: 14, border: "1.5px solid #DDD5C5", fontSize: 15, lineHeight: 1.45, fontFamily: "inherit", outline: "none", marginTop: 8, background: "#fff", resize: "vertical", minHeight: 84 },
+  noteSaveBtn: { flex: 1, marginTop: 0, padding: "8px 16px", borderRadius: 12, border: "none", background: "#A6B49E", color: "#fff", fontWeight: 700, fontSize: 12, cursor: "pointer" },
   noteBtnRow: { display: "flex", gap: 10, marginTop: 10 },
-  noteCancelBtn: { flex: 1, padding: "8px 16px", borderRadius: 12, border: "1.5px solid #E5DFF5", background: "#F5F0FB", color: "#2D1B5E", fontWeight: 700, fontSize: 12, cursor: "pointer" },
+  noteCancelBtn: { flex: 1, padding: "8px 16px", borderRadius: 12, border: "1.5px solid #DDD5C5", background: "#EEE9E0", color: "#00314B", fontWeight: 700, fontSize: 12, cursor: "pointer" },
   noteTap: { fontSize: 13, lineHeight: 1.4, color: "#777", fontStyle: "italic", marginTop: 6, marginBottom: 0, cursor: "pointer" },
 
   actionBtns: { display: "flex", gap: 8, marginTop: 12 },
-  markPaidBtn: { flex: 1, padding: "9px", borderRadius: 12, border: "none", background: "#7BBFB0", color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer" },
+  markPaidBtn: { flex: 1, padding: "9px", borderRadius: 12, border: "none", background: "#A6B49E", color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer" },
   deleteBtn: { flex: 1, padding: "9px", borderRadius: 12, border: "none", background: "#FFF0F0", color: "#E05C6E", fontWeight: 700, fontSize: 13, cursor: "pointer" },
 
   insightCard: { background: "#fff", borderRadius: 16, margin: "0 16px 12px", overflow: "hidden", boxShadow: "0 2px 8px rgba(0,0,0,0.06)" },
   insightHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 16px", cursor: "pointer" },
-  insightTitle: { fontSize: 14, fontWeight: 700, color: "#2D1B5E" },
+  insightTitle: { fontSize: 14, fontWeight: 700, color: "#00314B" },
   insightBody: { padding: "4px 16px 16px", display: "flex", gap: 12 },
   insightStat: { flex: 1, display: "flex", flexDirection: "column", gap: 2 },
   insightStatLabel: { fontSize: 11, color: "#AAA" },
-  insightStatVal: { fontSize: 18, fontWeight: 800, color: "#2D1B5E" },
-  insightDivider: { width: 1, background: "#F0EAF8" },
+  insightStatVal: { fontSize: 18, fontWeight: 800, color: "#00314B" },
+  insightDivider: { width: 1, background: "#EDE7DC" },
 
-  searchIconBtn: { background: "#F5F0FB", border: "none", borderRadius: 10, padding: "6px 10px", fontSize: 16, cursor: "pointer" },
+  searchIconBtn: { background: "#EEE9E0", border: "none", borderRadius: 10, padding: "6px 10px", fontSize: 16, cursor: "pointer" },
   searchBar: { padding: "8px 0 4px", position: "relative", display: "flex", alignItems: "center" },
-  searchInput: { width: "100%", padding: "10px 36px 10px 14px", borderRadius: 12, border: "1.5px solid #E5DFF5", fontSize: 14, fontFamily: "inherit", outline: "none", background: "#FDFBFF" },
+  searchInput: { width: "100%", padding: "10px 36px 10px 14px", borderRadius: 12, border: "1.5px solid #DDD5C5", fontSize: 14, fontFamily: "inherit", outline: "none", background: "#F5F1EB" },
   searchClear: { position: "absolute", right: 10, background: "none", border: "none", color: "#BBB", fontSize: 14, cursor: "pointer" },
 
-  summaryCard: { margin: "0 16px 12px", background: "linear-gradient(135deg, #2D1B5E, #5B3B8C)", borderRadius: 20, padding: "20px 20px", color: "#fff", cursor: "pointer", boxShadow: "0 8px 30px rgba(45,27,94,0.25)" },
+  summaryCard: { margin: "0 16px 12px", background: "linear-gradient(135deg, #00314B, #5B3B8C)", borderRadius: 20, padding: "20px 20px", color: "#fff", cursor: "pointer", boxShadow: "0 8px 30px rgba(0,49,75,0.25)" },
   summaryTop: { display: "flex", justifyContent: "space-between", alignItems: "center" },
   summaryMonth: { fontSize: 13, opacity: 0.7, margin: 0 },
   summaryTotal: { fontSize: 28, fontWeight: 800, margin: "4px 0 0", letterSpacing: -1 },
@@ -6697,20 +6697,20 @@ logPayBtn: {
 
   timelineCard: { background: "#fff", borderRadius: 16, overflow: "hidden", boxShadow: "0 2px 8px rgba(0,0,0,0.06)", margin: "0 16px 12px" },
   timelineHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 16px", cursor: "pointer" },
-  countBadge: { background: "#7BBFB0", color: "#fff", fontSize: 11, fontWeight: 800, padding: "2px 8px", borderRadius: 10 },
+  countBadge: { background: "#A6B49E", color: "#fff", fontSize: 11, fontWeight: 800, padding: "2px 8px", borderRadius: 10 },
   timelineItem: { display: "flex", gap: 12, marginBottom: 4 },
   timelineLine: { display: "flex", flexDirection: "column", alignItems: "center", paddingTop: 4 },
-  timelineDot: { width: 10, height: 10, borderRadius: "50%", background: "#7BBFB0", flexShrink: 0 },
-  timelineConnector: { width: 2, flex: 1, background: "#F0EAF8", minHeight: 20, marginTop: 4 },
+  timelineDot: { width: 10, height: 10, borderRadius: "50%", background: "#A6B49E", flexShrink: 0 },
+  timelineConnector: { width: 2, flex: 1, background: "#EDE7DC", minHeight: 20, marginTop: 4 },
   timelineContent: { flex: 1, paddingBottom: 12 },
-  timelineAmt: { fontSize: 14, fontWeight: 700, color: "#2D1B5E", margin: 0 },
+  timelineAmt: { fontSize: 14, fontWeight: 700, color: "#00314B", margin: 0 },
   timelineMeta: { fontSize: 11, color: "#999", margin: "2px 0 0" },
   timelineNote: { fontSize: 11, color: "#BBB", fontStyle: "italic", margin: "2px 0 0" },
 };
 
 // ── STYLES ────────────────────────────────────────────────────────────
 const styles = {
-  app: { maxWidth: 430, margin: "0 auto", minHeight: "100%", background: "#F8F4FF", position: "relative", fontFamily: "'DM Sans', system-ui, sans-serif", paddingTop: "env(safe-area-inset-top)" },
+  app: { maxWidth: 430, margin: "0 auto", minHeight: "100%", background: "#F5F1EB", position: "relative", fontFamily: "'DM Sans', system-ui, sans-serif", paddingTop: "env(safe-area-inset-top)" },
   screen: { padding: "0 0 20px" },
 
 typeFilterRow: {
@@ -6752,10 +6752,10 @@ typeFilterChipActive: {
   },
   islandCard: {
     background: "rgba(255,255,255,0.85)",
-    border: "1.5px solid #F0EAF8",
+    border: "1.5px solid #EDE7DC",
     borderRadius: 26,
     padding: "12px 12px 12px",
-    boxShadow: "0 10px 30px rgba(45,27,94,0.12)",
+    boxShadow: "0 10px 30px rgba(0,49,75,0.12)",
   },
   islandHeaderRow: {
     display: "flex",
@@ -6767,7 +6767,7 @@ typeFilterChipActive: {
     margin: 0,
     fontSize: 18,
     fontWeight: 900,
-    color: "#2D1B5E",
+    color: "#00314B",
     textAlign: "center",
     flex: 1,
     minWidth: 0,
@@ -6787,7 +6787,7 @@ typeFilterChipActive: {
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    color: "#2D1B5E",
+    color: "#00314B",
     flexShrink: 0,
   },
 
@@ -6795,7 +6795,7 @@ typeFilterChipActive: {
   loginWrap: { minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(160deg, #EDE4F5 0%, #EBF2F8 50%, #EBF6F4 100%)", padding: 20 },
   loginCard: { background: "#fff", borderRadius: 28, padding: "40px 28px", textAlign: "center", boxShadow: "0 20px 60px rgba(0,0,0,0.08)", width: "100%", maxWidth: 360 },
   loginLogo: { fontSize: 52, marginBottom: 8 },
-  loginTitle: { fontSize: 32, fontWeight: 800, color: "#2D1B5E", margin: "0 0 6px", letterSpacing: -1 },
+  loginTitle: { fontSize: 32, fontWeight: 800, color: "#00314B", margin: "0 0 6px", letterSpacing: -1 },
   loginSubtitle: { color: "#888", fontSize: 15, margin: "0 0 28px" },
   loginBtns: { display: "flex", flexDirection: "column", gap: 12, marginBottom: 20 },
   loginBtn: { display: "flex", alignItems: "center", gap: 14, padding: "18px 22px", borderRadius: 16, border: "none", cursor: "pointer", color: "#fff", fontWeight: 700, fontSize: 17, position: "relative" },
@@ -6816,28 +6816,28 @@ iconBtn: {
   alignItems: "center",
   justifyContent: "center",
 },  
-  searchBar: { margin: "-6px 16px 12px", background: "#fff", borderRadius: 14, border: "1px solid #F0EAF8", display: "flex", alignItems: "center", gap: 8, padding: "10px 12px", boxShadow: "0 2px 10px rgba(0,0,0,0.04)" },
+  searchBar: { margin: "-6px 16px 12px", background: "#fff", borderRadius: 14, border: "1px solid #EDE7DC", display: "flex", alignItems: "center", gap: 8, padding: "10px 12px", boxShadow: "0 2px 10px rgba(0,0,0,0.04)" },
   searchIcon: { fontSize: 14, opacity: 0.7 },
-  searchInput: { flex: 1, border: "none", outline: "none", fontSize: 13, background: "transparent", color: "#2D1B5E" },
-  clearSearch: { width: 28, height: 28, borderRadius: 10, border: "none", cursor: "pointer", background: "#F5F0FB", color: "#888", display: "flex", alignItems: "center", justifyContent: "center" },
+  searchInput: { flex: 1, border: "none", outline: "none", fontSize: 13, background: "transparent", color: "#00314B" },
+  clearSearch: { width: 28, height: 28, borderRadius: 10, border: "none", cursor: "pointer", background: "#EEE9E0", color: "#888", display: "flex", alignItems: "center", justifyContent: "center" },
   expensesSearchRow: { display: "flex", alignItems: "center", gap: 10, padding: "0 16px 12px" },
   expensesSearchFieldWrap: { flex: 1, position: "relative", display: "flex", alignItems: "center" },
   expensesSearchIconInner: { position: "absolute", left: 12, display: "flex", alignItems: "center", justifyContent: "center" },
-  expensesSearchInput: { width: "100%", padding: "10px 36px 10px 34px", borderRadius: 12, border: "1.5px solid #E5DFF5", background: "#fff", fontSize: 15, color: "#2D1B5E", outline: "none" },
+  expensesSearchInput: { width: "100%", padding: "10px 36px 10px 34px", borderRadius: 12, border: "1.5px solid #DDD5C5", background: "#fff", fontSize: 15, color: "#00314B", outline: "none" },
   expensesSearchClearBtn: { position: "absolute", right: 10, width: 20, height: 20, borderRadius: 10, border: "none", cursor: "pointer", background: "#CCC", color: "#fff", fontSize: 11, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" },
-  expensesSearchCancel: { background: "none", border: "none", cursor: "pointer", color: "#7BBFB0", fontSize: 14, fontWeight: 700 },
+  expensesSearchCancel: { background: "none", border: "none", cursor: "pointer", color: "#A6B49E", fontSize: 14, fontWeight: 700 },
   expensesResultCount: { padding: "0 16px 8px", fontSize: 12, color: "#AAA", fontWeight: 600 },
-  searchEmptyWrap: { margin: "6px 16px 14px", background: "#fff", border: "1px solid #F0EAF8", borderRadius: 14, padding: "14px 14px", boxShadow: "0 2px 10px rgba(0,0,0,0.04)", textAlign: "center" },
-  searchEmptyTitle: { margin: 0, fontSize: 14, fontWeight: 800, color: "#2D1B5E" },
+  searchEmptyWrap: { margin: "6px 16px 14px", background: "#fff", border: "1px solid #EDE7DC", borderRadius: 14, padding: "14px 14px", boxShadow: "0 2px 10px rgba(0,0,0,0.04)", textAlign: "center" },
+  searchEmptyTitle: { margin: 0, fontSize: 14, fontWeight: 800, color: "#00314B" },
   searchEmptySub: { margin: "6px 0 0", fontSize: 12, color: "#888" },
   searchEmptyCenter: { textAlign: "center", padding: "60px 20px" },
   searchEmptyEmoji: { fontSize: 48, marginBottom: 12 },
-  headerGreet: { fontSize: 22, fontWeight: 800, color: "#2D1B5E", margin: 0 },
+  headerGreet: { fontSize: 22, fontWeight: 800, color: "#00314B", margin: 0 },
   headerSub: { fontSize: 12, color: "#888", margin: "2px 0 0" },
   logoutBtn: { fontSize: 12, color: "#888", background: "rgba(255,255,255,0.7)", border: "none", borderRadius: 20, padding: "6px 14px", cursor: "pointer" },
 
   // Balance Card
-  balanceCard: { margin: "0 16px 20px", background: "linear-gradient(135deg, #2D1B5E, #5B3B8C)", borderRadius: 24, padding: "28px 24px", color: "#fff", boxShadow: "0 12px 40px rgba(45,27,94,0.25)" },
+  balanceCard: { margin: "0 16px 20px", background: "linear-gradient(135deg, #00314B, #5B3B8C)", borderRadius: 24, padding: "28px 24px", color: "#fff", boxShadow: "0 12px 40px rgba(0,49,75,0.25)" },
   balanceLabel: { fontSize: 13, opacity: 0.7, margin: "0 0 4px" },
   balanceAmount: { fontSize: 44, fontWeight: 800, margin: "0 0 20px", letterSpacing: -2 },
   balanceRow: { display: "flex", gap: 0 },
@@ -6852,26 +6852,26 @@ iconBtn: {
   // Sections
   section: { padding: "0 16px", marginBottom: 8 },
   sectionHeader: { display: "flex", alignItems: "center", gap: 8, marginBottom: 12, paddingTop: 16 },
-  sectionTitle: { fontSize: 14, fontWeight: 700, color: "#2D1B5E" },
-  seeAll: { fontSize: 12, color: "#7BBFB0", background: "none", border: "none", cursor: "pointer", fontWeight: 600 },
+  sectionTitle: { fontSize: 14, fontWeight: 700, color: "#00314B" },
+  seeAll: { fontSize: 12, color: "#A6B49E", background: "none", border: "none", cursor: "pointer", fontWeight: 600 },
   progressSubTitle: { margin: "6px 0 10px", fontSize: 12, fontWeight: 800, color: "#5B3B8C" },
-  planCard: { background: "#fff", borderRadius: 16, padding: "14px 14px", marginBottom: 10, boxShadow: "0 2px 10px rgba(0,0,0,0.04)", border: "1px solid #F0EAF8" },
+  planCard: { background: "#fff", borderRadius: 16, padding: "14px 14px", marginBottom: 10, boxShadow: "0 2px 10px rgba(0,0,0,0.04)", border: "1px solid #EDE7DC" },
   planTopRow: { display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline" },
-  planTitle: { margin: 0, fontSize: 13, fontWeight: 800, color: "#2D1B5E", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+  planTitle: { margin: 0, fontSize: 13, fontWeight: 800, color: "#00314B", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
   planRemaining: { margin: 0, fontSize: 13, fontWeight: 800, color: "#5B3B8C", flexShrink: 0 },
   planMetaRow: { display: "flex", justifyContent: "space-between", marginTop: 6 },
   planMetaText: { fontSize: 11, color: "#888", fontWeight: 600 },
-  progressTrack: { marginTop: 10, height: 10, background: "#F5F0FB", borderRadius: 999, overflow: "hidden" },
-  progressFill: { height: "100%", background: "linear-gradient(135deg, #7BBFB0, #5CA89A)", borderRadius: 999 },
-  oneTimeRow: { background: "#fff", borderRadius: 14, padding: "12px 14px", marginBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "center", boxShadow: "0 2px 8px rgba(0,0,0,0.04)", border: "1px solid #F0EAF8" },
-  oneTimeLabel: { fontSize: 12, fontWeight: 700, color: "#2D1B5E", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 240 },
+  progressTrack: { marginTop: 10, height: 10, background: "#EEE9E0", borderRadius: 999, overflow: "hidden" },
+  progressFill: { height: "100%", background: "linear-gradient(135deg, #A6B49E, #4E635E)", borderRadius: 999 },
+  oneTimeRow: { background: "#fff", borderRadius: 14, padding: "12px 14px", marginBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "center", boxShadow: "0 2px 8px rgba(0,0,0,0.04)", border: "1px solid #EDE7DC" },
+  oneTimeLabel: { fontSize: 12, fontWeight: 700, color: "#00314B", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 240 },
   oneTimeAmt: { fontSize: 12, fontWeight: 800, color: "#E05C6E" },
 
   // Pending
   pendingCard: { background: "#FBF5E0", borderRadius: 14, padding: "14px 16px", marginBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "center", border: "1px solid #E8C878" },
   pendingAmt: { fontSize: 18, fontWeight: 800, color: "#5A3A10", margin: 0 },
   pendingMeta: { fontSize: 12, color: "#8A6A30", margin: "2px 0 0" },
-  confirmBtn: { display: "flex", alignItems: "center", gap: 6, background: "#7BBFB0", color: "#fff", border: "none", borderRadius: 10, padding: "8px 14px", fontSize: 13, fontWeight: 700, cursor: "pointer" },
+  confirmBtn: { display: "flex", alignItems: "center", gap: 6, background: "#A6B49E", color: "#fff", border: "none", borderRadius: 10, padding: "8px 14px", fontSize: 13, fontWeight: 700, cursor: "pointer" },
 
   alertBox: { margin: "0 16px 20px", padding: "12px 16px", borderRadius: 12, border: "1px solid", display: "flex", alignItems: "center", gap: 10 },
 
@@ -6883,23 +6883,23 @@ iconBtn: {
   expenseRow: { display: "flex", alignItems: "center", gap: 10, background: "#fff", borderRadius: 14, padding: "12px 14px", marginBottom: 8, boxShadow: "0 2px 8px rgba(0,0,0,0.04)" },
   splitDot: { width: 8, height: 8, borderRadius: "50%", flexShrink: 0 },
   expenseInfo: { flex: 1, minWidth: 0 },
-  expenseDesc: { fontSize: 13, fontWeight: 600, color: "#2D1B5E", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" },
+  expenseDesc: { fontSize: 13, fontWeight: 600, color: "#00314B", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" },
   expenseMeta: { fontSize: 11, color: "#999", margin: "2px 0 0" },
   expenseAmts: { textAlign: "right", flexShrink: 0 },
-  expenseTotal: { fontSize: 14, fontWeight: 700, color: "#2D1B5E", margin: 0 },
+  expenseTotal: { fontSize: 14, fontWeight: 700, color: "#00314B", margin: 0 },
   expenseCam: { fontSize: 11, color: "#E8A0B0", margin: "1px 0 0", fontWeight: 600 },
   deleteBtn: { background: "rgba(192,72,90,0.1)", border: "none", padding: 4, marginTop: 6, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", borderRadius: 6, width: 26, height: 26 },
   splitBadge: { borderRadius: 6, padding: "1px 6px", marginLeft: 4, fontSize: 10 },
 
   // Sub screens
   subHeader: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "52px 16px 16px" },
-  subTitle: { fontSize: 20, fontWeight: 800, color: "#2D1B5E", margin: 0 },
+  subTitle: { fontSize: 20, fontWeight: 800, color: "#00314B", margin: 0 },
   backBtn: { background: "#fff", border: "none", borderRadius: 12, width: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", boxShadow: "0 2px 8px rgba(0,0,0,0.08)" },
-  addSmall: { background: "#7BBFB0", border: "none", borderRadius: 12, width: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" },
+  addSmall: { background: "#A6B49E", border: "none", borderRadius: 12, width: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" },
 
   filterRow: { display: "flex", gap: 8, padding: "0 16px 16px", overflowX: "auto" },
-  filterTab: { flexShrink: 0, padding: "6px 16px", borderRadius: 20, border: "1px solid #E5DFF5", background: "#fff", fontSize: 13, color: "#888", cursor: "pointer" },
-  filterTabActive: { background: "#2D1B5E", color: "#fff", borderColor: "#2D1B5E", fontWeight: 700 },
+  filterTab: { flexShrink: 0, padding: "6px 16px", borderRadius: 20, border: "1px solid #DDD5C5", background: "#fff", fontSize: 13, color: "#888", cursor: "pointer" },
+  filterTabActive: { background: "#00314B", color: "#fff", borderColor: "#00314B", fontWeight: 700 },
 
   // ---- Type filter chip styles ----
   typeFilterRow: {
@@ -6913,7 +6913,7 @@ iconBtn: {
     flexShrink: 0,
     padding: "6px 14px",
     borderRadius: 999,
-    border: "1px solid #E5DFF5",
+    border: "1px solid #DDD5C5",
     background: "#fff",
     fontSize: 12,
     color: "#888",
@@ -6922,9 +6922,9 @@ iconBtn: {
     whiteSpace: "nowrap",
   },
   typeChipActive: {
-    background: "#2D1B5E",
+    background: "#00314B",
     color: "#fff",
-    borderColor: "#2D1B5E",
+    borderColor: "#00314B",
   },
   typeChipActiveCam: {
     background: "#FFF0F0",
@@ -6935,24 +6935,24 @@ iconBtn: {
 
   
   // History
-  historyItem: { display: "flex", gap: 12, padding: "12px 16px", borderBottom: "1px solid #F0EAF8", alignItems: "center" },
+  historyItem: { display: "flex", gap: 12, padding: "12px 16px", borderBottom: "1px solid #EDE7DC", alignItems: "center" },
   historyIcon: { width: 38, height: 38, borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 },
   historyInfo: { flex: 1 },
-  historyDesc: { fontSize: 13, fontWeight: 600, color: "#2D1B5E", margin: 0 },
+  historyDesc: { fontSize: 13, fontWeight: 600, color: "#00314B", margin: 0 },
   historyMeta: { fontSize: 11, color: "#999", margin: "2px 0 0" },
   historyNote: { fontSize: 11, color: "#AAA", fontStyle: "italic", margin: "2px 0 0" },
   historyAmt: { textAlign: "right" },
   historyAmtText: { fontSize: 14, fontWeight: 700, margin: 0 },
   pendingBadge: { background: "#FBF5E0", color: "#C8A020", borderRadius: 6, padding: "1px 6px", fontSize: 10, marginLeft: 4 },
-  confirmedBadge: { background: "#EEF5EC", color: "#1E8449", borderRadius: 6, padding: "1px 6px", fontSize: 10, marginLeft: 4 },
-  miniConfirm: { fontSize: 11, background: "#7BBFB0", color: "#fff", border: "none", borderRadius: 8, padding: "4px 10px", cursor: "pointer", marginTop: 4, fontWeight: 600 },
-  markPaidBtn: { marginTop: 10, background: "#2D1B5E", color: "#fff", border: "none", borderRadius: 10, padding: "8px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer" },
-  markPaidSmall: { marginTop: 6, background: "#2D1B5E", color: "#fff", border: "none", borderRadius: 10, padding: "6px 10px", fontSize: 11, fontWeight: 700, cursor: "pointer" },
+  confirmedBadge: { background: "#EBF0E8", color: "#2D5A4A", borderRadius: 6, padding: "1px 6px", fontSize: 10, marginLeft: 4 },
+  miniConfirm: { fontSize: 11, background: "#A6B49E", color: "#fff", border: "none", borderRadius: 8, padding: "4px 10px", cursor: "pointer", marginTop: 4, fontWeight: 600 },
+  markPaidBtn: { marginTop: 10, background: "#00314B", color: "#fff", border: "none", borderRadius: 10, padding: "8px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer" },
+  markPaidSmall: { marginTop: 6, background: "#00314B", color: "#fff", border: "none", borderRadius: 10, padding: "6px 10px", fontSize: 11, fontWeight: 700, cursor: "pointer" },
   menuWrap: { position: "relative", display: "inline-block", marginTop: 6 },
-  menuDotBtn: { background: "#F5F0FB", border: "none", borderRadius: 10, fontSize: 18, fontWeight: 800, color: "#888", padding: "4px 10px", cursor: "pointer", letterSpacing: 1, minWidth: 40, minHeight: 36, lineHeight: 1, display: "flex", alignItems: "center", justifyContent: "center" },
+  menuDotBtn: { background: "#EEE9E0", border: "none", borderRadius: 10, fontSize: 18, fontWeight: 800, color: "#888", padding: "4px 10px", cursor: "pointer", letterSpacing: 1, minWidth: 40, minHeight: 36, lineHeight: 1, display: "flex", alignItems: "center", justifyContent: "center" },
   menuDotBtnActive: { background: "#EAE0F8", color: "#5B3B8C" },
-  menuPopup: { position: "absolute", right: 0, top: "110%", background: "#fff", borderRadius: 14, boxShadow: "0 8px 30px rgba(0,0,0,0.15)", zIndex: 100, minWidth: 160, overflow: "hidden", border: "1px solid #F0EAF8" },
-  menuItem: { display: "block", width: "100%", padding: "14px 18px", textAlign: "left", background: "none", border: "none", borderBottom: "1px solid #F5F0FB", fontSize: 14, fontWeight: 600, color: "#2D1B5E", cursor: "pointer", fontFamily: "'DM Sans', system-ui, sans-serif" },
+  menuPopup: { position: "absolute", right: 0, top: "110%", background: "#fff", borderRadius: 14, boxShadow: "0 8px 30px rgba(0,0,0,0.15)", zIndex: 100, minWidth: 160, overflow: "hidden", border: "1px solid #EDE7DC" },
+  menuItem: { display: "block", width: "100%", padding: "14px 18px", textAlign: "left", background: "none", border: "none", borderBottom: "1px solid #EEE9E0", fontSize: 14, fontWeight: 600, color: "#00314B", cursor: "pointer", fontFamily: "'DM Sans', system-ui, sans-serif" },
   menuItemDelete: { borderBottom: "none", color: "#E05C6E" },
 
   // Modal
@@ -6960,36 +6960,36 @@ iconBtn: {
   modal: { background: "#fff", borderRadius: "24px 24px 0 0", padding: "24px 20px 40px", width: "100%", maxWidth: 430, maxHeight: "90vh", overflowY: "auto" },
   dragHandle: { width: 40, height: 4, background: "#E0D8F0", borderRadius: 2, margin: "12px auto 0" },
   sectionLabelRow: { display: "flex", alignItems: "center", gap: 6, margin: "18px 0 10px" },
-  sectionLabel: { fontSize: 10, fontWeight: 800, color: "#C4A8D4", textTransform: "uppercase", letterSpacing: 1.2 },
-  newBadge: { fontSize: 10, fontWeight: 800, background: "#EEF5EC", color: "#1E8449", borderRadius: 8, padding: "2px 8px" },
+  sectionLabel: { fontSize: 10, fontWeight: 800, color: "#D5BD96", textTransform: "uppercase", letterSpacing: 1.2 },
+  newBadge: { fontSize: 10, fontWeight: 800, background: "#EBF0E8", color: "#2D5A4A", borderRadius: 8, padding: "2px 8px" },
   fieldLabel: { display: "block", fontSize: 11, fontWeight: 700, color: "#999", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 5 },
   hintText: { fontSize: 11, color: "#BBB", marginTop: 6, marginBottom: 8, paddingLeft: 2 },
   twoCol: { display: "flex", gap: 10 },
   chipRow: { display: "flex", gap: 6, flexWrap: "wrap" },
-  freqBtn: { flex: 1, padding: "9px 6px", borderRadius: 12, border: "1.5px solid #E5DFF5", background: "#FDFBFF", fontSize: 12, fontFamily: "inherit", fontWeight: 600, color: "#999", cursor: "pointer" },
-  freqBtnActive: { background: "#2D1B5E", borderColor: "#2D1B5E", color: "#fff" },
-  dueDateBox: { background: "#FBF8FF", border: "1.5px solid #E5DFF5", borderRadius: 14, padding: "12px 12px 6px", marginBottom: 8 },
-  endDateDivider: { height: 1, background: "#E5DFF5", margin: "10px 0" },
-  dollarSign: { position: "absolute", left: 13, top: "50%", transform: "translateY(-50%)", fontSize: 16, fontWeight: 700, color: "#C4A8D4", pointerEvents: "none" },
-  previewPill: { padding: "12px 14px", borderRadius: 12, border: "1.5px solid #E5DFF5", background: "#FDFBFF", fontSize: 13, color: "#888" },
+  freqBtn: { flex: 1, padding: "9px 6px", borderRadius: 12, border: "1.5px solid #DDD5C5", background: "#F5F1EB", fontSize: 12, fontFamily: "inherit", fontWeight: 600, color: "#999", cursor: "pointer" },
+  freqBtnActive: { background: "#00314B", borderColor: "#00314B", color: "#fff" },
+  dueDateBox: { background: "#FBF8FF", border: "1.5px solid #DDD5C5", borderRadius: 14, padding: "12px 12px 6px", marginBottom: 8 },
+  endDateDivider: { height: 1, background: "#DDD5C5", margin: "10px 0" },
+  dollarSign: { position: "absolute", left: 13, top: "50%", transform: "translateY(-50%)", fontSize: 16, fontWeight: 700, color: "#D5BD96", pointerEvents: "none" },
+  previewPill: { padding: "12px 14px", borderRadius: 12, border: "1.5px solid #DDD5C5", background: "#F5F1EB", fontSize: 13, color: "#888" },
   catRow: { display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 },
-  catChip: { padding: "6px 14px", borderRadius: 999, border: "1.5px solid #E5DFF5", background: "#F5F0FB", fontSize: 12, fontWeight: 700, cursor: "pointer" },
+  catChip: { padding: "6px 14px", borderRadius: 999, border: "1.5px solid #DDD5C5", background: "#EEE9E0", fontSize: 12, fontWeight: 700, cursor: "pointer" },
   modalHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 },
-  modalTitle: { fontSize: 20, fontWeight: 800, color: "#2D1B5E", margin: 0 },
+  modalTitle: { fontSize: 20, fontWeight: 800, color: "#00314B", margin: 0 },
   closeBtn: { background: "#FDE8EB", border: "none", borderRadius: 10, width: 32, height: 32, padding: 0, boxSizing: "border-box", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 },
 
   form: { display: "flex", flexDirection: "column", gap: 8 },
   label: { fontSize: 12, fontWeight: 700, color: "#888", textTransform: "uppercase", letterSpacing: 0.5, marginTop: 8 },
-  input: { padding: "12px 14px", borderRadius: 12, border: "1.5px solid #E5DFF5", fontSize: 15, outline: "none", background: "#FDFBFF" },
+  input: { padding: "12px 14px", borderRadius: 12, border: "1.5px solid #DDD5C5", fontSize: 15, outline: "none", background: "#F5F1EB" },
   splitRow: { display: "flex", gap: 8, flexWrap: "wrap" },
   splitOption: { flex: 1, minWidth: 80, padding: "10px 8px", borderRadius: 12, border: "none", cursor: "pointer", fontSize: 13, transition: "all 0.15s" },
-  saveBtn: { marginTop: 16, padding: "16px", borderRadius: 16, border: "none", background: "linear-gradient(135deg, #C4A8D4, #A88CC0)", color: "#fff", fontSize: 16, fontWeight: 800, cursor: "pointer" },
+  saveBtn: { marginTop: 16, padding: "16px", borderRadius: 16, border: "none", background: "linear-gradient(135deg, #D5BD96, #7A9BB5)", color: "#fff", fontSize: 16, fontWeight: 800, cursor: "pointer" },
   formNote: { fontSize: 12, color: "#E8A020", background: "#FBF5E0", borderRadius: 10, padding: "8px 12px", margin: "4px 0 0", textAlign: "center" },
 
 
   
   // Bottom Nav
-  bottomNav: { position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430, background: "#fff", borderTop: "1px solid #F0EAF8", display: "flex", padding: "8px 0 max(20px, env(safe-area-inset-bottom))", boxShadow: "0 -4px 20px rgba(0,0,0,0.06)", zIndex: 200 },
+  bottomNav: { position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430, background: "#fff", borderTop: "1px solid #EDE7DC", display: "flex", padding: "8px 0 max(20px, env(safe-area-inset-bottom))", boxShadow: "0 -4px 20px rgba(0,0,0,0.06)", zIndex: 200 },
   navBtn: { flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 3, background: "none", border: "none", cursor: "pointer", padding: "6px 0" },
   navBtnActive: {},
 
@@ -7043,7 +7043,7 @@ function TargetDetailsScreen({ user, targetKey, targetSummaries, expenses, payme
             minWidth: 40,
             height: 32,
             background: "rgba(255,255,255,0.7)",
-            color: "#2D1B5E",
+            color: "#00314B",
           }}
           onClick={onBack}
           aria-label="Back"
@@ -7133,7 +7133,7 @@ function TargetDetailsScreen({ user, targetKey, targetSummaries, expenses, payme
       ))}
 
       {confirmedPayments.length > 0 && pendingPayments.length > 0 && (
-        <div style={{ height: 1, background: "#F0EAF8", margin: "6px 0 12px" }} />
+        <div style={{ height: 1, background: "#EDE7DC", margin: "6px 0 12px" }} />
       )}
 
       {confirmedPayments.map((p) => (
@@ -7141,7 +7141,7 @@ function TargetDetailsScreen({ user, targetKey, targetSummaries, expenses, payme
           <span style={styles.oneTimeLabel}>
             {formatShortDate(p.date)} · {p.method}
           </span>
-          <span style={{ ...styles.oneTimeAmt, color: "#1E8449" }}>
+          <span style={{ ...styles.oneTimeAmt, color: "#2D5A4A" }}>
             ${Number(p.amount || 0).toFixed(2)}
           </span>
         </div>
