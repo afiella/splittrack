@@ -2,6 +2,7 @@ import { initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 import { getAnalytics, isSupported } from "firebase/analytics";
+import { getMessaging, isSupported as isMessagingSupported } from "firebase/messaging";
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -21,5 +22,13 @@ export let analytics = null;
 if (typeof window !== "undefined") {
   isSupported().then((ok) => {
     if (ok) analytics = getAnalytics(app);
+  });
+}
+
+// messaging is null in environments that don't support it (e.g. non-HTTPS, older Safari)
+export let messaging = null;
+if (typeof window !== "undefined") {
+  isMessagingSupported().then((ok) => {
+    if (ok) messaging = getMessaging(app);
   });
 }

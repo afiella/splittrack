@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut, setPersistence, browserLocalPersistence } from "firebase/auth";
-import { listenExpenses, listenPayments, addExpense, addPayment, confirmPayment as confirmPaymentInDb, deleteExpense as deleteExpenseInDb, deletePayment as deletePaymentInDb, updateExpense as updateExpenseInDb, resolveDispute as resolveDisputeInDb } from "./data";
+import { listenExpenses, listenPayments, addExpense, addPayment, confirmPayment as confirmPaymentInDb, deleteExpense as deleteExpenseInDb, deletePayment as deletePaymentInDb, updateExpense as updateExpenseInDb, resolveDispute as resolveDisputeInDb, rejectPayment as rejectPaymentInDb } from "./data";
 import { auth } from "./firebase";
+import { initPushNotifications } from "./pushNotifications";
 // ── MOCK DATA ─────────────────────────────────────────────────────────
 const INITIAL_EXPENSES = [
   { description: "Elephant Insurance (Cam's card)", amount: 309.93, split: "cam", date: "2025-11-03", account: "Best Buy Visa", category: "Insurance", status: "unpaid" },
@@ -686,6 +687,30 @@ export default function App() {
     };
   }, []);
 
+  // Initialize push notifications once we know who the user is
+  useEffect(() => {
+    if (!realUser) return;
+    initPushNotifications(realUser);
+
+    // Handle notification taps when app is already open (service worker posts a message)
+    const onSwMessage = (event) => {
+      if (event.data?.type === "NAVIGATE" && event.data.screen) {
+        setScreen(event.data.screen);
+      }
+    };
+    navigator.serviceWorker?.addEventListener("message", onSwMessage);
+
+    // Handle notification tap when app was closed (?screen= query param on launch)
+    const params = new URLSearchParams(window.location.search);
+    const screenParam = params.get("screen");
+    if (screenParam) {
+      setScreen(screenParam);
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+
+    return () => navigator.serviceWorker?.removeEventListener("message", onSwMessage);
+  }, [realUser]); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     /* global __BUILD_VERSION__ */
     const current = typeof __BUILD_VERSION__ !== "undefined" ? __BUILD_VERSION__ : "dev";
@@ -887,6 +912,30 @@ export default function App() {
     } catch (err) {
       console.error("Failed to resolve dispute:", err);
       notify("Couldn't resolve dispute. Check connection.", "error");
+    }
+  }
+
+  async function handleDismissRejectedPayment(id) {
+    setPayments((prev) => prev.filter((p) => p.id !== id));
+    try {
+      await deletePaymentInDb(id);
+      notify("Payment dismissed.");
+    } catch (err) {
+      console.error("Failed to dismiss payment:", err);
+      const removed = payments.find((p) => p.id === id);
+      if (removed) setPayments((prev) => [removed, ...prev]);
+      notify("Couldn't dismiss payment. Check connection.", "error");
+    }
+  }
+
+  async function handleRejectPayment(id, reason, suggestionKey) {
+    try {
+      await rejectPaymentInDb(id, reason || null, suggestionKey || null);
+      setPayments((prev) => prev.map((p) => p.id === id ? { ...p, rejected: true, rejectionReason: reason || null, rejectionSuggestionKey: suggestionKey || null } : p));
+      notify("Payment returned to Cameron with your feedback.");
+    } catch (err) {
+      console.error("Failed to reject payment:", err);
+      notify("Couldn't send rejection. Check connection.", "error");
     }
   }
 
@@ -1147,9 +1196,17 @@ export default function App() {
           onQuickPay={() => setModal("camQuickPay")}
           onConfirm={handleConfirm}
           onResolveDispute={handleResolveDispute}
+          onRejectPayment={handleRejectPayment}
+          onDismissRejectedPayment={handleDismissRejectedPayment}
           onDeleteExpense={handleDeleteExpense}
           onMarkPaid={handleMarkPaid}
           onNavigate={setScreen}
+          onLogPaymentForKey={(key, amount) => {
+            setPaymentDraftKey(key || "general");
+            setPaymentDraftAmount(amount ?? null);
+            setModal("logPayment");
+          }}
+          onDisputeExpense={(exp) => setDisputingExpense(exp)}
           onLogout={async () => { await signOut(auth); setScreen("dashboard"); }}
           onSwitchView={realUser === "emma" ? () => setViewAs(v => v === "cam" ? null : "cam") : null}
           viewingAsCam={viewAs === "cam"}
@@ -1273,14 +1330,130 @@ function LoginScreen() {
 
 // ── DASHBOARD MOCKUP (incremental) ───────────────────────────────────
 // Step 1: mockup components (not rendered yet)
-function DashboardPendingCard({ pendingPayments = [], onConfirm, onResolveDispute, user }) {
+// ── CAM REJECTED PAYMENTS CARD ────────────────────────────────────────
+function CamRejectedCard({ payments = [], targetSummaries, onLogPaymentForKey, onDeletePayment }) {
+  const rejected = payments.filter((p) => p.rejected && !p.confirmed);
+  const [expandedId, setExpandedId] = useState(null);
+
+  if (rejected.length === 0) return null;
+
+  return (
+    <div style={{ margin: "0 16px 16px", background: "#FFF8F0", borderRadius: 20, border: "1.5px solid #F5C4A0", boxShadow: "0 2px 12px rgba(200,80,0,0.08)", overflow: "hidden" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px 8px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+          <Icon path={icons.flag} size={14} color="#E07A20" />
+          <span style={{ fontSize: 13, fontWeight: 900, color: "#8B3A00" }}>Returned Payments</span>
+        </div>
+        <span style={{ fontSize: 10, fontWeight: 800, background: "#F5C4A0", color: "#8B3A00", borderRadius: 8, padding: "2px 8px" }}>
+          {rejected.length} returned
+        </span>
+      </div>
+
+      {rejected.map((p) => {
+        const isOpen = expandedId === p.id;
+        const suggKey = p.rejectionSuggestionKey;
+        const suggLabel = suggKey && targetSummaries?.get(suggKey)?.label;
+        return (
+          <div key={p.id} style={{ borderTop: "1px solid #F0DDD0", margin: "0 10px 10px", borderRadius: 12, overflow: "hidden", border: "1.5px solid #F0DDD0", background: "#fff" }}>
+            {/* Collapsed row */}
+            <div
+              role="button"
+              style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", cursor: "pointer" }}
+              onClick={() => setExpandedId(isOpen ? null : p.id)}
+            >
+              <div style={{ width: 32, height: 32, borderRadius: 10, background: "#FFF0E0", border: "1.5px solid #F5C4A0", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <Icon path={icons.flag} size={14} color="#E07A20" />
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: "#1A1A1A" }}>
+                  {p.method} · <span style={{ color: "#E07A20" }}>${Number(p.amount || 0).toFixed(2)}</span>
+                </p>
+                <p style={{ margin: "2px 0 0", fontSize: 11, color: "#AAA" }}>Emmanuella returned this payment</p>
+              </div>
+              <Icon path={isOpen ? icons.chevronUp : icons.chevronDown} size={13} color="#E07A20" />
+            </div>
+
+            {/* Expanded panel */}
+            {isOpen && (
+              <div style={{ padding: "0 12px 12px", display: "flex", flexDirection: "column", gap: 8 }}>
+                {/* Emma's message */}
+                {p.rejectionReason && (
+                  <div style={{ background: "#FFF0E0", borderRadius: 10, padding: "10px 12px", border: "1px solid #F5C4A0" }}>
+                    <p style={{ margin: "0 0 3px", fontSize: 10, fontWeight: 800, color: "#E07A20", textTransform: "uppercase", letterSpacing: 0.5 }}>Emmanuella's note</p>
+                    <p style={{ margin: 0, fontSize: 12, color: "#555", lineHeight: 1.5, fontStyle: "italic" }}>"{p.rejectionReason}"</p>
+                  </div>
+                )}
+
+                {/* Suggestion */}
+                {suggLabel && (
+                  <div style={{ background: "#F0F5FF", borderRadius: 10, padding: "10px 12px", border: "1px solid #C0D0F0" }}>
+                    <p style={{ margin: "0 0 3px", fontSize: 10, fontWeight: 800, color: "#3060B0", textTransform: "uppercase", letterSpacing: 0.5 }}>Suggested target</p>
+                    <p style={{ margin: 0, fontSize: 12, fontWeight: 700, color: "#00314B" }}>{suggLabel}</p>
+                  </div>
+                )}
+
+                {/* Actions */}
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button
+                    type="button"
+                    style={{ flex: 1, background: "linear-gradient(135deg, #D5BD96, #7A9BB5)", color: "#fff", border: "none", borderRadius: 11, padding: "10px 0", fontSize: 12, fontWeight: 800, cursor: "pointer" }}
+                    onClick={() => {
+                      if (typeof onLogPaymentForKey === "function") {
+                        onLogPaymentForKey(suggKey || "general", Number(p.amount || 0));
+                      }
+                    }}
+                  >
+                    {suggLabel ? `Pay → ${suggLabel}` : "Make New Payment"}
+                  </button>
+                  <button
+                    type="button"
+                    style={{ background: "#FFF0F2", color: "#C0485A", border: "1.5px solid #F5C4CD", borderRadius: 11, padding: "10px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+                    onClick={() => typeof onDeletePayment === "function" && onDeletePayment(p.id)}
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function DashboardPendingCard({ pendingPayments = [], onConfirm, onResolveDispute, onRejectPayment, user, targetSummaries, expenses = [] }) {
   if (user !== "emma") return null;
 
   const disputes = pendingPayments.filter(p => p.type === "dispute");
   const payments = pendingPayments.filter(p => p.type !== "dispute");
   const [expandedDispute, setExpandedDispute] = useState(null);
+  const [expandedPayment, setExpandedPayment] = useState(null);
   const [decliningId, setDecliningId] = useState(null);
   const [declineInput, setDeclineInput] = useState("");
+  const [rejectingId, setRejectingId] = useState(null);
+  const [rejectReason, setRejectReason] = useState("");
+  const [rejectSuggKey, setRejectSuggKey] = useState("");
+
+  function pendingTargetLabel(p) {
+    const key = p.appliedToKey || (p.appliedToGroupId ? `grp:${p.appliedToGroupId}` : "general");
+    if (!key || key === "general") return null;
+    return targetSummaries?.get(key)?.label || null;
+  }
+
+  function relatedExpense(p) {
+    const key = p.appliedToKey || (p.appliedToGroupId ? `grp:${p.appliedToGroupId}` : "general");
+    if (!key || key === "general") return null;
+    if (key.startsWith("exp:")) {
+      const id = key.slice(4);
+      return expenses.find(e => e.id === id) || null;
+    }
+    if (key.startsWith("grp:")) {
+      const gid = key.slice(4);
+      return expenses.find(e => (e.groupId || e.id) === gid) || null;
+    }
+    return null;
+  }
 
   const [selectedIds, setSelectedIds] = useState(() => new Set((payments || []).map((p) => p.id)));
 
@@ -1345,7 +1518,7 @@ function DashboardPendingCard({ pendingPayments = [], onConfirm, onResolveDisput
       </div>
 
       {/* Scrollable list */}
-      <div style={{ flex: 1, maxHeight: 160, overflowY: "auto" }}>
+      <div style={{ flex: 1, maxHeight: expandedPayment ? 340 : 160, overflowY: "auto", transition: "max-height 0.2s ease" }}>
         {pendingPayments.length === 0 ? (
           <div style={{ height: 112, display: "flex", alignItems: "center", justifyContent: "center", color: "#888", fontSize: 12, fontWeight: 700, textAlign: "center" }}>
             No Pending Activity
@@ -1424,30 +1597,134 @@ function DashboardPendingCard({ pendingPayments = [], onConfirm, onResolveDisput
             })}
 
             {/* Regular payments */}
-            {payments.map((p) => (
-              <div
-                key={p.id}
-                style={{ display: "flex", alignItems: "center", padding: "6px 0", borderBottom: "1px solid #faf7ff", gap: 8, cursor: "pointer" }}
-                role="button"
-                onClick={() => setSelectedIds((prev) => { const next = new Set(prev); if (next.has(p.id)) next.delete(p.id); else next.add(p.id); return next; })}
-              >
-                <div style={{ width: 20, height: 20, borderRadius: 7, flexShrink: 0, border: selectedIds.has(p.id) ? "1.5px solid #A6B49E" : "1.5px solid #d8eae7", background: selectedIds.has(p.id) ? "#A6B49E" : "#f5fffd", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  {selectedIds.has(p.id) && <Icon path={icons.check} size={14} color="#fff" />}
+            {payments.map((p) => {
+              const isOpen = expandedPayment === p.id;
+              const tLabel = pendingTargetLabel(p);
+              const exp    = relatedExpense(p);
+              return (
+                <div key={p.id} style={{ borderRadius: 10, border: isOpen ? "1.5px solid #E8C878" : "1.5px solid #F0EAE0", background: isOpen ? "#FFFBF0" : "#FAFAF8", marginBottom: 6, overflow: "hidden" }}>
+                  {/* Collapsed header row */}
+                  <div
+                    style={{ display: "flex", alignItems: "center", padding: "8px 10px", gap: 8, cursor: "pointer" }}
+                    role="button"
+                    onClick={() => setExpandedPayment(isOpen ? null : p.id)}
+                  >
+                    <div
+                      style={{ width: 20, height: 20, borderRadius: 7, flexShrink: 0, border: selectedIds.has(p.id) ? "1.5px solid #A6B49E" : "1.5px solid #d8eae7", background: selectedIds.has(p.id) ? "#A6B49E" : "#f5fffd", display: "flex", alignItems: "center", justifyContent: "center" }}
+                      role="button"
+                      onClick={(ev) => { ev.stopPropagation(); setSelectedIds((prev) => { const next = new Set(prev); if (next.has(p.id)) next.delete(p.id); else next.add(p.id); return next; }); }}
+                    >
+                      {selectedIds.has(p.id) && <Icon path={icons.check} size={12} color="#fff" />}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={{ fontSize: 11, fontWeight: 700, color: "#1e0f45", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {p.method || "Payment"} · <span style={{ color: "#2D5A4A" }}>${Number(p.amount || 0).toFixed(2)}</span>
+                      </p>
+                      <p style={{ fontSize: 9, color: "#bbb", margin: "1px 0 0" }}>{formatHistoryDate(p.date)} · Cam</p>
+                    </div>
+                    <Icon path={isOpen ? icons.chevronUp : icons.chevronDown} size={13} color="#C8A020" />
+                  </div>
+
+                  {/* Expanded detail panel */}
+                  {isOpen && (
+                    <div style={{ padding: "0 10px 10px" }}>
+                      {/* Detail card */}
+                      <div style={{ background: "#FFF8E8", borderRadius: 9, padding: "10px 12px", marginBottom: 10, display: "flex", flexDirection: "column", gap: 7 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                          <span style={{ fontSize: 10, fontWeight: 700, color: "#C48A00", textTransform: "uppercase", letterSpacing: 0.5 }}>Amount</span>
+                          <span style={{ fontSize: 17, fontWeight: 900, color: "#00314B" }}>${Number(p.amount || 0).toFixed(2)}</span>
+                        </div>
+                        <div style={{ height: 1, background: "#F0E4B8" }} />
+                        <div style={{ display: "flex", justifyContent: "space-between" }}>
+                          <span style={{ fontSize: 10, color: "#999", fontWeight: 600 }}>Method</span>
+                          <span style={{ fontSize: 11, fontWeight: 700, color: "#1e0f45" }}>{p.method || "—"}</span>
+                        </div>
+                        <div style={{ display: "flex", justifyContent: "space-between" }}>
+                          <span style={{ fontSize: 10, color: "#999", fontWeight: 600 }}>Date</span>
+                          <span style={{ fontSize: 11, fontWeight: 700, color: "#1e0f45" }}>{formatHistoryDate(p.date)}</span>
+                        </div>
+                        {tLabel && (
+                          <div style={{ display: "flex", justifyContent: "space-between" }}>
+                            <span style={{ fontSize: 10, color: "#999", fontWeight: 600 }}>Applied to</span>
+                            <span style={{ fontSize: 11, fontWeight: 700, color: "#1e0f45", textAlign: "right", maxWidth: "60%" }}>{tLabel}</span>
+                          </div>
+                        )}
+                        {exp?.referenceNum && (
+                          <div style={{ display: "flex", justifyContent: "space-between" }}>
+                            <span style={{ fontSize: 10, color: "#999", fontWeight: 600 }}>Ref #</span>
+                            <span style={{ fontSize: 11, fontWeight: 700, color: "#1e0f45", fontFamily: "monospace" }}>{exp.referenceNum}</span>
+                          </div>
+                        )}
+                        {p.note && (
+                          <div>
+                            <span style={{ fontSize: 10, color: "#999", fontWeight: 600 }}>Note</span>
+                            <p style={{ fontSize: 11, color: "#555", margin: "3px 0 0", fontStyle: "italic", lineHeight: 1.4 }}>"{p.note}"</p>
+                          </div>
+                        )}
+                      </div>
+                      {/* Reject inline form */}
+                      {rejectingId === p.id ? (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                          <textarea
+                            autoFocus
+                            placeholder="Reason for returning (e.g. wrong amount, apply to Electric instead)…"
+                            value={rejectReason}
+                            onChange={ev => setRejectReason(ev.target.value)}
+                            rows={2}
+                            style={{ width: "100%", padding: "8px 10px", borderRadius: 9, border: "1.5px solid #F5C4A0", fontSize: 11, fontFamily: "inherit", outline: "none", resize: "none", boxSizing: "border-box", background: "#FFF8F0", color: "#0A1E2B" }}
+                          />
+                          {/* Optional target suggestion */}
+                          {targetSummaries && targetSummaries.size > 0 && (
+                            <select
+                              value={rejectSuggKey}
+                              onChange={ev => setRejectSuggKey(ev.target.value)}
+                              style={{ width: "100%", padding: "7px 10px", borderRadius: 9, border: "1.5px solid #F5C4A0", fontSize: 11, background: "#FFF8F0", color: "#0A1E2B", outline: "none", fontFamily: "inherit" }}
+                            >
+                              <option value="">— No target suggestion —</option>
+                              {Array.from(targetSummaries.values()).map(t => (
+                                <option key={t.key} value={t.key}>{t.label}</option>
+                              ))}
+                            </select>
+                          )}
+                          <div style={{ display: "flex", gap: 6 }}>
+                            <button type="button"
+                              onClick={() => { setRejectingId(null); setRejectReason(""); setRejectSuggKey(""); }}
+                              style={{ flex: 1, padding: "8px 0", borderRadius: 9, border: "none", background: "#EDE7DC", color: "#888", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                              Cancel
+                            </button>
+                            <button type="button"
+                              onClick={() => {
+                                onRejectPayment && onRejectPayment(p.id, rejectReason.trim() || null, rejectSuggKey || null);
+                                setRejectingId(null); setRejectReason(""); setRejectSuggKey(""); setExpandedPayment(null);
+                              }}
+                              style={{ flex: 1, padding: "8px 0", borderRadius: 9, border: "none", background: "#E07A20", color: "#fff", fontSize: 11, fontWeight: 800, cursor: "pointer" }}>
+                              Return to Cameron
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div style={{ display: "flex", gap: 6 }}>
+                          <button
+                            type="button"
+                            style={{ flex: 1, background: "linear-gradient(135deg, #A6B49E, #4E635E)", border: "none", borderRadius: 9, padding: "9px 0", color: "#fff", fontSize: 12, fontWeight: 800, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}
+                            onClick={() => { setSelectedIds((prev) => { const next = new Set(prev); next.add(p.id); return next; }); onConfirm(p.id); setExpandedPayment(null); }}
+                          >
+                            <Icon path={icons.check} size={13} color="#fff" /> Confirm
+                          </button>
+                          <button
+                            type="button"
+                            style={{ background: "#FFF0E0", color: "#E07A20", border: "1.5px solid #F5C4A0", borderRadius: 9, padding: "9px 12px", fontSize: 12, fontWeight: 800, cursor: "pointer" }}
+                            onClick={() => { setRejectingId(p.id); setRejectReason(""); setRejectSuggKey(""); }}
+                          >
+                            Return
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <p style={{ fontSize: 11, fontWeight: 600, color: "#1e0f45", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", margin: 0 }}>{p.method || "Payment"}</p>
-                  <p style={{ fontSize: 9, color: "#bbb", margin: "1px 0 0" }}>{formatHistoryDate(p.date)} · Cam</p>
-                </div>
-                <p style={{ fontSize: 11, fontWeight: 700, color: "#1e0f45", flexShrink: 0, margin: 0 }}>${Number(p.amount || 0).toFixed(2)}</p>
-                <button type="button"
-                  onClick={(ev) => { ev.stopPropagation(); setSelectedIds((prev) => { const next = new Set(prev); next.add(p.id); return next; }); onConfirm(p.id); }}
-                  style={{ marginLeft: 6, background: "#A6B49E", border: "none", borderRadius: 10, padding: "6px 8px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
-                  aria-label="Confirm payment"
-                >
-                  <Icon path={icons.check} size={14} color="#fff" />
-                </button>
-              </div>
-            ))}
+              );
+            })}
           </>
         )}
       </div>
@@ -2076,7 +2353,7 @@ function EmmaBalanceBanner({ balance, totalOwed, totalPaid, camOwesThisMonth, em
 }
 
 // ── CAM BALANCE BANNER ────────────────────────────────────────────────
-function CamBalanceBanner({ balance, totalOwed, totalPaid, camOwesThisMonth, camPaidThisMonth, overdueCount = 0, expenses = [], payments = [], onLogPayment, onQuickPay, onAddExpense, onNavigate }) {
+function CamBalanceBanner({ balance, totalOwed, totalPaid, camOwesThisMonth, camPaidThisMonth, overdueCount = 0, expenses = [], payments = [], onLogPayment, onQuickPay, onAddExpense, onNavigate, onDisputeExpense }) {
   const [expanded, setExpanded] = useState(false);
   const [disputeOpen, setDisputeOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -2245,25 +2522,73 @@ function CamBalanceBanner({ balance, totalOwed, totalPaid, camOwesThisMonth, cam
         </div>
       </motion.div>
 
-      {/* Dispute bottom sheet */}
-      {disputeOpen && (
-        <div style={{ position: "fixed", inset: 0, zIndex: 500, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "flex-end", justifyContent: "center" }}
-          onClick={() => setDisputeOpen(false)}>
-          <div style={{ background: "#fff", borderRadius: "24px 24px 0 0", padding: "24px 20px 40px", width: "100%", maxWidth: 430 }}
-            onClick={(ev) => ev.stopPropagation()}>
-            <p style={{ margin: "0 0 6px", fontSize: 17, fontWeight: 800, color: "#00314B" }}>Dispute a Transaction</p>
-            <p style={{ margin: "0 0 20px", fontSize: 13, color: "#888" }}>Find the charge in your expenses or history and let Emmanuella know.</p>
-            <button
-              style={{ width: "100%", padding: "13px", borderRadius: 14, border: "none", background: "#00314B", color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer", marginBottom: 10 }}
-              onClick={() => { setDisputeOpen(false); onNavigate("expenses"); }}
-            >Go to Expenses</button>
-            <button
-              style={{ width: "100%", padding: "13px", borderRadius: 14, border: "1.5px solid #DDD5C5", background: "transparent", color: "#888", fontSize: 14, fontWeight: 600, cursor: "pointer" }}
-              onClick={() => { setDisputeOpen(false); onNavigate("history"); }}
-            >Go to History</button>
+      {/* Dispute bottom sheet — expense picker */}
+      {disputeOpen && (() => {
+        const disputeable = expenses
+          .filter(e => e.status !== "paid" && (e.split === "cam" || e.split === "split"))
+          .sort((a, b) => new Date(b.date) - new Date(a.date));
+        return (
+          <div style={{ position: "fixed", inset: 0, zIndex: 500, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "flex-end", justifyContent: "center" }}
+            onClick={() => setDisputeOpen(false)}>
+            <div style={{ background: "#fff", borderRadius: "24px 24px 0 0", width: "100%", maxWidth: 430, maxHeight: "80vh", display: "flex", flexDirection: "column", boxShadow: "0 -8px 40px rgba(0,49,75,0.18)" }}
+              onClick={ev => ev.stopPropagation()}>
+
+              {/* Handle + header */}
+              <div style={{ padding: "12px 20px 14px", borderBottom: "1px solid #EDE7DC", flexShrink: 0 }}>
+                <div style={{ width: 40, height: 4, borderRadius: 2, background: "#DDD5C5", margin: "0 auto 14px" }} />
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <div style={{ width: 36, height: 36, borderRadius: 11, background: "#FFF0F0", border: "1.5px solid #F8C4CD", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                    <Icon path={icons.flag} size={16} color="#E05C6E" />
+                  </div>
+                  <div>
+                    <p style={{ margin: 0, fontSize: 17, fontWeight: 900, color: "#0A1E2B" }}>Dispute a Charge</p>
+                    <p style={{ margin: 0, fontSize: 12, color: "#999" }}>Pick the expense you want to flag</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Scrollable expense list */}
+              <div style={{ flex: 1, overflowY: "auto", padding: "12px 16px 32px" }}>
+                {disputeable.length === 0 ? (
+                  <div style={{ textAlign: "center", padding: "40px 20px", color: "#AAA" }}>
+                    <p style={{ fontSize: 28, margin: "0 0 8px" }}>🎉</p>
+                    <p style={{ fontSize: 14, fontWeight: 700, color: "#00314B", margin: "0 0 4px" }}>Nothing to dispute</p>
+                    <p style={{ fontSize: 12, margin: 0 }}>All charges look good!</p>
+                  </div>
+                ) : (
+                  disputeable.map(exp => {
+                    const camShare = exp.split === "cam" ? Number(exp.amount) : Number(exp.amount) / 2;
+                    const due = exp.nextDue || exp.dueDate || exp.date;
+                    return (
+                      <button
+                        key={exp.id}
+                        type="button"
+                        onClick={() => { setDisputeOpen(false); onDisputeExpense && onDisputeExpense(exp); }}
+                        style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", borderRadius: 16, border: "1.5px solid #EDE7DC", background: "#FAFAF8", marginBottom: 8, cursor: "pointer", textAlign: "left" }}
+                      >
+                        <div style={{ width: 38, height: 38, borderRadius: 12, background: "#FFF0F2", border: "1.5px solid #F8C4CD", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                          <Icon path={icons.list} size={16} color="#E05C6E" />
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#0A1E2B", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{exp.description}</p>
+                          <p style={{ margin: "2px 0 0", fontSize: 11, color: "#AAA" }}>
+                            {exp.category && <span>{exp.category} · </span>}
+                            {due ? formatShortDate(due) : exp.date}
+                          </p>
+                        </div>
+                        <div style={{ textAlign: "right", flexShrink: 0 }}>
+                          <p style={{ margin: 0, fontSize: 15, fontWeight: 900, color: "#E05C6E" }}>${camShare.toFixed(2)}</p>
+                          <p style={{ margin: "2px 0 0", fontSize: 10, color: "#AAA", fontWeight: 600 }}>your share</p>
+                        </div>
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Details bottom sheet */}
       {detailsOpen && (
@@ -3085,8 +3410,8 @@ function CamNotificationsPanel({ expenses = [], payments = [], onClose, onNaviga
 }
 
 // ── DASHBOARD ─────────────────────────────────────────────────────────
-function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, payments, syncingPayments, urgentCount, targetSummaries, onOpenTarget, onAddExpense, onLogPayment, onQuickPay, onConfirm, onResolveDispute, onDeleteExpense, onMarkPaid, onNavigate, onLogout, onSwitchView, viewingAsCam }) {
-  const pending = payments.filter((p) => !p.confirmed);
+function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, payments, syncingPayments, urgentCount, targetSummaries, onOpenTarget, onAddExpense, onLogPayment, onQuickPay, onConfirm, onResolveDispute, onRejectPayment, onDismissRejectedPayment, onNavigate, onLogout, onSwitchView, viewingAsCam, onLogPaymentForKey, onDisputeExpense }) {
+  const pending = payments.filter((p) => !p.confirmed && !p.rejected);
   // Cam dashboard urgent banner improvement: Step 3
   const urgentList = (expenses || []).filter((e) => getUrgencyLevel(e) !== null);
   const overdueCount = urgentList.filter((e) => getUrgencyLevel(e) === "overdue").length;
@@ -3096,6 +3421,7 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
   const [plansOpen, setPlansOpen] = useState(false);
 
   const sortedByDate = (expenses || [])
+    .filter((e) => e.status !== "paid")
     .slice()
     .sort((a, b) => new Date(b.date) - new Date(a.date));
 
@@ -3321,7 +3647,7 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
             onLogPayment={onLogPayment}
           />
           <div style={{ display: "flex", gap: 12, padding: "0 16px", marginTop: 16, marginBottom: 20 }}>
-            <DashboardPendingCard user={user} pendingPayments={pending} onConfirm={onConfirm} onResolveDispute={onResolveDispute} />
+            <DashboardPendingCard user={user} pendingPayments={pending} onConfirm={onConfirm} onResolveDispute={onResolveDispute} onRejectPayment={onRejectPayment} targetSummaries={targetSummaries} expenses={expenses} />
           </div>
         </>
       )}
@@ -3341,10 +3667,21 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
           onQuickPay={onQuickPay}
           onAddExpense={onAddExpense}
           onNavigate={onNavigate}
+          onDisputeExpense={onDisputeExpense}
         />
       )}
 
 
+
+      {/* Rejected payments card — Cameron only */}
+      {user === "cam" && (
+        <CamRejectedCard
+          payments={payments}
+          targetSummaries={targetSummaries}
+          onLogPaymentForKey={onLogPaymentForKey}
+          onDeletePayment={onDismissRejectedPayment}
+        />
+      )}
 
       {/* Urgent banner — Emma only */}
       {user !== "cam" && urgentCount > 0 && (
@@ -4535,6 +4872,8 @@ function ExpensesScreen({
 
 // ── HISTORY SCREEN ────────────────────────────────────────────────────
 function HistoryScreen({ expenses, payments, user, targets = [], onBack, onConfirm, onDeleteConfirmedPayment, onDeleteExpense }) {
+  const [expandedPaymentId, setExpandedPaymentId] = useState(null);
+
   const all = [
     ...payments.map((p) => ({ ...p, type: "payment" })),
     ...expenses.flatMap((e) => {
@@ -4563,6 +4902,17 @@ function HistoryScreen({ expenses, payments, user, targets = [], onBack, onConfi
     const key = p.appliedToKey || (p.appliedToGroupId ? `grp:${p.appliedToGroupId}` : "general");
     if (!key || key === "general") return null;
     return targetLabelByKey.get(key) || null;
+  }
+
+  function relatedExpense(p) {
+    const key = p.appliedToKey || (p.appliedToGroupId ? `grp:${p.appliedToGroupId}` : "general");
+    if (!key || key === "general") return null;
+    if (key.startsWith("exp:")) return (expenses || []).find(e => e.id === key.slice(4)) || null;
+    if (key.startsWith("grp:")) {
+      const gid = key.slice(4);
+      return (expenses || []).find(e => (e.groupId || e.id) === gid) || null;
+    }
+    return null;
   }
 
   return (
@@ -4595,67 +4945,208 @@ function HistoryScreen({ expenses, payments, user, targets = [], onBack, onConfi
       {/* Step 5: Add PaymentTimeline framework component */}
       {all.map((item, i) => {
         if (item.type === "payment") {
-          const lbl = paymentTargetLabel(item);
-          const statusText = item.confirmed ? "confirmed" : "pending";
+          const lbl  = paymentTargetLabel(item);
+          const rExp = relatedExpense(item);
+          const isOpen = expandedPaymentId === item.id;
+          const isConfirmed = item.confirmed;
+          const isRejected  = item.rejected && !item.confirmed;
+          const statusColor = isConfirmed ? "#2D5A4A" : isRejected ? "#E07A20" : "#C8A020";
+          const statusBg   = isConfirmed ? "#EBF5EF"  : isRejected ? "#FFF0E0" : "#FDF7E3";
           return (
-            <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 14, padding: "14px 16px", borderBottom: "1px solid #EDE7DC" }}>
-              <PaymentMethodIcon method={item.method} />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                {/* Title row + amount */}
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
-                  <p style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "#1A1A1A", flex: 1, minWidth: 0 }}>
-                    {item.method} Payment
-                  </p>
-                  <p style={{ margin: 0, fontSize: 16, fontWeight: 800, color: "#2D5A4A", flexShrink: 0 }}>
-                    -${Number(item.amount || 0).toFixed(2)}
-                  </p>
-                </div>
-                {lbl && (
-                  <p style={{ margin: "3px 0 0", fontSize: 13, color: "#555", fontWeight: 500 }}>{lbl}</p>
-                )}
-                {item.note && renderNote(item.note, { marginTop: 3 })}
-                {/* Date + status + action */}
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 6 }}>
-                  <p style={{ margin: 0, fontSize: 12, color: "#AAA", fontWeight: 500 }}>
-                    {formatPaymentDateTime(item)} · {statusText}
-                  </p>
-                  {!item.confirmed && user === "emma" && (
-                    <button style={styles.miniConfirm} onClick={() => onConfirm(item.id)}>Confirm</button>
-                  )}
-                  {item.confirmed && user === "emma" && (
-                    <button style={styles.deleteBtn} onClick={() => onDeleteConfirmedPayment(item.id)} title="Delete">
-                      <Icon path={icons.x} size={16} color="#C0485A" />
-                    </button>
-                  )}
+            <div key={i} style={{ borderBottom: "1px solid #EDE7DC" }}>
+              {/* Collapsed header — always visible, tap to toggle */}
+              <div
+                role="button"
+                style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 16px", cursor: "pointer" }}
+                onClick={() => setExpandedPaymentId(isOpen ? null : item.id)}
+              >
+                <PaymentMethodIcon method={item.method} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                    <p style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "#1A1A1A", flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {item.method} Payment
+                    </p>
+                    <p style={{ margin: 0, fontSize: 16, fontWeight: 800, color: "#2D5A4A", flexShrink: 0 }}>
+                      -${Number(item.amount || 0).toFixed(2)}
+                    </p>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 4 }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: statusColor, background: statusBg, borderRadius: 6, padding: "2px 8px" }}>
+                      {isConfirmed ? "confirmed" : isRejected ? "returned" : "pending"}
+                    </span>
+                    <Icon path={isOpen ? icons.chevronUp : icons.chevronDown} size={13} color="#CCC" />
+                  </div>
                 </div>
               </div>
+
+              {/* Expanded detail panel */}
+              {isOpen && (() => {
+                const hRow = (label, value, mono = false) => (
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+                    <span style={{ fontSize: 11, color: "#AAA", fontWeight: 600, flexShrink: 0 }}>{label}</span>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: "#1A1A1A", textAlign: "right", fontFamily: mono ? "monospace" : "inherit" }}>{value}</span>
+                  </div>
+                );
+                const splitLabel = (s) => s === "cam" ? "Cameron pays full" : s === "split" ? "Split 50/50" : s === "ella" ? "Emmanuella pays full" : s;
+                return (
+                  <div style={{ padding: "0 16px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
+
+                    {/* ── Payment receipt ── */}
+                    <div style={{ background: isConfirmed ? "#EEF5EE" : isRejected ? "#FFF8F0" : "#FDFAF0", borderRadius: 14, padding: "14px", border: `1.5px solid ${isConfirmed ? "#C5DDCA" : isRejected ? "#F5C4A0" : "#ECD98A"}` }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, paddingBottom: 10, borderBottom: `1px solid ${isConfirmed ? "#D5E8D8" : isRejected ? "#F0D0B0" : "#F0E6A0"}` }}>
+                        <span style={{ fontSize: 11, fontWeight: 800, color: "#888", textTransform: "uppercase", letterSpacing: 0.6 }}>Payment</span>
+                        <span style={{ fontSize: 11, fontWeight: 800, color: statusColor, background: statusBg, borderRadius: 6, padding: "3px 10px" }}>
+                          {isConfirmed ? "✓ Confirmed" : isRejected ? "↩ Returned" : "⏳ Pending"}
+                        </span>
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                        {hRow("Amount", `$${Number(item.amount || 0).toFixed(2)}`)}
+                        {hRow("Method", item.method)}
+                        {hRow("Date paid", formatPaymentDateTime(item))}
+                        {item.note && hRow("Note", `"${item.note}"`)}
+                        {isRejected && item.rejectionReason && (
+                          <div style={{ marginTop: 4, paddingTop: 8, borderTop: `1px solid #F0D0B0` }}>
+                            <p style={{ margin: "0 0 3px", fontSize: 10, fontWeight: 800, color: "#E07A20", textTransform: "uppercase", letterSpacing: 0.5 }}>Emmanuella's note</p>
+                            <p style={{ margin: 0, fontSize: 12, color: "#555", fontStyle: "italic", lineHeight: 1.5 }}>"{item.rejectionReason}"</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* ── Original expense ── */}
+                    {rExp ? (
+                      <div style={{ background: "#F5F1EB", borderRadius: 14, padding: "14px", border: "1.5px solid #EDE7DC" }}>
+                        <div style={{ marginBottom: 10, paddingBottom: 10, borderBottom: "1px solid #EDE7DC" }}>
+                          <span style={{ fontSize: 11, fontWeight: 800, color: "#888", textTransform: "uppercase", letterSpacing: 0.6 }}>Original Expense</span>
+                        </div>
+                        {/* Description + full amount */}
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, marginBottom: 10 }}>
+                          <span style={{ fontSize: 14, fontWeight: 800, color: "#00314B", flex: 1, minWidth: 0 }}>{rExp.description}</span>
+                          <span style={{ fontSize: 14, fontWeight: 900, color: "#00314B", flexShrink: 0 }}>${Number(rExp.amount || 0).toFixed(2)}</span>
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                          {rExp.category && hRow("Category", rExp.category)}
+                          {rExp.split && hRow("Split", splitLabel(rExp.split))}
+                          {rExp.account && hRow("Charged to", rExp.account)}
+                          {rExp.recurring && rExp.recurring !== "none" && hRow("Recurring", rExp.recurring)}
+                          {rExp.dueDate && hRow("Due date", formatShortDate(rExp.dueDate))}
+                          {rExp.referenceNum && hRow("Ref #", rExp.referenceNum, true)}
+                          {rExp.note && hRow("Expense note", `"${rExp.note}"`)}
+                          {/* Expense paid status */}
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: 6, borderTop: "1px solid #EDE7DC", marginTop: 2 }}>
+                            <span style={{ fontSize: 11, color: "#AAA", fontWeight: 600 }}>Expense status</span>
+                            <span style={{ fontSize: 11, fontWeight: 800, color: rExp.status === "paid" ? "#2D5A4A" : "#C8A020", background: rExp.status === "paid" ? "#EBF5EF" : "#FDF7E3", borderRadius: 6, padding: "3px 10px" }}>
+                              {rExp.status === "paid" ? "Paid" : "Unpaid"}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={{ background: "#F5F1EB", borderRadius: 14, padding: "12px 14px", border: "1.5px solid #EDE7DC" }}>
+                        {hRow("Applied to", lbl || "General balance")}
+                      </div>
+                    )}
+
+                    {/* ── Actions (Emma only) ── */}
+                    {user === "emma" && (
+                      <div style={{ display: "flex", gap: 8 }}>
+                        {!isConfirmed && (
+                          <button
+                            style={{ flex: 1, background: "linear-gradient(135deg, #A6B49E, #4E635E)", color: "#fff", border: "none", borderRadius: 12, padding: "12px 0", fontSize: 13, fontWeight: 800, cursor: "pointer" }}
+                            onClick={() => { onConfirm(item.id); setExpandedPaymentId(null); }}
+                          >
+                            ✓ Confirm Payment
+                          </button>
+                        )}
+                        {isConfirmed && (
+                          <button
+                            style={{ flex: 1, background: "#FFF0F2", color: "#C0485A", border: "1.5px solid #F5C4CD", borderRadius: 12, padding: "12px 0", fontSize: 13, fontWeight: 700, cursor: "pointer" }}
+                            onClick={() => onDeleteConfirmedPayment(item.id)}
+                          >
+                            Delete
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           );
         }
 
-        // Expense row (unchanged)
+        // Expense row — tappable to expand full details
+        const isExpOpen = expandedPaymentId === `exp-${item.id}`;
+        const splitLabel = (s) => s === "cam" ? "Cameron pays full" : s === "split" ? "Split 50/50" : s === "ella" ? "Emmanuella pays full" : s;
+        const hRow = (label, value, mono = false) => (
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+            <span style={{ fontSize: 11, color: "#AAA", fontWeight: 600, flexShrink: 0 }}>{label}</span>
+            <span style={{ fontSize: 12, fontWeight: 700, color: "#1A1A1A", textAlign: "right", fontFamily: mono ? "monospace" : "inherit" }}>{value}</span>
+          </div>
+        );
         return (
-          <div key={i} style={styles.historyItem}>
-            <div style={{ ...styles.historyIcon, background: "#EDE4F5" }}>
-              <Icon path={icons.list} size={18} color="#5B3B8C" />
+          <div key={i} style={{ borderBottom: "1px solid #EDE7DC" }}>
+            {/* Collapsed header */}
+            <div
+              role="button"
+              style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 16px", cursor: "pointer" }}
+              onClick={() => setExpandedPaymentId(isExpOpen ? null : `exp-${item.id}`)}
+            >
+              <div style={{ ...styles.historyIcon, background: "#EDE4F5", flexShrink: 0 }}>
+                <Icon path={icons.list} size={18} color="#5B3B8C" />
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                  <p style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "#1A1A1A", flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {item.description}
+                  </p>
+                  <p style={{ margin: 0, fontSize: 16, fontWeight: 800, color: "#9E4C6A", flexShrink: 0 }}>
+                    ${(item.split === "split" ? item.amount / 2 : item.amount).toFixed(2)}
+                  </p>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 4 }}>
+                  <span style={{ fontSize: 11, color: "#AAA" }}>{formatHistoryDate(item.date)}</span>
+                  {item.status === "paid" && (
+                    <span style={{ fontSize: 11, fontWeight: 700, color: "#2D5A4A", background: "#EBF5EF", borderRadius: 6, padding: "2px 8px" }}>paid</span>
+                  )}
+                  <Icon path={isExpOpen ? icons.chevronUp : icons.chevronDown} size={13} color="#CCC" />
+                </div>
+              </div>
             </div>
-            <div style={styles.historyInfo}>
-              <p style={styles.historyDesc}>{item.description}</p>
-              <p style={styles.historyMeta}>
-                {formatHistoryDate(item.date)}
-                {item.status === "paid" && <span style={styles.confirmedBadge}>paid</span>}
-              </p>
-              {item.note && renderNote(item.note, { marginTop: 4 })}
-            </div>
-            <div style={styles.historyAmt}>
-              <p style={{ ...styles.historyAmtText, color: item.split === "mine" ? "#555" : "#9E4C6A" }}>
-                ${(item.split === "split" ? item.amount / 2 : item.amount).toFixed(2)}
-              </p>
-            </div>
-            {item.status === "paid" && user === "emma" && typeof onDeleteExpense === "function" && (
-              <button style={styles.deleteBtn} onClick={() => onDeleteExpense(item.id)} title="Delete paid expense">
-                <Icon path={icons.x} size={16} color="#C0485A" />
-              </button>
+
+            {/* Expanded detail panel */}
+            {isExpOpen && (
+              <div style={{ padding: "0 16px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
+                <div style={{ background: "#F5F1EB", borderRadius: 14, padding: "14px", border: "1.5px solid #EDE7DC" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, marginBottom: 10, paddingBottom: 10, borderBottom: "1px solid #EDE7DC" }}>
+                    <span style={{ fontSize: 14, fontWeight: 800, color: "#00314B", flex: 1, minWidth: 0 }}>{item.description}</span>
+                    <span style={{ fontSize: 14, fontWeight: 900, color: "#00314B", flexShrink: 0 }}>${Number(item.amount || 0).toFixed(2)}</span>
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    {item.category && hRow("Category", item.category)}
+                    {item.split && hRow("Split", splitLabel(item.split))}
+                    {item.account && hRow("Charged to", item.account)}
+                    {item.recurring && item.recurring !== "none" && hRow("Recurring", item.recurring)}
+                    {(item.dueDate || item.nextDue) && hRow("Due date", formatShortDate(item.dueDate || item.nextDue))}
+                    {item.referenceNum && hRow("Ref #", item.referenceNum, true)}
+                    {item.note && hRow("Note", `"${item.note}"`)}
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: 6, borderTop: "1px solid #EDE7DC", marginTop: 2 }}>
+                      <span style={{ fontSize: 11, color: "#AAA", fontWeight: 600 }}>Status</span>
+                      <span style={{ fontSize: 11, fontWeight: 800, color: item.status === "paid" ? "#2D5A4A" : "#C8A020", background: item.status === "paid" ? "#EBF5EF" : "#FDF7E3", borderRadius: 6, padding: "3px 10px" }}>
+                        {item.status === "paid" ? "Paid" : "Unpaid"}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                {item.status === "paid" && user === "emma" && typeof onDeleteExpense === "function" && (
+                  <button
+                    style={{ background: "#FFF0F2", color: "#C0485A", border: "1.5px solid #F5C4CD", borderRadius: 12, padding: "12px 0", fontSize: 13, fontWeight: 700, cursor: "pointer", width: "100%" }}
+                    onClick={() => onDeleteExpense(item.id)}
+                  >
+                    Delete
+                  </button>
+                )}
+              </div>
             )}
           </div>
         );
@@ -6265,6 +6756,14 @@ function LogPaymentModal({ balance, onSave, onClose, user, targets = [], planSum
             <h3 style={styles.modalTitle}>How did you pay?</h3>
             <button style={styles.closeBtn} onClick={onClose}><Icon path={icons.x} size={18} color="#C0485A" /></button>
           </div>
+
+          {/* What this payment is going toward */}
+          {selectedTarget && (
+            <div style={{ background: "#EAF0F8", borderRadius: 11, padding: "10px 14px", marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "center", border: "1.5px solid #C8DCF0" }}>
+              <span style={{ fontSize: 11, color: "#5A7A9A", fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5 }}>Applying to</span>
+              <span style={{ fontSize: 13, fontWeight: 800, color: "#00314B", textAlign: "right", maxWidth: "65%" }}>{selectedTarget.label}</span>
+            </div>
+          )}
 
           <div style={{ background: "#EEE9E0", borderRadius: 14, padding: "14px 16px", marginBottom: 20, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <span style={{ fontSize: 13, color: "#888", fontWeight: 600 }}>Amount</span>

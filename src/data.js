@@ -53,6 +53,13 @@ export async function deletePayment(id) {
   await deleteDoc(doc(db, "payments", id));
 }
 
+export async function rejectPayment(id, reason, suggestionKey) {
+  const update = { rejected: true, rejectedAt: serverTimestamp() };
+  if (reason) update.rejectionReason = reason;
+  if (suggestionKey) update.rejectionSuggestionKey = suggestionKey;
+  await updateDoc(doc(db, "payments", id), update);
+}
+
 export async function resolveDispute(id, resolution, declineReason) {
   // resolution: "accepted" | "denied"
   const update = { confirmed: true, disputeStatus: resolution, resolvedAt: serverTimestamp() };
@@ -65,6 +72,16 @@ async function updateExpense(id, updates) {
 }
 
 export { updateExpense };
+
+// Device token (FCM) — stored at deviceTokens/{userId}
+export async function saveDeviceToken(userId, token) {
+  await updateDoc(doc(db, "deviceTokens", userId), { fcmToken: token, updatedAt: serverTimestamp() })
+    .catch(async () => {
+      // Document might not exist yet — use setDoc
+      const { setDoc } = await import("firebase/firestore");
+      await setDoc(doc(db, "deviceTokens", userId), { fcmToken: token, updatedAt: serverTimestamp() });
+    });
+}
 
 // Write: set nextDue and reset status to unpaid
 export async function updateExpenseNextDue(id, nextDue) {
