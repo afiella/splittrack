@@ -686,28 +686,33 @@ export default function App() {
   // Initialize push notifications once we know who the user is
   useEffect(() => {
     if (!realUser) return;
-    // Web push (service workers) only — skip entirely on native iOS
-    if (!Capacitor.isNativePlatform()) {
+
+    if (Capacitor.isNativePlatform()) {
+      // Native iOS: use APNs via @capacitor/push-notifications
+      import("./nativePush").then(({ initNativePush }) => {
+        initNativePush(realUser, setScreen);
+      });
+    } else {
+      // Web PWA: use FCM web push via service worker
       initPushNotifications(realUser);
 
-      // Handle notification taps when app is already open (service worker posts a message)
       const onSwMessage = (event) => {
         if (event.data?.type === "NAVIGATE" && event.data.screen) {
           setScreen(event.data.screen);
         }
       };
       navigator.serviceWorker?.addEventListener("message", onSwMessage);
-    }
 
-    // Handle notification tap when app was closed (?screen= query param on launch)
-    const params = new URLSearchParams(window.location.search);
-    const screenParam = params.get("screen");
-    if (screenParam) {
-      setScreen(screenParam);
-      window.history.replaceState({}, "", window.location.pathname);
-    }
+      // Handle notification tap when app was closed (?screen= query param on launch)
+      const params = new URLSearchParams(window.location.search);
+      const screenParam = params.get("screen");
+      if (screenParam) {
+        setScreen(screenParam);
+        window.history.replaceState({}, "", window.location.pathname);
+      }
 
-    return () => navigator.serviceWorker?.removeEventListener("message", onSwMessage);
+      return () => navigator.serviceWorker?.removeEventListener("message", onSwMessage);
+    }
   }, [realUser]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
