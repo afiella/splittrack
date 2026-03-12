@@ -17,4 +17,13 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         return true
     }
 
+    // Required for Google Sign-In OAuth redirect
+    func application(
+        _ app: UIApplication,
+        open url: URL,
+        options: [UIApplication.OpenURLOptionsKey: Any] = [:]
+    ) -> Bool {
+        return ApplicationDelegateProxy.shared.application(app, open: url, options: options)
+    }
+
 }
