@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signInWithCredential, signOut, setPersistence, browserLocalPersistence } from "firebase/auth";
+import { onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signInWithCredential, signOut } from "firebase/auth";
 import { listenExpenses, listenPayments, addExpense, addPayment, confirmPayment as confirmPaymentInDb, deleteExpense as deleteExpenseInDb, deletePayment as deletePaymentInDb, updateExpense as updateExpenseInDb, resolveDispute as resolveDisputeInDb, rejectPayment as rejectPaymentInDb } from "./data";
 import { auth } from "./firebase";
 import { initPushNotifications } from "./pushNotifications";
@@ -670,11 +670,6 @@ export default function App() {
   const [paymentDraftKey, setPaymentDraftKey] = useState("general");
   const [paymentDraftAmount, setPaymentDraftAmount] = useState(null);
   useEffect(() => {
-    // Keep the user signed in across reloads
-    setPersistence(auth, browserLocalPersistence).catch((e) => {
-      console.warn("Auth persistence not set:", e);
-    });
-
     const unsub = onAuthStateChanged(auth, (u) => setFirebaseUser(u));
     return () => unsub();
   }, []);
@@ -691,15 +686,18 @@ export default function App() {
   // Initialize push notifications once we know who the user is
   useEffect(() => {
     if (!realUser) return;
-    initPushNotifications(realUser);
+    // Web push (service workers) only — skip entirely on native iOS
+    if (!Capacitor.isNativePlatform()) {
+      initPushNotifications(realUser);
 
-    // Handle notification taps when app is already open (service worker posts a message)
-    const onSwMessage = (event) => {
-      if (event.data?.type === "NAVIGATE" && event.data.screen) {
-        setScreen(event.data.screen);
-      }
-    };
-    navigator.serviceWorker?.addEventListener("message", onSwMessage);
+      // Handle notification taps when app is already open (service worker posts a message)
+      const onSwMessage = (event) => {
+        if (event.data?.type === "NAVIGATE" && event.data.screen) {
+          setScreen(event.data.screen);
+        }
+      };
+      navigator.serviceWorker?.addEventListener("message", onSwMessage);
+    }
 
     // Handle notification tap when app was closed (?screen= query param on launch)
     const params = new URLSearchParams(window.location.search);
@@ -1301,18 +1299,20 @@ function LoginScreen() {
   async function handleGoogleSignIn() {
     setErrMsg("");
     setLoading(true);
+    const isNative = Capacitor.isNativePlatform();
+    setErrMsg(`platform: ${isNative ? "native" : "web"}`);
     try {
-      if (Capacitor.isNativePlatform()) {
-        // Native iOS: use Capacitor Firebase plugin for native Google Sign-In sheet
+      if (isNative) {
         const { FirebaseAuthentication } = await import("@capacitor-firebase/authentication");
-        const result = await FirebaseAuthentication.signInWithGoogle();
-        const credential = GoogleAuthProvider.credential(
-          result.credential?.idToken,
-          result.credential?.accessToken
-        );
-        await signInWithCredential(auth, credential);
+        const result = await FirebaseAuthentication.signInWithGoogle({ skipNativeAuth: true });
+        const idToken = result.credential?.idToken;
+        const accessToken = result.credential?.accessToken;
+        if (!idToken) throw new Error(`No idToken. Result: ${JSON.stringify(result)}`);
+        setErrMsg(`got idToken, signing in...`);
+        const credential = GoogleAuthProvider.credential(idToken, accessToken);
+        const userCred = await signInWithCredential(auth, credential);
+        setErrMsg(`signed in as ${userCred?.user?.email}`);
       } else {
-        // Web: use popup
         const provider = new GoogleAuthProvider();
         provider.setCustomParameters({ prompt: "select_account" });
         await signInWithPopup(auth, provider);
@@ -3711,7 +3711,7 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
       )}
 
       {/* Push notification enable banner */}
-      {(!tokenSaved || notifPermission !== "granted") && (
+      {!Capacitor.isNativePlatform() && (!tokenSaved || notifPermission !== "granted") && (
         <NotifEnableBanner user={user} notifPermission={notifPermission} setNotifPermission={setNotifPermission} setTokenSaved={setTokenSaved} />
       )}
 
