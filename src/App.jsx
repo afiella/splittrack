@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut, setPersistence, browserLocalPersistence } from "firebase/auth";
+import { onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signInWithCredential, signOut, setPersistence, browserLocalPersistence } from "firebase/auth";
 import { listenExpenses, listenPayments, addExpense, addPayment, confirmPayment as confirmPaymentInDb, deleteExpense as deleteExpenseInDb, deletePayment as deletePaymentInDb, updateExpense as updateExpenseInDb, resolveDispute as resolveDisputeInDb, rejectPayment as rejectPaymentInDb } from "./data";
 import { auth } from "./firebase";
 import { initPushNotifications } from "./pushNotifications";
+import { Capacitor } from "@capacitor/core";
 // ── MOCK DATA ─────────────────────────────────────────────────────────
 const INITIAL_EXPENSES = [
   { description: "Elephant Insurance (Cam's card)", amount: 309.93, split: "cam", date: "2025-11-03", account: "Best Buy Visa", category: "Insurance", status: "unpaid" },
@@ -1301,9 +1302,21 @@ function LoginScreen() {
     setErrMsg("");
     setLoading(true);
     try {
-      const provider = new GoogleAuthProvider();
-      provider.setCustomParameters({ prompt: "select_account" });
-      await signInWithPopup(auth, provider);
+      if (Capacitor.isNativePlatform()) {
+        // Native iOS: use Capacitor Firebase plugin for native Google Sign-In sheet
+        const { FirebaseAuthentication } = await import("@capacitor-firebase/authentication");
+        const result = await FirebaseAuthentication.signInWithGoogle();
+        const credential = GoogleAuthProvider.credential(
+          result.credential?.idToken,
+          result.credential?.accessToken
+        );
+        await signInWithCredential(auth, credential);
+      } else {
+        // Web: use popup
+        const provider = new GoogleAuthProvider();
+        provider.setCustomParameters({ prompt: "select_account" });
+        await signInWithPopup(auth, provider);
+      }
     } catch (err) {
       setErrMsg(err?.message || JSON.stringify(err));
     } finally {
