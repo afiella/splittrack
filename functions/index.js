@@ -65,12 +65,12 @@ exports.onPaymentCreated = onDocumentCreated("payments/{id}", async (event) => {
     // Cameron filed a dispute — notify Emma
     const desc = pmt.disputeDescription || "a charge";
     const reason = pmt.disputeReason ? ` — "${pmt.disputeReason}"` : "";
-    await sendPush("ella", "Cameron Disputed a Charge", `${desc}${reason}`, {
+    await sendPush("emma", "Cameron Disputed a Charge", `${desc}${reason}`, {
       screen: "dashboard",
     });
   } else {
     // Cameron logged a payment — notify Emma to confirm
-    await sendPush("ella", "Payment Needs Confirmation", `Cameron sent ${fmt(pmt.amount)} via ${pmt.method || "unknown"}`, {
+    await sendPush("emma", "Payment Needs Confirmation", `Cameron sent ${fmt(pmt.amount)} via ${pmt.method || "unknown"}`, {
       screen: "dashboard",
     });
   }
