@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signInWithCredential, signOut } from "firebase/auth";
 import { listenExpenses, listenPayments, addExpense, addPayment, confirmPayment as confirmPaymentInDb, deleteExpense as deleteExpenseInDb, deletePayment as deletePaymentInDb, updateExpense as updateExpenseInDb, resolveDispute as resolveDisputeInDb, rejectPayment as rejectPaymentInDb } from "./data";
@@ -591,8 +591,8 @@ const icons = {
 
 function Icon({ path, size = 20, color = "currentColor" }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-      <path d={path} />
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" style={{ display: "block" }}>
+      <path d={path} stroke={color} fill="none" />
     </svg>
   );
 }
@@ -634,6 +634,84 @@ function UpdateBanner({ onTap }) {
   );
 }
 
+// ── PULL TO REFRESH ───────────────────────────────────────────────────
+function usePullToRefresh(onRefresh) {
+  const [pullY, setPullY] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
+  const startY = useRef(0);
+  const active = useRef(false);
+  const THRESHOLD = 68;
+
+  useEffect(() => {
+    function onTouchStart(e) {
+      if (window.scrollY > 4) return;
+      startY.current = e.touches[0].clientY;
+      active.current = true;
+    }
+    function onTouchMove(e) {
+      if (!active.current) return;
+      if (window.scrollY > 4) { active.current = false; return; }
+      const dy = e.touches[0].clientY - startY.current;
+      if (dy <= 0) { active.current = false; setPullY(0); return; }
+      setPullY(Math.min(dy * 0.42, THRESHOLD + 24));
+    }
+    function onTouchEnd() {
+      if (!active.current) return;
+      active.current = false;
+      setPullY(prev => {
+        if (prev >= THRESHOLD) {
+          setRefreshing(true);
+          Promise.resolve(onRefresh()).finally(() => {
+            setTimeout(() => setRefreshing(false), 700);
+          });
+        }
+        return 0;
+      });
+    }
+    window.addEventListener("touchstart", onTouchStart, { passive: true });
+    window.addEventListener("touchmove", onTouchMove, { passive: true });
+    window.addEventListener("touchend", onTouchEnd);
+    return () => {
+      window.removeEventListener("touchstart", onTouchStart);
+      window.removeEventListener("touchmove", onTouchMove);
+      window.removeEventListener("touchend", onTouchEnd);
+    };
+  }, [onRefresh]);
+
+  return { pullY, refreshing };
+}
+
+function PTRIndicator({ pullY, refreshing }) {
+  const progress = Math.min(pullY / 68, 1);
+  const visible = pullY > 4 || refreshing;
+  if (!visible) return null;
+  return (
+    <div style={{
+      position: "fixed", top: "calc(env(safe-area-inset-top, 47px) + 6px)",
+      left: "50%", transform: "translateX(-50%)",
+      zIndex: 9999, pointerEvents: "none",
+    }}>
+      <div style={{
+        width: 36, height: 36, borderRadius: "50%",
+        background: "rgba(255,255,255,0.92)",
+        backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)",
+        boxShadow: "0 4px 16px rgba(0,0,0,0.18)",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        transform: `scale(${0.6 + progress * 0.4})`,
+        transition: refreshing ? "none" : "transform 0.1s ease",
+        opacity: 0.5 + progress * 0.5,
+      }}>
+        <svg width={18} height={18} viewBox="0 0 24 24" fill="none"
+          stroke="#00314B" strokeWidth={2.2} strokeLinecap="round"
+          style={{ transform: refreshing ? "none" : `rotate(${progress * 280}deg)`,
+            animation: refreshing ? "stSpin 0.7s linear infinite" : "none" }}>
+          <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+        </svg>
+      </div>
+    </div>
+  );
+}
+
 // ── MAIN APP ──────────────────────────────────────────────────────────
 export default function App() {
   const [firebaseUser, setFirebaseUser] = useState(null);
@@ -657,6 +735,7 @@ export default function App() {
     return () => unsub();
   }, []);
 
+  const [listenKey, setListenKey] = useState(0);
   useEffect(() => {
     const unsubExpenses = listenExpenses(setExpenses);
     const unsubPayments = listenPayments(setPayments);
@@ -664,7 +743,14 @@ export default function App() {
       unsubExpenses();
       unsubPayments();
     };
+  }, [listenKey]);
+
+  const handleRefresh = useCallback(() => {
+    setListenKey(k => k + 1);
+    return new Promise(res => setTimeout(res, 700));
   }, []);
+
+  const { pullY, refreshing } = usePullToRefresh(handleRefresh);
 
   // Initialize push notifications once we know who the user is
   useEffect(() => {
@@ -1105,9 +1191,10 @@ export default function App() {
         .lg-btn{position:relative;z-index:1;background:transparent;border:none;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;transition:color .22s ease,opacity .22s ease}
         .lg-btn:active{transform:scale(0.94);transition:transform .1s ease}
         .lg-chip-active{backdrop-filter:blur(16px) saturate(160%);-webkit-backdrop-filter:blur(16px) saturate(160%);box-shadow:0 2px 10px rgba(0,0,0,0.13),inset 0 1px 0 rgba(255,255,255,0.45)}
-        .lg-nav-pill{position:absolute;border-radius:14px;pointer-events:none;transition:left .42s cubic-bezier(.34,1.56,.64,1),width .42s cubic-bezier(.34,1.56,.64,1),top .42s cubic-bezier(.34,1.56,.64,1),height .42s cubic-bezier(.34,1.56,.64,1);backdrop-filter:blur(20px) saturate(180%);-webkit-backdrop-filter:blur(20px) saturate(180%);background:linear-gradient(145deg,rgba(255,255,255,0.22),rgba(255,255,255,0.08));border:1px solid rgba(255,255,255,0.35);box-shadow:0 2px 12px rgba(0,0,0,0.12),inset 0 1px 0 rgba(255,255,255,0.4);overflow:hidden}
-        .lg-nav-pill::after{content:'';position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,0.3),transparent);background-size:200% 100%;animation:lgShimmer .6s ease forwards .05s}
+        .lg-nav-pill{position:absolute;border-radius:14px;pointer-events:none;transition:left .42s cubic-bezier(.34,1.56,.64,1),width .42s cubic-bezier(.34,1.56,.64,1),top .42s cubic-bezier(.34,1.56,.64,1),height .42s cubic-bezier(.34,1.56,.64,1);backdrop-filter:blur(24px) saturate(200%);-webkit-backdrop-filter:blur(24px) saturate(200%);background:linear-gradient(145deg,rgba(255,255,255,0.16),rgba(255,255,255,0.07));border:1px solid rgba(255,255,255,0.22);box-shadow:0 2px 16px rgba(0,0,0,0.28),inset 0 1px 0 rgba(255,255,255,0.28);overflow:hidden}
+        .lg-nav-pill::after{content:'';position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,0.18),transparent);background-size:200% 100%;animation:lgShimmer .6s ease forwards .05s}
       `}</style>
+      <PTRIndicator pullY={pullY} refreshing={refreshing} />
       <AnimatePresence>
         {updateAvailable && <UpdateBanner onTap={() => window.location.reload()} />}
       </AnimatePresence>
@@ -2809,8 +2896,8 @@ function DisputeModal({ expense, onSubmit, onClose }) {
             <p style={{ margin: 0, fontSize: 12, color: "#999" }}>Let Emmanuella know there's an issue</p>
           </div>
           <button onClick={onClose} type="button"
-            style={{ background: "#E0D8CC", border: "none", borderRadius: 10, width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", fontSize: 18, fontWeight: 700, color: "#6B5B8E", flexShrink: 0 }}>
-            ✕
+            style={{ background: "#E0D8CC", border: "none", borderRadius: 10, width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}>
+            <Icon path={icons.x} size={18} color="#6B5B8E" />
           </button>
         </div>
 
@@ -2970,17 +3057,38 @@ function CamQuickPayModal({ expenses = [], targetSummaries, onSubmit, onClose })
     ? overduePlan.length > 0
     : targetMode === "specific" && selectedExpIds.size > 0;
 
-  function handleConfirm() {
+  const [proofOpen, setProofOpen] = useState(false);
+  const [proofFile, setProofFile] = useState(null);
+  const [proofPreview, setProofPreview] = useState(null);
+  const [uploading, setUploading] = useState(false);
+  const proofInputRef = useRef(null);
+
+  function handleProofPick(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setProofFile(file);
+    const reader = new FileReader();
+    reader.onload = ev => setProofPreview(ev.target.result);
+    reader.readAsDataURL(file);
+  }
+
+  async function handleConfirm() {
+    let proofUrl;
+    if (proofFile) {
+      setUploading(true);
+      try { proofUrl = await uploadProof(proofFile); } catch (err) { console.error("Proof upload failed:", err); }
+      setUploading(false);
+    }
     const today = new Date().toISOString().slice(0, 10);
     if (targetMode === "overdue") {
       overduePlan.forEach(({ e, pay, tKey }) => {
-        onSubmit({ amount: pay, date: today, method, appliedToKey: tKey, note: `Quick pay — clears overdue: ${e.description}` });
+        onSubmit({ amount: pay, date: today, method, appliedToKey: tKey, note: `Quick pay — clears overdue: ${e.description}`, ...(proofUrl ? { proofUrl } : {}) });
       });
     } else if (targetMode === "specific" && selectedExps.length > 0) {
       selectedExps.forEach(e => {
         const isRec = e.recurring && e.recurring !== "none";
         const tKey = isRec ? `grp:${e.groupId || e.id}` : `exp:${e.id}`;
-        onSubmit({ amount: camShare(e), date: today, method, appliedToKey: tKey });
+        onSubmit({ amount: camShare(e), date: today, method, appliedToKey: tKey, ...(proofUrl ? { proofUrl } : {}) });
       });
     }
     onClose();
@@ -3017,8 +3125,8 @@ function CamQuickPayModal({ expenses = [], targetSummaries, onSubmit, onClose })
             </p>
           </div>
           <button onClick={onClose} type="button"
-            style={{ background: "#E0D8CC", border: "none", borderRadius: 10, width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", fontSize: 18, fontWeight: 700, color: "#6B5B8E", lineHeight: 1 }}>
-            ✕
+            style={{ background: "#E0D8CC", border: "none", borderRadius: 10, width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+            <Icon path={icons.x} size={18} color="#6B5B8E" />
           </button>
         </div>
 
@@ -3298,9 +3406,54 @@ function CamQuickPayModal({ expenses = [], targetSummaries, onSubmit, onClose })
               This payment will be pending until Emmanuella confirms it.
             </p>
 
-            <button type="button" onClick={handleConfirm}
-              style={{ width: "100%", padding: "16px", borderRadius: 16, border: "none", background: "linear-gradient(135deg, #A6B49E, #4E635E)", color: "#fff", fontSize: 16, fontWeight: 800, cursor: "pointer" }}>
-              Confirm Payment ✓
+            {/* Proof toggle */}
+            <button type="button" onClick={() => setProofOpen(o => !o)}
+              style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", background: proofOpen ? "#EAF0EE" : "#F5F1EB", border: "none", borderRadius: 14, padding: "12px 14px", cursor: "pointer", marginBottom: 12 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div style={{ width: 32, height: 32, borderRadius: 10, background: proofOpen ? "#4E635E" : "#DDD5C5", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/>
+                  </svg>
+                </div>
+                <div style={{ textAlign: "left" }}>
+                  <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: "#00314B" }}>Add payment proof</p>
+                  <p style={{ margin: 0, fontSize: 11, color: "#AAA" }}>Optional — screenshot or photo</p>
+                </div>
+              </div>
+              <div style={{ width: 44, height: 26, borderRadius: 13, background: proofOpen ? "#4E635E" : "#DDD5C5", position: "relative", transition: "background 0.2s", flexShrink: 0 }}>
+                <div style={{ position: "absolute", top: 3, left: proofOpen ? 21 : 3, width: 20, height: 20, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 4px rgba(0,0,0,0.2)", transition: "left 0.2s cubic-bezier(.34,1.56,.64,1)" }} />
+              </div>
+            </button>
+
+            <AnimatePresence>
+              {proofOpen && (
+                <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }} style={{ overflow: "hidden", marginBottom: 12 }}>
+                  <input ref={proofInputRef} type="file" accept="image/*" capture="environment" style={{ display: "none" }} onChange={handleProofPick} />
+                  {proofPreview ? (
+                    <div style={{ position: "relative" }}>
+                      <img src={proofPreview} alt="proof" style={{ width: "100%", borderRadius: 14, maxHeight: 200, objectFit: "cover", display: "block" }} />
+                      <button type="button" onClick={() => { setProofFile(null); setProofPreview(null); }}
+                        style={{ position: "absolute", top: 8, right: 8, background: "rgba(0,0,0,0.55)", border: "none", borderRadius: 8, color: "#fff", fontSize: 12, fontWeight: 700, padding: "4px 10px", cursor: "pointer" }}>
+                        Remove
+                      </button>
+                    </div>
+                  ) : (
+                    <button type="button" onClick={() => proofInputRef.current?.click()}
+                      style={{ width: "100%", padding: "20px", borderRadius: 14, border: "2px dashed #C5D5C0", background: "#F5F9F5", display: "flex", flexDirection: "column", alignItems: "center", gap: 8, cursor: "pointer" }}>
+                      <svg width={28} height={28} viewBox="0 0 24 24" fill="none" stroke="#A6B49E" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
+                      </svg>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: "#4E635E" }}>Tap to choose photo</span>
+                      <span style={{ fontSize: 11, color: "#AAA" }}>Screenshot, Zelle receipt, etc.</span>
+                    </button>
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            <button type="button" onClick={handleConfirm} disabled={uploading}
+              style={{ width: "100%", padding: "16px", borderRadius: 16, border: "none", background: uploading ? "#C5D5C0" : "linear-gradient(135deg, #A6B49E, #4E635E)", color: "#fff", fontSize: 16, fontWeight: 800, cursor: uploading ? "default" : "pointer" }}>
+              {uploading ? "Uploading…" : "Confirm Payment ✓"}
             </button>
           </div>
         )}
@@ -4372,8 +4525,8 @@ function CategoryAnalyticsSheet({ catId, expenses, catGroup, onClose }) {
               <p style={{ margin: "2px 0 0", fontSize: 26, fontWeight: 900, color: "#fff", letterSpacing: -0.5 }}>{meta.label}</p>
             </div>
             <button onClick={onClose} type="button"
-              style={{ background: "rgba(255,255,255,0.2)", border: "none", borderRadius: 10, width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "#fff", fontSize: 18, fontWeight: 700 }}>
-              ✕
+              style={{ background: "rgba(255,255,255,0.2)", border: "none", borderRadius: 10, width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+              <Icon path={icons.x} size={18} color="#fff" />
             </button>
           </div>
 
@@ -4592,7 +4745,7 @@ function UrgentScreen({ expenses, allExpenses = [], user, onBack, onMarkPaid, on
           onClick={onBack}
           aria-label="Back"
         >
-          <Icon path={icons.back} size={18} />
+          <Icon path={icons.back} size={18} color="#00314B" />
         </button>
         <h2 style={{ ...styles.subTitle, flex: 1, textAlign: "center", minWidth: 0 }}>
           {tab === "urgent" ? "Urgent" : "Mandatory"}
@@ -4754,8 +4907,13 @@ function ExpensesScreen({
   }
 
   // ---- Base list (role + status filter) ----
+  // One-time paid expenses are excluded entirely — they only live in History.
   const baseList = (() => {
-    const list = expenses || [];
+    const list = (expenses || []).filter(e => {
+      const isRecurring = e.recurring && e.recurring !== "none";
+      if (!isRecurring && e.status === "paid") return false;
+      return true;
+    });
     if (isCam) return list.filter((e) => ["cam", "split", "ella"].includes(e.split));
     return list;
   })();
@@ -4808,10 +4966,10 @@ function ExpensesScreen({
   })();
 
   // ---- Group recurring expenses by groupId ----
-  const groupedList = (() => {
+  function buildGrouped(list) {
     const result = [];
-    const seen = new Map(); // gid → index in result
-    for (const e of listToRender) {
+    const seen = new Map();
+    for (const e of list) {
       const isRecurring = e.recurring && e.recurring !== "none";
       const gid = isRecurring ? (e.groupId || e.id) : null;
       if (gid && seen.has(gid)) {
@@ -4824,7 +4982,30 @@ function ExpensesScreen({
       }
     }
     return result;
+  }
+
+  const groupedList = buildGrouped(listToRender);
+
+  // ---- Mandatory section — always pinned, not affected by status filter ----
+  // One-time paid mandatory expenses are hidden here (they live in history).
+  // Recurring mandatory expenses stay pinned regardless of paid status.
+  const pinnedMandatoryGrouped = (() => {
+    const sorted = applySort(baseList.filter(e => {
+      if (!e.mandatory) return false;
+      const isRecurring = e.recurring && e.recurring !== "none";
+      if (!isRecurring && e.status === "paid") return false;
+      return true;
+    }));
+    return buildGrouped(sorted);
   })();
+
+  // IDs/gids already in pinned mandatory — exclude from regular section
+  const pinnedIds = new Set(
+    pinnedMandatoryGrouped.map(item => item._isGroup ? `grp:${item.gid}` : item.id)
+  );
+  const regularGroupedList = groupedList.filter(item =>
+    !pinnedIds.has(item._isGroup ? `grp:${item.gid}` : item.id)
+  );
 
 
   // Keep the UI toggle in sync with the hook
@@ -5215,33 +5396,66 @@ function ExpensesScreen({
           </p>
         </div>
       ) : (
-        <motion.div layout style={{ padding: "0 16px" }}>
-          {groupedList.map((item) => item._isGroup ? (
-            <GroupExpenseRow
-              key={`grp:${item.gid}`}
-              gid={item.gid}
-              items={item.items}
-              user={user}
-              targetSummaries={targetSummaries}
-              onMarkPaid={onMarkPaid}
-              onEdit={onEditExpense}
-              onLogPaymentForKey={onLogPaymentForKey}
-            />
-          ) : (
-            <ExpenseRow
-              key={item.id}
-              expense={item}
-              user={user}
-              onDelete={onDeleteExpense}
-              onEdit={onEditExpense}
-              onMarkPaid={onMarkPaid}
-              targetSummaries={targetSummaries}
-              payments={payments}
-              onLogPaymentForKey={onLogPaymentForKey}
-              onDispute={onDisputeExpense}
-            />
-          ))}
-        </motion.div>
+        <div style={{ padding: "0 16px" }}>
+
+          {/* ── Mandatory section — always pinned at top ── */}
+          {!searchOpen && pinnedMandatoryGrouped.length > 0 && (
+            <>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "18px 4px 10px" }}>
+                <div style={{ width: 10, height: 10, borderRadius: 3, background: "linear-gradient(135deg, #E05C6E, #C0485A)", flexShrink: 0 }} />
+                <span style={{ fontSize: 12, fontWeight: 900, color: "#C0485A", textTransform: "uppercase", letterSpacing: 1 }}>Mandatory</span>
+                <div style={{ background: "#FFF0F2", border: "1px solid #F5C4CD", borderRadius: 20, padding: "2px 8px", fontSize: 11, fontWeight: 800, color: "#C0485A" }}>{pinnedMandatoryGrouped.length}</div>
+                <div style={{ flex: 1, height: 1, background: "linear-gradient(to right, #F5C4CD, transparent)" }} />
+              </div>
+              {pinnedMandatoryGrouped.map((item, i) => (
+                <motion.div
+                  key={item._isGroup ? `grp:${item.gid}` : item.id}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: i * 0.04, type: "spring", stiffness: 340, damping: 28 }}
+                >
+                  {item._isGroup ? (
+                    <GroupExpenseRow gid={item.gid} items={item.items} user={user} targetSummaries={targetSummaries} onMarkPaid={onMarkPaid} onEdit={onEditExpense} onLogPaymentForKey={onLogPaymentForKey} />
+                  ) : (
+                    <ExpenseRow expense={item} user={user} onDelete={onDeleteExpense} onEdit={onEditExpense} onMarkPaid={onMarkPaid} targetSummaries={targetSummaries} payments={payments} onLogPaymentForKey={onLogPaymentForKey} onDispute={onDisputeExpense} />
+                  )}
+                </motion.div>
+              ))}
+            </>
+          )}
+
+          {/* ── Regular section ── */}
+          {(searchOpen ? listToRender : regularGroupedList).length > 0 && (
+            <>
+              {!searchOpen && pinnedMandatoryGrouped.length > 0 && (
+                <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "18px 4px 10px" }}>
+                  <div style={{ width: 10, height: 10, borderRadius: 3, background: "linear-gradient(135deg, #00314B, #1B4D6B)", flexShrink: 0 }} />
+                  <span style={{ fontSize: 12, fontWeight: 900, color: "#00314B", textTransform: "uppercase", letterSpacing: 1 }}>Expenses</span>
+                  <div style={{ background: "#E8F0F5", border: "1px solid #B8CDD8", borderRadius: 20, padding: "2px 8px", fontSize: 11, fontWeight: 800, color: "#00314B" }}>{regularGroupedList.length}</div>
+                  <div style={{ flex: 1, height: 1, background: "linear-gradient(to right, #B8CDD8, transparent)" }} />
+                </div>
+              )}
+              {(searchOpen ? listToRender : regularGroupedList).map((item, i) => (
+                <motion.div
+                  key={item._isGroup ? `grp:${item.gid}` : item.id}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: (pinnedMandatoryGrouped.length + i) * 0.04, type: "spring", stiffness: 340, damping: 28 }}
+                >
+                  {item._isGroup ? (
+                    <GroupExpenseRow gid={item.gid} items={item.items} user={user} targetSummaries={targetSummaries} onMarkPaid={onMarkPaid} onEdit={onEditExpense} onLogPaymentForKey={onLogPaymentForKey} />
+                  ) : (
+                    <ExpenseRow expense={item} user={user} onDelete={onDeleteExpense} onEdit={onEditExpense} onMarkPaid={onMarkPaid} targetSummaries={targetSummaries} payments={payments} onLogPaymentForKey={onLogPaymentForKey} onDispute={onDisputeExpense} />
+                  )}
+                </motion.div>
+              ))}
+            </>
+          )}
+
+          {groupedList.length === 0 && !pinnedMandatoryGrouped.length && (
+            <div style={{ padding: "48px 0", textAlign: "center", color: "#CCC", fontSize: 13, fontWeight: 600 }}>No expenses found</div>
+          )}
+        </div>
       )}
 
       <div style={{ height: 80 }} />
@@ -5392,17 +5606,43 @@ function HistoryScreen({ expenses, payments, user, targets = [], onBack, onConfi
         </div>
       </div>
 
-      {/* Transaction list */}
-      <div style={{ background: "#fff", borderRadius: 20, margin: "0 12px", overflow: "hidden", boxShadow: "0 2px 12px rgba(0,0,0,0.06)" }}>
-        {filtered.length === 0 && (
-          <div style={{ padding: 32, textAlign: "center", color: "#BBB", fontSize: 13, fontWeight: 600 }}>No transactions</div>
-        )}
-        {filtered.map((item, i) => {
-          const rowId = item._kind === "payment" ? item.id : `exp-${item.id}`;
-          const isOpen = expandedId === rowId;
-          const isLast = i === filtered.length - 1;
+      {/* Activity Timeline */}
+      {filtered.length === 0 && (
+        <div style={{ padding: 48, textAlign: "center", color: "#CCC", fontSize: 13, fontWeight: 600 }}>No activity yet</div>
+      )}
+      {(() => {
+        // Group items by date
+        const groups = [];
+        let lastDate = null;
+        for (const item of filtered) {
+          const d = (item.date || "").slice(0, 10);
+          if (d !== lastDate) { groups.push({ date: d, items: [] }); lastDate = d; }
+          groups[groups.length - 1].items.push(item);
+        }
+        function dateLabel(iso) {
+          if (!iso) return "";
+          const today = new Date(); today.setHours(0,0,0,0);
+          const yesterday = new Date(today); yesterday.setDate(today.getDate() - 1);
+          const d = new Date(iso + "T12:00:00");
+          if (d >= today) return "Today";
+          if (d >= yesterday) return "Yesterday";
+          return d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: d.getFullYear() !== today.getFullYear() ? "numeric" : undefined });
+        }
+        return groups.map((group, gi) => (
+          <div key={group.date} style={{ margin: "0 16px", marginBottom: gi === groups.length - 1 ? 0 : 4 }}>
+            {/* Date header */}
+            <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "16px 0 10px" }}>
+              <span style={{ fontSize: 12, fontWeight: 800, color: "#AAA", textTransform: "uppercase", letterSpacing: 0.8, whiteSpace: "nowrap" }}>{dateLabel(group.date)}</span>
+              <div style={{ flex: 1, height: 1, background: "#EBEBF0" }} />
+            </div>
+            {/* Timeline items */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+              {group.items.map((item, ii) => {
+                const rowId = item._kind === "payment" ? item.id : `exp-${item.id}`;
+                const isOpen = expandedId === rowId;
+                const isLastInGroup = ii === group.items.length - 1;
 
-          if (item._kind === "payment") {
+                if (item._kind === "payment") {
             const isConfirmed = item.confirmed;
             const isRejected = item.rejected && !item.confirmed;
             const isDispute = item.type === "dispute";
@@ -5422,7 +5662,7 @@ function HistoryScreen({ expenses, payments, user, targets = [], onBack, onConfi
                 <div
                   role="button"
                   onClick={() => setExpandedId(isOpen ? null : rowId)}
-                  style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 16px", cursor: "pointer", borderBottom: isLast && !isOpen ? "none" : "1px solid #F2F2F5" }}
+                  style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 16px", cursor: "pointer", borderBottom: isLastInGroup && !isOpen ? "none" : "1px solid #F2F2F5" }}
                 >
                   <div style={{ width: 44, height: 44, borderRadius: 14, background: iconBg, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                     <Icon path={iconPath} size={20} color={iconColor} />
@@ -5444,7 +5684,7 @@ function HistoryScreen({ expenses, payments, user, targets = [], onBack, onConfi
                 </div>
 
                 {isOpen && (
-                  <div style={{ padding: "0 16px 16px", display: "flex", flexDirection: "column", gap: 10, borderBottom: isLast ? "none" : "1px solid #F2F2F5" }}>
+                  <div style={{ padding: "0 16px 16px", display: "flex", flexDirection: "column", gap: 10, borderBottom: isLastInGroup ? "none" : "1px solid #F2F2F5" }}>
                     <div style={{ background: isDispute ? "#FFF7F8" : "#F8F8FB", borderRadius: 14, padding: 14, display: "flex", flexDirection: "column", gap: 9 }}>
                       {isDispute ? (
                         <>
@@ -5523,7 +5763,7 @@ function HistoryScreen({ expenses, payments, user, targets = [], onBack, onConfi
               <div
                 role="button"
                 onClick={() => setExpandedId(isOpen ? null : rowId)}
-                style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 16px", cursor: "pointer", borderBottom: isLast && !isOpen ? "none" : "1px solid #F2F2F5" }}
+                style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 16px", cursor: "pointer", borderBottom: isLastInGroup && !isOpen ? "none" : "1px solid #F2F2F5" }}
               >
                 <div style={{ width: 44, height: 44, borderRadius: 14, background: isPaid ? "#E8F5EE" : "#F0EEFF", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                   <Icon path={isPaid ? icons.check : icons.chevronUp} size={20} color={isPaid ? "#2D7A50" : "#7B5EA7"} />
@@ -5545,7 +5785,7 @@ function HistoryScreen({ expenses, payments, user, targets = [], onBack, onConfi
               </div>
 
               {isOpen && (
-                <div style={{ padding: "0 16px 16px", display: "flex", flexDirection: "column", gap: 10, borderBottom: isLast ? "none" : "1px solid #F2F2F5" }}>
+                <div style={{ padding: "0 16px 16px", display: "flex", flexDirection: "column", gap: 10, borderBottom: isLastInGroup ? "none" : "1px solid #F2F2F5" }}>
                   <div style={{ background: "#F8F8FB", borderRadius: 14, padding: 14, display: "flex", flexDirection: "column", gap: 9 }}>
                     {hRow("Full amount", `$${Number(item.amount || 0).toFixed(2)}`)}
                     {item.split && hRow("Split", splitLabel(item.split))}
@@ -5569,8 +5809,11 @@ function HistoryScreen({ expenses, payments, user, targets = [], onBack, onConfi
               )}
             </div>
           );
-        })}
-      </div>
+              })}
+            </div>
+          </div>
+        ));
+      })()}
       <div style={{ height: 80 }} />
     </div>
   );
@@ -5647,7 +5890,7 @@ function GroupExpenseRow({ gid, items, user, targetSummaries, onMarkPaid, onEdit
   const nextDueOverdue = nextDueItem ? getUrgencyLevel(nextDueItem) === "overdue" : false;
 
   return (
-    <div style={{ ...fw.expenseCard, marginBottom: 8 }}>
+    <motion.div layout style={{ ...fw.expenseCard, marginBottom: 10 }}>
       <div style={{ ...fw.expenseTop, alignItems: "flex-start" }} onClick={() => setExpanded((o) => !o)} role="button">
         <div style={{ ...fw.splitDot, background: SPLIT_COLORS[split], marginTop: 5 }} />
         <div style={{ ...fw.expenseInfo }}>
@@ -5678,31 +5921,48 @@ function GroupExpenseRow({ gid, items, user, targetSummaries, onMarkPaid, onEdit
         </div>
       </div>
 
-      {expanded && (
-        <div style={{ borderTop: "1px solid #EEE9E0", padding: "2px 14px 10px" }}>
-          {items.map((e, i) => (
-            <GroupSubRow
-              key={e.id}
-              expense={e}
-              user={user}
-              onMarkPaid={onMarkPaid}
-              onEdit={onEdit}
-              isLast={i === items.length - 1}
-            />
-          ))}
-          {isCam && !allPaid && remaining > 0.005 && typeof onLogPaymentForKey === "function" && (
-            <div style={{ marginTop: 10 }}>
-              <QuickPayButtons
-                targetKey={`grp:${gid}`}
-                myShare={remaining}
-                remaining={remaining}
-                onLogPaymentForKey={onLogPaymentForKey}
-              />
-            </div>
-          )}
-        </div>
-      )}
-    </div>
+      <AnimatePresence initial={false}>
+        {expanded && (
+          <motion.div
+            key="grp-expand"
+            initial={{ height: 0 }}
+            animate={{ height: "auto" }}
+            exit={{ height: 0 }}
+            transition={{ type: "tween", duration: 0.32, ease: [0.25, 0.46, 0.45, 0.94] }}
+            style={{ overflow: "hidden" }}
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 4 }}
+              transition={{ delay: 0.06, duration: 0.24, ease: "easeOut" }}
+              style={{ borderTop: "1px solid #EEE9E0", padding: "2px 14px 10px" }}
+            >
+              {items.map((e, i) => (
+                <GroupSubRow
+                  key={e.id}
+                  expense={e}
+                  user={user}
+                  onMarkPaid={onMarkPaid}
+                  onEdit={onEdit}
+                  isLast={i === items.length - 1}
+                />
+              ))}
+              {isCam && !allPaid && remaining > 0.005 && typeof onLogPaymentForKey === "function" && (
+                <div style={{ marginTop: 10 }}>
+                  <QuickPayButtons
+                    targetKey={`grp:${gid}`}
+                    myShare={remaining}
+                    remaining={remaining}
+                    onLogPaymentForKey={onLogPaymentForKey}
+                  />
+                </div>
+              )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.div>
   );
 }
 
@@ -5928,113 +6188,172 @@ function ExpandableExpenseRow({ expense: e, user, onDelete, onEdit, onMarkPaid, 
     <motion.div
       layout
       style={{
-        ...fw.expenseCard,
-        opacity: e._deleting ? 0.55 : e._marking ? 0.75 : 1,
+        background: "#fff",
+        borderRadius: 20,
+        marginBottom: 10,
+        overflow: "hidden",
+        boxShadow: "0 1px 3px rgba(0,0,0,0.06), 0 6px 20px rgba(0,0,0,0.04)",
+        border: "1px solid rgba(0,0,0,0.05)",
+        opacity: e._deleting ? 0.45 : e._marking ? 0.7 : 1,
         pointerEvents: e._deleting || e._marking ? "none" : "auto",
-        border: isCam ? "1.5px solid #EDE7DC" : fw.expenseCard.border,
-        boxShadow: isCam ? "0 2px 10px rgba(0,0,0,0.04)" : fw.expenseCard.boxShadow,
+        position: "relative",
       }}
     >
+      {/* Urgency accent bar */}
+      <div style={{
+        position: "absolute",
+        left: 0, top: 0, bottom: 0,
+        width: 4,
+        borderRadius: "20px 0 0 20px",
+        background: e.status === "paid"
+          ? "linear-gradient(180deg, #A6B49E, #4E635E)"
+          : urgency === "overdue"
+            ? "linear-gradient(180deg, #E05C6E, #C0485A)"
+            : urgency === "critical"
+              ? "linear-gradient(180deg, #E07820, #C45C18)"
+              : urgency === "warning"
+                ? "linear-gradient(180deg, #E8C878, #C8A020)"
+                : "linear-gradient(180deg, #D0D8E0, #B0BCC8)",
+      }} />
+
       <div
-        style={fw.expenseTop}
-        onClick={() => {
-          if (e._deleting || e._marking) return;
-          setExpanded((o) => !o);
-        }}
+        style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 14px 14px 18px", cursor: "pointer" }}
+        onClick={() => { if (e._deleting || e._marking) return; setExpanded(o => !o); }}
         role="button"
       >
-        <div style={{ ...fw.splitDot, background: SPLIT_COLORS[e.split] }} />
+        {/* Category icon circle */}
+        {(() => {
+          const cat = (e.category || "").toLowerCase();
+          const isRecurring = e.recurring && e.recurring !== "none";
+          const circleStyle = cat.includes("grocer") || cat.includes("food") || cat.includes("instacart") || cat.includes("shipt")
+            ? { bg: "#F0F7EA", color: "#4A8040" }
+            : cat.includes("eating") || cat.includes("restaurant") || cat.includes("dining")
+              ? { bg: "#FFF3EC", color: "#E07820" }
+              : cat.includes("home") || cat.includes("rent") || cat.includes("electric") || cat.includes("utility")
+                ? { bg: "#EBF0EE", color: "#4E635E" }
+                : e.mandatory
+                  ? { bg: "#FFF0F2", color: "#C0485A" }
+                  : { bg: "#EEF4FA", color: "#7A9BB5" };
+          const iconPath = isRecurring && e.mandatory
+            ? icons.clock
+            : cat.includes("grocer") || cat.includes("food") || cat.includes("instacart") || cat.includes("shipt")
+              ? icons.check
+              : cat.includes("eating") || cat.includes("restaurant")
+                ? icons.clock
+                : cat.includes("home") || cat.includes("rent") || cat.includes("electric") || cat.includes("utility")
+                  ? icons.wallet
+                  : e.mandatory
+                    ? icons.alert
+                    : icons.list;
+          return (
+            <div style={{ position: "relative", flexShrink: 0 }}>
+              <div style={{
+                width: 44, height: 44, borderRadius: 14,
+                background: circleStyle.bg,
+                display: "flex", alignItems: "center", justifyContent: "center",
+              }}>
+                <Icon path={iconPath} size={20} color={circleStyle.color} />
+              </div>
+              {isRecurring && (
+                <div style={{
+                  position: "absolute", bottom: -2, right: -2,
+                  width: 16, height: 16, borderRadius: 6,
+                  background: "#5B6EBD", border: "2px solid #fff",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 9, color: "#fff", fontWeight: 900, lineHeight: 1,
+                }}>↺</div>
+              )}
+            </div>
+          );
+        })()}
 
-        <div style={fw.expenseInfo}>
-          <p style={fw.expenseDesc}>{e.description}</p>
-          <p style={fw.expenseMeta}>
-            {isCam
-              ? `${e.account} · ${e.category}`
-              : `${formatShortDate(e.date)} · ${e.account}`}
-          </p>
-          {isCam && (
-            <div
-              style={{
-                width: "100%",
-                height: 6,
-                borderRadius: 999,
-                background: "#F3EDF8",
-                marginTop: 8,
-                overflow: "hidden",
-              }}
-            >
-              <div
-                style={{
-                  width: e.status === "paid" ? "100%" : camIsCredit ? "100%" : "55%",
-                  height: "100%",
-                  background: camStatusColor,
-                  borderRadius: 999,
-                }}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
+            <p style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "#1A1A2E", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
+              {e.description}
+            </p>
+            <p style={{ margin: 0, fontSize: 16, fontWeight: 800, color: "#1A1A2E", flexShrink: 0, letterSpacing: -0.3 }}>
+              ${Number(isCam ? Math.abs(camShare) : Number(e.amount || 0)).toFixed(2)}
+            </p>
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 4, gap: 8 }}>
+            <p style={{ margin: 0, fontSize: 12, color: "#9AA0B0", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {isCam ? `${e.account || ""} · ${e.category || ""}` : `${formatShortDate(e.date)} · ${e.account || ""}`}
+            </p>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+              {!isCam && camAmt !== 0 && (
+                <span style={{ fontSize: 11, color: "#E8A0B0", fontWeight: 700 }}>Cam ${Number(camAmt || 0).toFixed(2)}</span>
+              )}
+              {isCam && (
+                <span style={{
+                  display: "inline-flex", alignItems: "center", gap: 3,
+                  padding: "3px 9px", borderRadius: 999, fontSize: 10, fontWeight: 800,
+                  background: camStatusLabel === "Paid" || camStatusLabel === "Credit" ? "#EBF0E8"
+                    : camStatusLabel === "Overdue" ? "#FFF0F0" : "#FBEFF5",
+                  color: camStatusLabel === "Paid" || camStatusLabel === "Credit" ? "#2D5A4A"
+                    : camStatusLabel === "Overdue" ? "#E05C6E" : "#C06A8A",
+                }}>
+                  {camStatusLabel === "Overdue" && <Icon path={icons.alert} size={9} color="#E05C6E" />}
+                  {camStatusLabel}
+                </span>
+              )}
+              {!isCam && (
+                <span style={{
+                  display: "inline-flex", alignItems: "center",
+                  padding: "3px 9px", borderRadius: 999, fontSize: 10, fontWeight: 800,
+                  background: e.status === "paid" ? "#EBF0E8" : urgency === "overdue" ? "#FFF0F0" : urgency === "critical" ? "#FFF5EC" : "#F5F5F8",
+                  color: e.status === "paid" ? "#2D5A4A" : urgency === "overdue" ? "#E05C6E" : urgency === "critical" ? "#E07820" : "#9AA0B0",
+                }}>
+                  {e.status === "paid" ? "Paid" : urgency === "overdue" ? "Overdue" : urgency === "critical" ? "Due Soon" : "Unpaid"}
+                </span>
+              )}
+              <Icon
+                path={expanded ? icons.chevronUp : icons.chevronDown}
+                size={14}
+                color={expanded ? "#00314B" : "#CCC"}
               />
             </div>
-          )}
-          {(() => {
-            const due = e.nextDue || e.dueDate;
-            if (!due) return null;
-            const isOverdue = getUrgencyLevel(e) === "overdue";
-            const isPaid = e.status === "paid";
-            return (
-              <p style={{ fontSize: 10, fontWeight: 700, margin: "4px 0 0", color: isOverdue ? "#E05C6E" : isPaid ? "#B0B0B0" : "#A6B7CB" }}>
-                {isOverdue ? "Overdue · " : isPaid ? "Was due · " : "Due · "}{formatShortDate(due)}
-              </p>
-            );
-          })()}
-        </div>
-
-        <div style={{ ...fw.expenseRight, display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
-          <p style={fw.expenseTotal}>
-            ${Number(isCam ? Math.abs(camShare) : Number(e.amount || 0)).toFixed(2)}
-          </p>
-
-          {!isCam && camAmt !== 0 && (
-            <p style={fw.expenseCam}>Cam: ${Number(camAmt || 0).toFixed(2)}</p>
-          )}
+          </div>
 
           {isCam && (
-  <span
-    style={{
-      display: "inline-flex",
-      alignItems: "center",
-      justifyContent: "center",
-      alignSelf: "flex-end",
-      gap: 4,
-      padding: "3px 10px",
-      borderRadius: 999,
-      fontSize: 10,
-      fontWeight: 800,
-      letterSpacing: 0.2,
-      background:
-        camStatusLabel === "Paid" || camStatusLabel === "Credit"
-          ? "#EBF0E8"
-          : camStatusLabel === "Overdue"
-            ? "#FFF0F0"
-            : "#FBEFF5",
-      color:
-        camStatusLabel === "Paid" || camStatusLabel === "Credit"
-          ? "#2D5A4A"
-          : camStatusLabel === "Overdue"
-            ? "#E05C6E"
-            : "#C06A8A",
-      marginTop: 2,
-    }}
-  >
-    {camStatusLabel === "Overdue" && <Icon path={icons.alert} size={10} color="#E05C6E" />}
-    {camStatusLabel}
-  </span>
-)}
+            <div style={{ width: "100%", height: 3, borderRadius: 999, background: "#F3EDF8", marginTop: 8, overflow: "hidden" }}>
+              <div style={{ width: e.status === "paid" ? "100%" : camIsCredit ? "100%" : "55%", height: "100%", background: camStatusColor, borderRadius: 999 }} />
+            </div>
+          )}
 
-          <div style={fw.chevron}>
-            <Icon
-              path={expanded ? icons.chevronUp : icons.chevronDown}
-              size={16}
-              color={expanded ? "#00314B" : "#CCC"}
-            />
-          </div>
+          {(() => {
+            const due = e.nextDue || e.dueDate;
+            const isRecurring = e.recurring && e.recurring !== "none";
+            const isOverdue = getUrgencyLevel(e) === "overdue";
+            const isPaid = e.status === "paid";
+            const recurLabel = isRecurring
+              ? ({ monthly: "Monthly", weekly: "Weekly", biweekly: "Every 2 wks", yearly: "Yearly", quarterly: "Quarterly" }[e.recurring] || e.recurring)
+              : null;
+            if (!due && !isRecurring) return null;
+            return (
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
+                {isRecurring && (
+                  <span style={{
+                    display: "inline-flex", alignItems: "center", gap: 3,
+                    fontSize: 10, fontWeight: 800,
+                    background: "#F0F4FF", color: "#5B6EBD",
+                    borderRadius: 6, padding: "2px 7px",
+                  }}>
+                    ↺ {recurLabel}
+                  </span>
+                )}
+                {due && (
+                  <span style={{
+                    fontSize: 10, fontWeight: 700,
+                    color: isOverdue ? "#E05C6E" : isPaid ? "#C0C0C8" : "#A6B7CB",
+                  }}>
+                    {isOverdue ? "⚠ Overdue · " : isPaid ? "Was due · " : "Next · "}{formatShortDate(due)}
+                  </span>
+                )}
+              </div>
+            );
+          })()}
         </div>
       </div>
 
@@ -6042,13 +6361,20 @@ function ExpandableExpenseRow({ expense: e, user, onDelete, onEdit, onMarkPaid, 
       {expanded && (
         <motion.div
           key="expand"
-          initial={{ height: 0, opacity: 0 }}
-          animate={{ height: "auto", opacity: 1 }}
-          exit={{ height: 0, opacity: 0 }}
-          transition={{ type: "spring", stiffness: 300, damping: 25, opacity: { duration: 0.15 } }}
+          initial={{ height: 0 }}
+          animate={{ height: "auto" }}
+          exit={{ height: 0 }}
+          transition={{ type: "tween", duration: 0.32, ease: [0.25, 0.46, 0.45, 0.94] }}
           style={{ overflow: "hidden" }}
         >
-        <div style={fw.expandPanel} onClick={(ev) => ev.stopPropagation()}>
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: 4 }}
+          transition={{ delay: 0.06, duration: 0.24, ease: "easeOut" }}
+          style={fw.expandPanel}
+          onClick={(ev) => ev.stopPropagation()}
+        >
           
 
           {/* ★ CHANGE 1: Payment plan containers wired to real targetSummaries data */}
@@ -6430,7 +6756,7 @@ function ExpandableExpenseRow({ expense: e, user, onDelete, onEdit, onMarkPaid, 
               )}
             </div>
           )}
-        </div>
+        </motion.div>
         </motion.div>
       )}
       </AnimatePresence>
@@ -7132,6 +7458,15 @@ function EditExpenseModal({ expense, onSave, onDelete, onClose }) {
 //
 // ★ CHANGE 4: Fixed LogPaymentModal — defaultAppliedToKey → initialAppliedToKey, added set() helper, added selectedTarget
 //
+async function uploadProof(file) {
+  const { ref, uploadBytes, getDownloadURL } = await import("firebase/storage");
+  const { storage } = await import("./firebase");
+  const path = `paymentProof/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.]/g, "_")}`;
+  const storageRef = ref(storage, path);
+  await uploadBytes(storageRef, file);
+  return getDownloadURL(storageRef);
+}
+
 function LogPaymentModal({ balance, onSave, onClose, user, targets = [], planSummaries, targetSummaries, initialAppliedToKey, initialAmount }) {
   const [form, setForm] = useState({
     amount: initialAmount != null ? String(Number(initialAmount).toFixed(2)) : "",
@@ -7141,6 +7476,98 @@ function LogPaymentModal({ balance, onSave, onClose, user, targets = [], planSum
     appliedToKey: initialAppliedToKey || "general",
   });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const [proofOpen, setProofOpen] = useState(false);
+  const [proofFile, setProofFile] = useState(null);
+  const [proofPreview, setProofPreview] = useState(null);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef(null);
+
+  function handleProofPick(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setProofFile(file);
+    const reader = new FileReader();
+    reader.onload = ev => setProofPreview(ev.target.result);
+    reader.readAsDataURL(file);
+  }
+
+  async function handleSave(basePayload) {
+    if (proofFile) {
+      setUploading(true);
+      try {
+        const url = await uploadProof(proofFile);
+        basePayload.proofUrl = url;
+      } catch (err) {
+        console.error("Proof upload failed:", err);
+      }
+      setUploading(false);
+    }
+    onSave(basePayload);
+  }
+
+  // Reusable proof toggle + picker UI
+  function ProofSection() {
+    return (
+      <div style={{ marginTop: 16 }}>
+        {/* Toggle row */}
+        <button type="button" onClick={() => setProofOpen(o => !o)}
+          style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", background: proofOpen ? "#EAF0EE" : "#F5F1EB", border: "none", borderRadius: 14, padding: "12px 14px", cursor: "pointer" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ width: 32, height: 32, borderRadius: 10, background: proofOpen ? "#4E635E" : "#DDD5C5", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/>
+                <circle cx="12" cy="13" r="4"/>
+              </svg>
+            </div>
+            <div style={{ textAlign: "left" }}>
+              <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: "#00314B" }}>Add payment proof</p>
+              <p style={{ margin: 0, fontSize: 11, color: "#AAA" }}>Optional — screenshot or photo</p>
+            </div>
+          </div>
+          {/* pill toggle */}
+          <div style={{ width: 44, height: 26, borderRadius: 13, background: proofOpen ? "#4E635E" : "#DDD5C5", position: "relative", transition: "background 0.2s", flexShrink: 0 }}>
+            <div style={{ position: "absolute", top: 3, left: proofOpen ? 21 : 3, width: 20, height: 20, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 4px rgba(0,0,0,0.2)", transition: "left 0.2s cubic-bezier(.34,1.56,.64,1)" }} />
+          </div>
+        </button>
+
+        {/* Expandable picker */}
+        <AnimatePresence>
+          {proofOpen && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
+              style={{ overflow: "hidden" }}
+            >
+              <div style={{ paddingTop: 10 }}>
+                <input ref={fileInputRef} type="file" accept="image/*" capture="environment"
+                  style={{ display: "none" }} onChange={handleProofPick} />
+                {proofPreview ? (
+                  <div style={{ position: "relative" }}>
+                    <img src={proofPreview} alt="proof" style={{ width: "100%", borderRadius: 14, maxHeight: 200, objectFit: "cover", display: "block" }} />
+                    <button type="button" onClick={() => { setProofFile(null); setProofPreview(null); }}
+                      style={{ position: "absolute", top: 8, right: 8, background: "rgba(0,0,0,0.55)", border: "none", borderRadius: 8, color: "#fff", fontSize: 12, fontWeight: 700, padding: "4px 10px", cursor: "pointer" }}>
+                      Remove
+                    </button>
+                  </div>
+                ) : (
+                  <button type="button" onClick={() => fileInputRef.current?.click()}
+                    style={{ width: "100%", padding: "20px", borderRadius: 14, border: "2px dashed #C5D5C0", background: "#F5F9F5", display: "flex", flexDirection: "column", alignItems: "center", gap: 8, cursor: "pointer" }}>
+                    <svg width={28} height={28} viewBox="0 0 24 24" fill="none" stroke="#A6B49E" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
+                    </svg>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: "#4E635E" }}>Tap to choose photo</span>
+                    <span style={{ fontSize: 11, color: "#AAA" }}>Screenshot, Zelle receipt, etc.</span>
+                  </button>
+                )}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    );
+  }
 
   // Compute selectedTarget from the current form key
   const selectedTarget = (() => {
@@ -7190,12 +7617,15 @@ function LogPaymentModal({ balance, onSave, onClose, user, targets = [], planSum
 
           {user === "cam" && <p style={{...styles.formNote, marginTop: 16}}>⚠️ Emmanuella will confirm once she receives it</p>}
 
+          <ProofSection />
+
           <button
-            style={{ ...styles.saveBtn, background: "linear-gradient(135deg, #A6B49E, #4E635E)", marginTop: 20 }}
+            disabled={uploading}
+            style={{ ...styles.saveBtn, background: uploading ? "#C5D5C0" : "linear-gradient(135deg, #A6B49E, #4E635E)", marginTop: 16 }}
             onClick={() => {
               const key = form.appliedToKey || "general";
               const legacyGroupId = key.startsWith("grp:") ? key.slice(4) : undefined;
-              onSave({
+              handleSave({
                 ...form,
                 amount: Number(initialAmount),
                 appliedToKey: key,
@@ -7203,7 +7633,7 @@ function LogPaymentModal({ balance, onSave, onClose, user, targets = [], planSum
               });
             }}
           >
-            Done
+            {uploading ? "Uploading…" : "Done"}
           </button>
         </div>
       </div>
@@ -7307,17 +7737,24 @@ function LogPaymentModal({ balance, onSave, onClose, user, targets = [], planSum
 
           {user === "cam" && <p style={styles.formNote}>⚠️ Emmanuella will confirm once she receives it</p>}
 
-          <button style={{...styles.saveBtn, background: "linear-gradient(135deg, #A6B49E, #4E635E)"}} onClick={() => {
-            if (!form.amount) return;
-            const key = form.appliedToKey || "general";
-            const legacyGroupId = key.startsWith("grp:") ? key.slice(4) : undefined;
-            onSave({
-              ...form,
-              amount: parseFloat(form.amount),
-              appliedToKey: key,
-              ...(legacyGroupId ? { appliedToGroupId: legacyGroupId } : {}),
-            });
-          }}>Submit Payment</button>
+          <ProofSection />
+
+          <button
+            disabled={uploading || !form.amount}
+            style={{...styles.saveBtn, background: (uploading || !form.amount) ? "#C5D5C0" : "linear-gradient(135deg, #A6B49E, #4E635E)", marginTop: 8 }}
+            onClick={() => {
+              if (!form.amount) return;
+              const key = form.appliedToKey || "general";
+              const legacyGroupId = key.startsWith("grp:") ? key.slice(4) : undefined;
+              handleSave({
+                ...form,
+                amount: parseFloat(form.amount),
+                appliedToKey: key,
+                ...(legacyGroupId ? { appliedToGroupId: legacyGroupId } : {}),
+              });
+            }}>
+            {uploading ? "Uploading…" : "Submit Payment"}
+          </button>
         </div>
       </div>
     </div>
@@ -7378,42 +7815,50 @@ function BottomNav({ screen, onNavigate, urgentCount = 0, hidden = false }) {
     { id: "history", icon: icons.clock, label: "History" },
   ];
   const navRef = useRef(null);
+  const btnRefs = useRef([]);
   const [navPill, setNavPill] = useState({ left: 0, top: 0, width: 0, height: 0 });
-  const prevScreen = useRef(screen);
 
   useEffect(() => {
-    const el = navRef.current;
-    if (!el) return;
+    const container = navRef.current;
     const idx = tabs.findIndex(t => t.id === screen);
-    const btn = el.querySelectorAll("button")[idx];
-    if (!btn) return;
-    const nr = el.getBoundingClientRect();
+    const btn = btnRefs.current[idx];
+    if (!container || !btn) return;
+    const nr = container.getBoundingClientRect();
     const br = btn.getBoundingClientRect();
-    setNavPill({ left: br.left - nr.left + 4, top: br.top - nr.top + 4, width: br.width - 8, height: br.height - 8 });
-    prevScreen.current = screen;
+    const hPad = 10;
+    const vPad = 5;
+    setNavPill({
+      left: br.left - nr.left - hPad,
+      top: br.top - nr.top - vPad,
+      width: br.width + hPad * 2,
+      height: br.height + vPad * 2,
+    });
   }, [screen]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (hidden) return null;
   return (
-    <div ref={navRef} style={{ ...styles.bottomNav, position: "fixed", overflow: "hidden" }}>
+    <div ref={navRef} style={{ ...styles.bottomNav, position: "fixed", overflow: "visible" }}>
       <div className="lg-nav-pill" style={{ left: navPill.left, top: navPill.top, width: navPill.width, height: navPill.height }} />
-      {tabs.map(t => (
+      {tabs.map((t, i) => (
         <button
           key={t.id}
+          ref={el => btnRefs.current[i] = el}
           className="lg-btn"
           style={{ ...styles.navBtn, position: "relative", zIndex: 1 }}
           onClick={() => onNavigate(t.id)}
         >
-          <div style={{ position: "relative", transition: "transform 0.3s cubic-bezier(.34,1.56,.64,1)", transform: screen === t.id ? "scale(1.15) translateY(-1px)" : "scale(1)" }}>
+          <div
+            style={{ position: "relative", transition: "transform 0.3s cubic-bezier(.34,1.56,.64,1)", transform: screen === t.id ? "scale(1.1) translateY(-1px)" : "scale(1)" }}
+          >
             <Icon
               path={t.icon}
               size={20}
               color={
                 screen === t.id
-                  ? "#A6B49E"
+                  ? "#C5D9BB"
                   : t.id === "urgent" && urgentCount > 0
                   ? "#E05C6E"
-                  : "#AAA"
+                  : "rgba(255,255,255,0.35)"
               }
             />
             {t.id === "urgent" && urgentCount > 0 && (
@@ -7422,7 +7867,7 @@ function BottomNav({ screen, onNavigate, urgentCount = 0, hidden = false }) {
               </span>
             )}
           </div>
-          <span style={{ fontSize: 10, transition: "color 0.22s ease, font-weight 0.22s ease", color: screen === t.id ? "#A6B49E" : t.id === "urgent" && urgentCount > 0 ? "#E05C6E" : "#AAA", fontWeight: screen === t.id ? 700 : 400 }}>
+          <span style={{ fontSize: 10, transition: "color 0.22s ease, font-weight 0.22s ease", color: screen === t.id ? "#C5D9BB" : t.id === "urgent" && urgentCount > 0 ? "#E05C6E" : "rgba(255,255,255,0.3)", fontWeight: screen === t.id ? 700 : 400 }}>
             {t.label}
           </span>
         </button>
@@ -7433,8 +7878,8 @@ function BottomNav({ screen, onNavigate, urgentCount = 0, hidden = false }) {
 
 // ── FRAMEWORK STYLES ─────────────────────────────────────────────────
 const fw = {
-  expenseCard: { background: "#fff", borderRadius: 16, marginBottom: 8, overflow: "hidden", boxShadow: "0 2px 8px rgba(0,0,0,0.06)" },
-  expenseTop: { display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", cursor: "pointer" },
+  expenseCard: { background: "#fff", borderRadius: 20, marginBottom: 10, overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.06), 0 6px 20px rgba(0,0,0,0.04)", border: "1px solid rgba(0,0,0,0.05)" },
+  expenseTop: { display: "flex", alignItems: "center", gap: 12, padding: "14px 14px 14px 18px", cursor: "pointer" },
   expenseInfo: { flex: 1, minWidth: 0 },
   expenseDesc: { fontSize: 13, fontWeight: 600, color: "#00314B", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" },
   expenseMeta: { fontSize: 11, color: "#999", margin: "2px 0 0" },
@@ -7938,7 +8383,7 @@ iconBtn: {
 
   
   // Bottom Nav
-  bottomNav: { position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430, background: "#fff", borderTop: "1px solid #EDE7DC", display: "flex", padding: "8px 0 max(20px, env(safe-area-inset-bottom))", boxShadow: "0 -4px 20px rgba(0,0,0,0.06)", zIndex: 200 },
+  bottomNav: { position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430, background: "rgba(10,18,14,0.88)", backdropFilter: "blur(24px) saturate(180%)", WebkitBackdropFilter: "blur(24px) saturate(180%)", borderTop: "1px solid rgba(255,255,255,0.08)", display: "flex", padding: "8px 0 max(20px, env(safe-area-inset-bottom))", boxShadow: "0 -2px 32px rgba(0,0,0,0.3)", zIndex: 200 },
   navBtn: { flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 3, background: "none", border: "none", cursor: "pointer", padding: "6px 0" },
   navBtnActive: {},
 
@@ -7997,7 +8442,7 @@ function TargetDetailsScreen({ user, targetKey, targetSummaries, expenses, payme
           onClick={onBack}
           aria-label="Back"
         >
-          <Icon path={icons.back} size={18} />
+          <Icon path={icons.back} size={18} color="#00314B" />
         </button>
 
         <h2 style={{ ...styles.subTitle, flex: 1, textAlign: "center", minWidth: 0 }}>{title}</h2>

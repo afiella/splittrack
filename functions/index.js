@@ -1,4 +1,5 @@
 const { onDocumentCreated, onDocumentUpdated } = require("firebase-functions/v2/firestore");
+const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { initializeApp } = require("firebase-admin/app");
 const { getFirestore } = require("firebase-admin/firestore");
 const { getMessaging } = require("firebase-admin/messaging");
@@ -108,5 +109,52 @@ exports.onPaymentUpdated = onDocumentUpdated("payments/{id}", async (event) => {
     await sendPush("cam", accepted ? "Dispute Accepted" : "Dispute Declined", msg, {
       screen: "dashboard",
     });
+  }
+});
+
+// ── Daily due-date reminders → Cameron ──────────────────────────────────
+// Runs every day at 9:00 AM Eastern
+exports.dailyDueReminder = onSchedule("every day 09:00", async () => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  function daysBetween(isoDate) {
+    if (!isoDate) return null;
+    const d = new Date(isoDate + "T00:00:00");
+    return Math.round((d - today) / 86400000);
+  }
+
+  const snap = await db.collection("expenses").get();
+  const expenses = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+  for (const exp of expenses) {
+    // Only expenses Cameron owes on
+    if (exp.status === "paid") continue;
+    const camOwes = exp.split === "cam" || exp.split === "split";
+    if (!camOwes) continue;
+
+    const dueDate = exp.nextDue || exp.dueDate;
+    const days = daysBetween(dueDate);
+    if (days === null) continue;
+
+    const desc = exp.description || "An expense";
+    const share = exp.split === "split"
+      ? Number(exp.amount || 0) / 2
+      : Number(exp.amount || 0);
+
+    // Mandatory expenses: remind 2 days out
+    if (exp.mandatory && days === 2) {
+      await sendPush("cam", "Mandatory Expense Due in 2 Days", `${desc} — ${fmt(share)} due in 2 days`, {
+        screen: "urgent",
+      });
+    }
+
+    // All expenses (including mandatory): remind 1 day out
+    if (days === 1) {
+      const title = exp.mandatory ? "Mandatory Expense Due Tomorrow" : "Expense Due Tomorrow";
+      await sendPush("cam", title, `${desc} — ${fmt(share)} due tomorrow`, {
+        screen: "urgent",
+      });
+    }
   }
 });
