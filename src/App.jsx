@@ -862,6 +862,21 @@ export default function App() {
   }
 
 
+  async function handleDeletePendingPayment(id) {
+    if (realUser !== "emma") return;
+    const payment = payments.find((p) => p.id === id);
+    if (!payment || payment.confirmed) return;
+    setPayments((prev) => prev.filter((p) => p.id !== id));
+    try {
+      await deletePaymentInDb(id);
+      notify("Payment removed.");
+    } catch (err) {
+      console.error("Failed to delete pending payment:", err);
+      setPayments((prev) => [payment, ...prev]);
+      notify("Couldn't remove payment.", "error");
+    }
+  }
+
   async function handleDeleteConfirmedPayment(id) {
     if (user !== "emma") return;
 
@@ -1213,6 +1228,7 @@ export default function App() {
           onConfirm={handleConfirm}
           onResolveDispute={handleResolveDispute}
           onRejectPayment={handleRejectPayment}
+          onDeletePendingPayment={handleDeletePendingPayment}
           onDismissRejectedPayment={handleDismissRejectedPayment}
           onDeleteExpense={handleDeleteExpense}
           onMarkPaid={handleMarkPaid}
@@ -1452,7 +1468,7 @@ function CamRejectedCard({ payments = [], targetSummaries, onLogPaymentForKey, o
   );
 }
 
-function DashboardPendingCard({ pendingPayments = [], onConfirm, onResolveDispute, onRejectPayment, user, targetSummaries, expenses = [] }) {
+function DashboardPendingCard({ pendingPayments = [], onConfirm, onResolveDispute, onRejectPayment, onDeletePendingPayment, user, targetSummaries, expenses = [] }) {
   if (user !== "emma") return null;
 
   const disputes = pendingPayments.filter(p => p.type === "dispute");
@@ -1748,6 +1764,15 @@ function DashboardPendingCard({ pendingPayments = [], onConfirm, onResolveDisput
                           >
                             Return
                           </button>
+                          {user === "emma" && onDeletePendingPayment && (
+                            <button
+                              type="button"
+                              style={{ background: "#FFF0F0", color: "#E05C6E", border: "1.5px solid #F8C4CD", borderRadius: 9, padding: "9px 12px", fontSize: 12, fontWeight: 800, cursor: "pointer" }}
+                              onClick={() => { onDeletePendingPayment(p.id); setExpandedPayment(null); }}
+                            >
+                              Remove
+                            </button>
+                          )}
                         </div>
                       )}
                     </div>
@@ -3489,7 +3514,7 @@ function NotifEnableBanner({ user, notifPermission, setNotifPermission, setToken
 }
 
 // ── DASHBOARD ─────────────────────────────────────────────────────────
-function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, payments, syncingPayments, urgentCount, targetSummaries, onOpenTarget, onAddExpense, onLogPayment, onQuickPay, onConfirm, onResolveDispute, onRejectPayment, onDismissRejectedPayment, onNavigate, onLogout, onSwitchView, viewingAsCam, onLogPaymentForKey, onDisputeExpense }) {
+function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, payments, syncingPayments, urgentCount, targetSummaries, onOpenTarget, onAddExpense, onLogPayment, onQuickPay, onConfirm, onResolveDispute, onRejectPayment, onDeletePendingPayment, onDismissRejectedPayment, onNavigate, onLogout, onSwitchView, viewingAsCam, onLogPaymentForKey, onDisputeExpense }) {
   const pending = payments.filter((p) => !p.confirmed && !p.rejected);
   // Cam dashboard urgent banner improvement: Step 3
   const urgentList = (expenses || []).filter((e) => getUrgencyLevel(e) !== null);
@@ -3735,7 +3760,7 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
             onLogPayment={onLogPayment}
           />
           <div style={{ display: "flex", gap: 12, padding: "0 16px", marginTop: 16, marginBottom: 20 }}>
-            <DashboardPendingCard user={user} pendingPayments={pending} onConfirm={onConfirm} onResolveDispute={onResolveDispute} onRejectPayment={onRejectPayment} targetSummaries={targetSummaries} expenses={expenses} />
+            <DashboardPendingCard user={user} pendingPayments={pending} onConfirm={onConfirm} onResolveDispute={onResolveDispute} onRejectPayment={onRejectPayment} onDeletePendingPayment={onDeletePendingPayment} targetSummaries={targetSummaries} expenses={expenses} />
           </div>
         </>
       )}

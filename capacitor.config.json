@@ -2,6 +2,10 @@
   "appId": "com.splittrack.app",
   "appName": "splittrack",
   "webDir": "dist",
+  "server": {
+    "url": "https://camandella.netlify.app",
+    "cleartext": false
+  },
   "plugins": {
     "FirebaseAuthentication": {
       "skipNativeAuth": false,
