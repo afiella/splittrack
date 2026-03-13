@@ -5483,7 +5483,7 @@ function UrgentScreen({ expenses, allExpenses = [], user, onBack, onMarkPaid, on
   }
 
   return (
-    <div style={styles.screen}>
+    <div style={{ ...styles.screen, display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
       <div style={styles.subHeader}>
         <button
           type="button"
@@ -5500,7 +5500,7 @@ function UrgentScreen({ expenses, allExpenses = [], user, onBack, onMarkPaid, on
       </div>
 
       {/* Sliding pill toggle */}
-      <div style={{ padding: "0 16px 16px" }}>
+      <div style={{ padding: "0 16px 16px", flexShrink: 0 }}>
         <div
           ref={tabRef}
           style={{ position: "relative", display: "flex", background: "rgba(166,180,158,0.13)", borderRadius: 14, padding: 4, gap: 0 }}
@@ -5553,7 +5553,7 @@ function UrgentScreen({ expenses, allExpenses = [], user, onBack, onMarkPaid, on
         </div>
       </div>
 
-      <div style={{ padding: "0 16px" }}>
+      <div style={{ flex: 1, overflowY: "auto", WebkitOverflowScrolling: "touch", padding: "0 16px 100px" }}>
         {list.length === 0 ? (
           <div style={{ textAlign: "center", padding: "60px 20px" }}>
             <p style={{ fontSize: 48, margin: 0 }}>{tab === "urgent" ? "✅" : "📋"}</p>
@@ -5579,8 +5579,6 @@ function UrgentScreen({ expenses, allExpenses = [], user, onBack, onMarkPaid, on
           </div>
         )}
       </div>
-
-      <div style={{ height: 80 }} />
     </div>
   );
 }
