@@ -1312,7 +1312,16 @@ export default function App() {
 
   async function handleEditExpense(id, updates) {
     try {
-      await updateExpenseInDb(id, updates);
+      const original = expenses.find((e) => e.id === id);
+      const enriched = { ...updates, updatedAt: new Date().toISOString().slice(0, 10) };
+      if (
+        original &&
+        updates.amount !== undefined &&
+        Math.abs(Number(updates.amount) - Number(original.amount)) > 0.005
+      ) {
+        enriched.previousAmount = Number(original.amount);
+      }
+      await updateExpenseInDb(id, enriched);
       setEditingExpense(null);
       notify("Expense updated!");
     } catch (err) {
@@ -2523,25 +2532,23 @@ function InsightsStrip({ payments = [], expenses = [], balance = 0 }) {
       {/* Streak card */}
       {streak > 0 && (
         <div style={{
-          flex: 1, borderRadius: 18, overflow: "hidden",
-          background: "linear-gradient(135deg, #1B5C80 0%, #00314B 100%)",
-          boxShadow: "0 6px 20px rgba(0,49,75,0.22)",
-          padding: "14px 14px 12px",
+          flex: 1, borderRadius: 22, overflow: "hidden",
+          background: "linear-gradient(150deg, #0B3D5C 0%, #164E6B 100%)",
+          boxShadow: "0 10px 30px rgba(0,49,75,0.28), inset 0 1px 0 rgba(255,255,255,0.12)",
+          border: "1px solid rgba(255,255,255,0.1)",
+          padding: "16px 14px 14px",
           display: "flex", flexDirection: "column", gap: 6,
           minWidth: 0,
         }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <span style={{ fontSize: 18 }}>🔥</span>
-            <span style={{ fontSize: 10, fontWeight: 800, color: "rgba(255,255,255,0.6)", letterSpacing: 0.8, textTransform: "uppercase" }}>Payment streak</span>
-          </div>
-          <div>
-            <span style={{ fontSize: 28, fontWeight: 900, color: "#fff", letterSpacing: -1 }}>{streak}</span>
-            <span style={{ fontSize: 12, fontWeight: 700, color: "rgba(255,255,255,0.55)", marginLeft: 4 }}>
+          <span style={{ fontSize: 24 }}>🔥</span>
+          <div style={{ marginTop: 2 }}>
+            <span style={{ fontSize: 32, fontWeight: 900, color: "#fff", letterSpacing: -1.5 }}>{streak}</span>
+            <span style={{ fontSize: 12, fontWeight: 700, color: "rgba(255,255,255,0.5)", marginLeft: 4 }}>
               {streak === 1 ? "month" : "months"}
             </span>
           </div>
-          <span style={{ fontSize: 10, color: "rgba(255,255,255,0.45)", fontWeight: 600 }}>
-            {streak >= 3 ? "Consistent! Keep it going" : streak >= 2 ? "Nice work" : "Good start!"}
+          <span style={{ fontSize: 10, fontWeight: 800, color: "rgba(255,255,255,0.45)", textTransform: "uppercase", letterSpacing: 0.8 }}>
+            {streak >= 4 ? "On fire 🔥" : streak >= 2 ? "Keep it up" : "Good start!"}
           </span>
         </div>
       )}
@@ -2549,25 +2556,26 @@ function InsightsStrip({ payments = [], expenses = [], balance = 0 }) {
       {/* Forecast + sparkline card */}
       {forecast && (
         <div style={{
-          flex: streak > 0 ? 1.6 : 1, borderRadius: 18, overflow: "hidden",
-          background: "linear-gradient(135deg, #4E635E 0%, #2D5A4A 100%)",
-          boxShadow: "0 6px 20px rgba(78,99,94,0.25)",
-          padding: "14px 14px 12px",
-          display: "flex", flexDirection: "column", gap: 4,
+          flex: streak > 0 ? 1.65 : 1, borderRadius: 22, overflow: "hidden",
+          background: "linear-gradient(150deg, #1E4A3C 0%, #2D6050 100%)",
+          boxShadow: "0 10px 30px rgba(45,90,74,0.3), inset 0 1px 0 rgba(255,255,255,0.1)",
+          border: "1px solid rgba(255,255,255,0.1)",
+          padding: "16px 14px 14px",
+          display: "flex", flexDirection: "column", gap: 3,
           minWidth: 0, position: "relative",
         }}>
-          <span style={{ fontSize: 10, fontWeight: 800, color: "rgba(255,255,255,0.6)", letterSpacing: 0.8, textTransform: "uppercase" }}>
+          <span style={{ fontSize: 10, fontWeight: 800, color: "rgba(255,255,255,0.5)", letterSpacing: 1, textTransform: "uppercase" }}>
             Balance clears
           </span>
-          <div>
-            <span style={{ fontSize: 18, fontWeight: 900, color: "#d4f5d6", letterSpacing: -0.5 }}>{forecast.date}</span>
+          <div style={{ marginTop: 2 }}>
+            <span style={{ fontSize: 17, fontWeight: 900, color: "#B8F5D0", letterSpacing: -0.4, lineHeight: 1.2 }}>{forecast.date}</span>
           </div>
-          <span style={{ fontSize: 10, color: "rgba(255,255,255,0.45)", fontWeight: 600 }}>
+          <span style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", fontWeight: 700, marginTop: 2 }}>
             avg ${forecast.avgMonthly.toFixed(0)}/mo · {forecast.months} mo{forecast.months !== 1 ? "s" : ""} to go
           </span>
           {/* Sparkline overlay */}
-          <div style={{ position: "absolute", bottom: 10, right: 10, opacity: 0.7 }}>
-            <SparklineChart data={sparkData} width={90} height={36} />
+          <div style={{ position: "absolute", bottom: 12, right: 12, opacity: 0.6 }}>
+            <SparklineChart data={sparkData} width={88} height={34} />
           </div>
         </div>
       )}
@@ -3711,60 +3719,116 @@ function CamNotificationsPanel({ expenses = [], payments = [], onClose, onNaviga
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  // Upcoming: Cameron's unpaid charges due within 14 days
+  function daysAgo(dateStr) {
+    if (!dateStr) return 9999;
+    return Math.ceil((today - new Date(dateStr + "T12:00:00")) / 86400000);
+  }
+
+  // 1. Overdue/Upcoming: Cameron's unpaid charges due within 21 days
   const upcoming = (expenses || [])
     .filter((e) => {
       if (e.status === "paid") return false;
-      const camOwes = e.split === "cam" || e.split === "split";
-      if (!camOwes) return false;
+      if (!(e.split === "cam" || e.split === "split")) return false;
       const due = e.nextDue || e.dueDate;
       if (!due) return false;
-      const dueD = new Date(due + "T12:00:00");
-      const diffDays = Math.ceil((dueD - today) / 86400000);
-      return diffDays <= 14;
+      const diffDays = Math.ceil((new Date(due + "T12:00:00") - today) / 86400000);
+      return diffDays <= 21;
     })
     .sort((a, b) => {
-      // Mandatory overdue first, then mandatory upcoming, then by date
-      const aOverdue = getUrgencyLevel(a) === "overdue";
-      const bOverdue = getUrgencyLevel(b) === "overdue";
-      if (a.mandatory && aOverdue && !(b.mandatory && bOverdue)) return -1;
-      if (b.mandatory && bOverdue && !(a.mandatory && aOverdue)) return 1;
+      const aOvr = getUrgencyLevel(a) === "overdue";
+      const bOvr = getUrgencyLevel(b) === "overdue";
+      if (a.mandatory && aOvr && !(b.mandatory && bOvr)) return -1;
+      if (b.mandatory && bOvr && !(a.mandatory && aOvr)) return 1;
       if (a.mandatory && !b.mandatory) return -1;
       if (b.mandatory && !a.mandatory) return 1;
-      const da = a.nextDue || a.dueDate;
-      const db = b.nextDue || b.dueDate;
-      return new Date(da) - new Date(db);
+      return new Date(a.nextDue || a.dueDate) - new Date(b.nextDue || b.dueDate);
     });
 
-  // Recently confirmed payments (last 7 days, non-dispute)
+  // 2. Pending: payments awaiting confirmation
+  const pending = (payments || []).filter((p) => !p.confirmed && !p.rejected && p.type !== "dispute");
+
+  // 3. Returned payments (Emma rejected/returned to Cameron)
+  const returned = (payments || [])
+    .filter((p) => p.rejected === true)
+    .sort((a, b) => new Date(b.date) - new Date(a.date));
+
+  // 4. Recently confirmed payments (last 30 days)
   const recentlyConfirmed = (payments || [])
-    .filter((p) => {
-      if (!p.confirmed || p.type === "dispute") return false;
-      const pDate = new Date((p.date || "") + "T12:00:00");
-      const diffDays = Math.ceil((today - pDate) / 86400000);
-      return diffDays <= 7;
-    })
+    .filter((p) => p.confirmed && p.type !== "dispute" && daysAgo(p.date) <= 30)
     .sort((a, b) => new Date(b.date) - new Date(a.date));
 
-  // Pending: payments awaiting confirmation (non-dispute)
-  const pending = (payments || []).filter((p) => !p.confirmed && p.type !== "dispute");
-
-  // Declined disputes (last 14 days) — show Emma's response
-  const declinedDisputes = (payments || [])
-    .filter((p) => p.type === "dispute" && p.confirmed && p.disputeStatus === "denied")
-    .filter((p) => {
-      const pDate = new Date((p.date || "") + "T12:00:00");
-      return Math.ceil((today - pDate) / 86400000) <= 14;
+  // 5. Recent new charges — use createdAt if available, fall back to date
+  function expCreatedDaysAgo(e) {
+    if (e.createdAt) {
+      const ts = e.createdAt.toDate ? e.createdAt.toDate() : new Date(e.createdAt);
+      return Math.ceil((today - ts) / 86400000);
+    }
+    return daysAgo(e.date);
+  }
+  const recentCharges = (expenses || [])
+    .filter((e) => {
+      if (!(e.split === "cam" || e.split === "split")) return false;
+      return expCreatedDaysAgo(e) <= 21;
     })
+    .sort((a, b) => {
+      const ta = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.date);
+      const tb = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.date);
+      return tb - ta;
+    });
+
+  // 6. Edited amounts (last 30 days, only if previousAmount recorded)
+  const editedExpenses = (expenses || [])
+    .filter((e) => {
+      if (!(e.split === "cam" || e.split === "split")) return false;
+      if (!e.updatedAt || e.previousAmount === undefined) return false;
+      return daysAgo(e.updatedAt) <= 30;
+    })
+    .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+
+  // 7. All resolved disputes (accepted OR declined, last 30 days)
+  const resolvedDisputes = (payments || [])
+    .filter((p) => p.type === "dispute" && p.confirmed && p.disputeStatus && daysAgo(p.date) <= 30)
     .sort((a, b) => new Date(b.date) - new Date(a.date));
 
-  const hasAny = upcoming.length > 0 || recentlyConfirmed.length > 0 || pending.length > 0 || declinedDisputes.length > 0;
+  // ── Smart card data ────────────────────────────────────────────────
+  // Current balance (what Cameron owes)
+  const camBalance = (expenses || [])
+    .filter((e) => e.status !== "paid" && (e.split === "cam" || e.split === "split"))
+    .reduce((s, e) => s + (e.split === "cam" ? Number(e.amount || 0) : Number(e.amount || 0) / 2), 0)
+    - (payments || []).filter((p) => p.confirmed).reduce((s, p) => s + Number(p.amount || 0), 0);
+
+  // Last confirmed payment
+  const lastPayment = (payments || [])
+    .filter((p) => p.confirmed && p.type !== "dispute")
+    .sort((a, b) => new Date(b.date) - new Date(a.date))[0] || null;
+
+  // Payment streak
+  const streak = calcPaymentStreak(payments);
+
+  // This month's total due
+  const nowDate = new Date();
+  const monthKey = `${nowDate.getFullYear()}-${String(nowDate.getMonth() + 1).padStart(2, "0")}`;
+  const monthDue = (expenses || [])
+    .filter((e) => {
+      if (e.status === "paid") return false;
+      if (!(e.split === "cam" || e.split === "split")) return false;
+      const iso = e.nextDue || e.dueDate || e.date;
+      return String(iso || "").startsWith(monthKey);
+    })
+    .reduce((s, e) => s + (e.split === "cam" ? Number(e.amount || 0) : Number(e.amount || 0) / 2), 0);
+
+  // Has Cameron paid anything this month?
+  const paidThisMonth = (payments || [])
+    .filter((p) => !p.confirmed && String(p.date || "").startsWith(monthKey)).length > 0
+    || (payments || []).filter((p) => p.confirmed && String(p.date || "").startsWith(monthKey)).length > 0;
+
+  const hasAny = upcoming.length > 0 || pending.length > 0 || returned.length > 0 ||
+    recentlyConfirmed.length > 0 || recentCharges.length > 0 ||
+    editedExpenses.length > 0 || resolvedDisputes.length > 0;
 
   function camAmt(e) {
     const amt = Number(e.amount || 0);
-    if (e.split === "cam") return amt;
-    if (e.split === "split") return amt / 2;
-    return 0;
+    return e.split === "cam" ? amt : amt / 2;
   }
 
   function dueLabel(e) {
@@ -3772,169 +3836,399 @@ function CamNotificationsPanel({ expenses = [], payments = [], onClose, onNaviga
     if (!due) return "";
     const dueD = new Date(due + "T12:00:00");
     dueD.setHours(0, 0, 0, 0);
-    const diffDays = Math.ceil((dueD - today) / 86400000);
-    const isOverdue = getUrgencyLevel(e) === "overdue";
-    if (isOverdue) return "Overdue";
-    if (diffDays === 0) return "Due today";
-    if (diffDays === 1) return "Due tomorrow";
-    return `Due in ${diffDays}d`;
+    const diff = Math.ceil((dueD - today) / 86400000);
+    if (getUrgencyLevel(e) === "overdue") return "Overdue";
+    if (diff === 0) return "Due today";
+    if (diff === 1) return "Due tomorrow";
+    return `Due in ${diff}d`;
+  }
+
+  function SectionLabel({ children }) {
+    return (
+      <p style={{ fontSize: 11, fontWeight: 800, color: "#A6B7CB", textTransform: "uppercase", letterSpacing: 1, margin: "16px 0 8px 2px" }}>
+        {children}
+      </p>
+    );
+  }
+
+  function NotifCard({ bg, border, left, title, sub, right, note, onClick }) {
+    return (
+      <div
+        onClick={onClick}
+        style={{ background: bg, borderRadius: 16, padding: "13px 14px", marginBottom: 8, border: `1.5px solid ${border}`, cursor: onClick ? "pointer" : "default", display: "flex", alignItems: "center", gap: 12 }}
+      >
+        {left && (
+          <div style={{ width: 36, height: 36, borderRadius: 12, background: "rgba(0,0,0,0.06)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            {left}
+          </div>
+        )}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: "#0A1E2B", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{title}</p>
+          <p style={{ margin: "2px 0 0", fontSize: 11, fontWeight: 600, color: "#888", lineHeight: 1.4 }}>{sub}</p>
+          {note && <p style={{ margin: "5px 0 0", fontSize: 11, color: "#999", fontStyle: "italic", lineHeight: 1.4 }}>"{note}"</p>}
+        </div>
+        {right && <span style={{ fontSize: 15, fontWeight: 900, flexShrink: 0, marginLeft: 4 }}>{right}</span>}
+      </div>
+    );
   }
 
   return (
     <>
-      {/* Backdrop */}
-      <div
-        onClick={onClose}
-        style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", zIndex: 800 }}
-      />
-      {/* Sheet */}
-      <div style={{
-        position: "fixed",
-        bottom: 0,
-        left: "50%",
-        transform: "translateX(-50%)",
-        width: "100%",
-        maxWidth: 430,
-        background: "#fff",
-        borderRadius: "22px 22px 0 0",
-        zIndex: 801,
-        paddingBottom: "max(24px, env(safe-area-inset-bottom))",
-        maxHeight: "75vh",
-        overflowY: "auto",
-      }}>
+      <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 800 }} />
+      <motion.div
+        initial={{ y: "100%" }}
+        animate={{ y: 0 }}
+        exit={{ y: "100%" }}
+        transition={{ type: "spring", stiffness: 340, damping: 32 }}
+        style={{
+          position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)",
+          width: "100%", maxWidth: 430,
+          background: "linear-gradient(170deg, #EAF0F6 0%, #F5F1EB 100%)",
+          borderRadius: "26px 26px 0 0",
+          zIndex: 801,
+          paddingBottom: "max(28px, env(safe-area-inset-bottom))",
+          maxHeight: "82vh", overflowY: "auto",
+          boxShadow: "0 -8px 40px rgba(0,0,0,0.18)",
+        }}
+      >
         {/* Handle */}
-        <div style={{ display: "flex", justifyContent: "center", padding: "10px 0 6px" }}>
-          <div style={{ width: 36, height: 4, borderRadius: 2, background: "#DDD5C5" }} />
+        <div style={{ display: "flex", justifyContent: "center", paddingTop: 10, paddingBottom: 0 }}>
+          <div style={{ width: 38, height: 4, borderRadius: 2, background: "#D5C9BC" }} />
         </div>
 
-        {/* Header */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 18px 14px" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <Icon path={icons.bell} size={18} color="#E05C6E" />
-            <span style={{ fontSize: 16, fontWeight: 800, color: "#0A1E2B" }}>Notifications</span>
+        {/* ── Hero header with large bell ── */}
+        <div style={{ position: "relative", padding: "16px 18px 0", overflow: "hidden" }}>
+          {/* Big decorative bell — background */}
+          <div style={{ position: "absolute", right: -8, top: -14, opacity: 0.06, pointerEvents: "none" }}>
+            <svg width={130} height={130} viewBox="0 0 24 24" fill="#00314B">
+              <path d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
+            </svg>
           </div>
-          <button
-            onClick={onClose}
-            type="button"
-            style={{ background: "#EEE9E0", border: "none", borderRadius: 10, width: 30, height: 30, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
-          >
-            <Icon path={icons.x} size={16} color="#888" />
-          </button>
+
+          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              {/* Bell icon circle */}
+              <div style={{
+                width: 52, height: 52, borderRadius: 18, flexShrink: 0,
+                background: "linear-gradient(145deg, #002B42 0%, #1B5C80 100%)",
+                boxShadow: "0 8px 24px rgba(0,49,75,0.3), inset 0 1px 0 rgba(255,255,255,0.15)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+              }}>
+                <Icon path={icons.bell} size={24} color="#fff" />
+              </div>
+              <div>
+                <p style={{ margin: 0, fontSize: 20, fontWeight: 900, color: "#0A1E2B", letterSpacing: -0.6 }}>Notifications</p>
+                <p style={{ margin: "2px 0 0", fontSize: 12, color: "#A6B7CB", fontWeight: 600 }}>
+                  {hasAny
+                    ? [
+                        upcoming.length > 0 && `${upcoming.length} due`,
+                        pending.length > 0 && `${pending.length} pending`,
+                        returned.length > 0 && `${returned.length} returned`,
+                      ].filter(Boolean).join(" · ") || "Recent activity"
+                    : "You're all caught up"}
+                </p>
+              </div>
+            </div>
+            <button onClick={onClose} type="button"
+              style={{ background: "#EEE9E3", border: "none", borderRadius: "50%", width: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0, marginTop: 2, padding: 0, lineHeight: 0 }}>
+              <Icon path={icons.x} size={18} color="#3A3A3A" />
+            </button>
+          </div>
+
+          {/* ── Smart summary card ── */}
+          <div style={{
+            marginTop: 14, borderRadius: 20, overflow: "hidden",
+            background: "linear-gradient(145deg, #002B42 0%, #1A5470 100%)",
+            boxShadow: "0 8px 24px rgba(0,49,75,0.28), inset 0 1px 0 rgba(255,255,255,0.1)",
+            padding: "14px 16px 16px",
+          }}>
+            {/* Balance row */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 10 }}>
+              <div>
+                <p style={{ margin: 0, fontSize: 10, fontWeight: 800, color: "rgba(255,255,255,0.5)", textTransform: "uppercase", letterSpacing: 1 }}>Current Balance</p>
+                <p style={{ margin: "3px 0 0", fontSize: 28, fontWeight: 900, color: "#fff", letterSpacing: -1 }}>
+                  ${Math.max(0, camBalance).toFixed(2)}
+                </p>
+              </div>
+              {streak > 0 && (
+                <div style={{ textAlign: "right" }}>
+                  <p style={{ margin: 0, fontSize: 10, fontWeight: 800, color: "rgba(255,255,255,0.5)", textTransform: "uppercase", letterSpacing: 1 }}>Streak</p>
+                  <p style={{ margin: "3px 0 0", fontSize: 20, fontWeight: 900, color: "#FFD66B", letterSpacing: -0.5 }}>
+                    🔥 {streak}mo
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Divider */}
+            <div style={{ height: 1, background: "rgba(255,255,255,0.1)", marginBottom: 10 }} />
+
+            {/* Stats row */}
+            <div style={{ display: "flex", gap: 0 }}>
+              <div style={{ flex: 1, textAlign: "center" }}>
+                <p style={{ margin: 0, fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.45)", textTransform: "uppercase", letterSpacing: 0.7 }}>Due this month</p>
+                <p style={{ margin: "3px 0 0", fontSize: 15, fontWeight: 900, color: monthDue > 0 ? "#FFB4BD" : "#B8F5D0" }}>
+                  {monthDue > 0 ? `$${monthDue.toFixed(2)}` : "All clear"}
+                </p>
+              </div>
+              <div style={{ width: 1, background: "rgba(255,255,255,0.1)" }} />
+              <div style={{ flex: 1, textAlign: "center" }}>
+                <p style={{ margin: 0, fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.45)", textTransform: "uppercase", letterSpacing: 0.7 }}>Last payment</p>
+                <p style={{ margin: "3px 0 0", fontSize: 15, fontWeight: 900, color: "rgba(255,255,255,0.85)" }}>
+                  {lastPayment ? formatShortDate(lastPayment.date) : "None yet"}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* ── Smart nudge cards ── */}
+          <div style={{ display: "flex", gap: 10, marginTop: 10, marginBottom: 2 }}>
+            {/* No payment this month nudge */}
+            {!paidThisMonth && monthDue > 0 && (
+              <div style={{
+                flex: 1, borderRadius: 16, padding: "12px 14px",
+                background: "linear-gradient(135deg, #3D1A1A 0%, #5C2020 100%)",
+                boxShadow: "0 4px 14px rgba(192,25,46,0.2)",
+                border: "1px solid rgba(255,100,100,0.2)",
+              }}>
+                <p style={{ margin: "0 0 2px", fontSize: 11, fontWeight: 900, color: "#FFB4BD" }}>No payment yet</p>
+                <p style={{ margin: 0, fontSize: 10, color: "rgba(255,255,255,0.5)", fontWeight: 600, lineHeight: 1.4 }}>
+                  {new Date().toLocaleString("en-US", { month: "long" })} hasn't been logged yet
+                </p>
+              </div>
+            )}
+            {/* Streak milestone */}
+            {streak >= 3 && (
+              <div style={{
+                flex: 1, borderRadius: 16, padding: "12px 14px",
+                background: "linear-gradient(135deg, #3A2800 0%, #5C4200 100%)",
+                boxShadow: "0 4px 14px rgba(200,160,32,0.2)",
+                border: "1px solid rgba(255,214,107,0.2)",
+              }}>
+                <p style={{ margin: "0 0 2px", fontSize: 11, fontWeight: 900, color: "#FFD66B" }}>
+                  {streak >= 6 ? "On fire! 🔥" : streak >= 4 ? "Great streak! 💪" : "Keep it up! ✨"}
+                </p>
+                <p style={{ margin: 0, fontSize: 10, color: "rgba(255,255,255,0.5)", fontWeight: 600, lineHeight: 1.4 }}>
+                  {streak} months in a row
+                </p>
+              </div>
+            )}
+          </div>
         </div>
 
-        {!hasAny && (
-          <div style={{ padding: "32px 24px", textAlign: "center" }}>
-            <div style={{ fontSize: 32, marginBottom: 8 }}>🎉</div>
-            <p style={{ fontSize: 15, fontWeight: 700, color: "#00314B", margin: "0 0 4px" }}>You're all caught up!</p>
-            <p style={{ fontSize: 13, color: "#999", margin: 0 }}>No upcoming payments or pending activity.</p>
-          </div>
-        )}
+        <div style={{ padding: "4px 16px 8px" }}>
 
-        {/* Overdue / Upcoming */}
-        {upcoming.length > 0 && (
-          <div style={{ padding: "0 16px 4px" }}>
-            <p style={{ fontSize: 11, fontWeight: 800, color: "#999", textTransform: "uppercase", letterSpacing: 0.8, margin: "0 0 8px" }}>Upcoming Payments</p>
-            {upcoming.map((e) => {
-              const overdue = getUrgencyLevel(e) === "overdue";
-              const accentColor = e.mandatory && overdue ? "#C0192E" : overdue ? "#E05C6E" : e.mandatory ? "#C0192E" : "#A6B7CB";
-              const bgColor = e.mandatory ? (overdue ? "#FFF0F2" : "#FFF5F6") : overdue ? "#FFF5F6" : "#F2EDE4";
-              const borderColor = e.mandatory ? "#F8A0B0" : overdue ? "#F8C4CD" : "#E0D8CC";
-              return (
-                <div
-                  key={e.id}
-                  style={{ background: bgColor, borderRadius: 14, padding: "12px 14px", marginBottom: 8, border: `1.5px solid ${borderColor}`, cursor: "pointer" }}
-                  onClick={() => { onNavigate("urgent"); onClose(); }}
-                >
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                    <div style={{ minWidth: 0, flex: 1 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 2 }}>
-                        {e.mandatory && (
-                          <svg width={11} height={11} viewBox="0 0 24 24" fill={accentColor} style={{ flexShrink: 0 }}>
-                            <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/>
-                          </svg>
-                        )}
-                        <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#0A1E2B", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.description}</p>
-                      </div>
-                      <p style={{ margin: 0, fontSize: 11, fontWeight: 700, color: accentColor }}>
-                        {e.mandatory && overdue ? "⚠ MANDATORY — Overdue" : e.mandatory ? "Mandatory · " + dueLabel(e) : dueLabel(e)}
-                      </p>
+          {!hasAny && (
+            <div style={{ padding: "28px 0 16px", textAlign: "center" }}>
+              <p style={{ fontSize: 14, fontWeight: 800, color: "#00314B", margin: "0 0 4px" }}>Nothing new right now</p>
+              <p style={{ fontSize: 12, color: "#AAA", margin: 0 }}>No upcoming charges or pending activity.</p>
+            </div>
+          )}
+
+          {/* ── 1. Overdue / Upcoming ── */}
+          {upcoming.length > 0 && (
+            <>
+              <SectionLabel>Due Soon</SectionLabel>
+              {upcoming.map((e) => {
+                const overdue = getUrgencyLevel(e) === "overdue";
+                const isMandatory = e.mandatory;
+                const accent = isMandatory && overdue ? "#C0192E" : overdue ? "#E05C6E" : isMandatory ? "#C0192E" : "#1B5C80";
+                const bg = overdue ? "#FFF0F2" : isMandatory ? "#FFF5F6" : "#fff";
+                const border = overdue ? "#F8C4CD" : isMandatory ? "#F8A0B0" : "#EDE7DC";
+                return (
+                  <NotifCard
+                    key={e.id}
+                    bg={bg} border={border}
+                    onClick={() => { onNavigate("urgent"); onClose(); }}
+                    left={
+                      <Icon path={overdue ? icons.fire : icons.clock} size={18} color={accent} />
+                    }
+                    title={e.description}
+                    sub={isMandatory && overdue ? "⚠ MANDATORY — Overdue" : isMandatory ? `Mandatory · ${dueLabel(e)}` : dueLabel(e)}
+                    right={<span style={{ color: accent }}>${camAmt(e).toFixed(2)}</span>}
+                  />
+                );
+              })}
+            </>
+          )}
+
+          {/* ── 2. Pending confirmation ── */}
+          {pending.length > 0 && (
+            <>
+              <SectionLabel>Awaiting Confirmation</SectionLabel>
+              {pending.map((p, i) => (
+                <NotifCard
+                  key={p.id || i}
+                  bg="#FFFBF0" border="#F5E6B0"
+                  left={<Icon path={icons.clock} size={18} color="#C48A00" />}
+                  title={`Payment via ${p.method || "—"}`}
+                  sub={`${formatShortDate(p.date)} · Waiting for Emmanuella`}
+                  right={<span style={{ color: "#C48A00" }}>${Number(p.amount || 0).toFixed(2)}</span>}
+                  note={p.note}
+                />
+              ))}
+            </>
+          )}
+
+          {/* ── 3. Returned payments ── */}
+          {returned.length > 0 && (
+            <>
+              <SectionLabel>Returned by Emmanuella</SectionLabel>
+              {returned.map((p, i) => (
+                <div key={p.id || i} style={{ background: "#FFF5F0", borderRadius: 16, padding: "13px 14px", marginBottom: 8, border: "1.5px solid #F5C4A0" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <div style={{ width: 36, height: 36, borderRadius: 12, background: "#FFF0E0", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                      <Icon path={icons.alert} size={18} color="#E07A20" />
                     </div>
-                    <span style={{ fontSize: 15, fontWeight: 800, color: accentColor, flexShrink: 0, marginLeft: 10 }}>${camAmt(e).toFixed(2)}</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: "#0A1E2B" }}>
+                        Payment returned · <span style={{ color: "#E07A20" }}>${Number(p.amount || 0).toFixed(2)}</span>
+                      </p>
+                      <p style={{ margin: "2px 0 0", fontSize: 11, color: "#888", fontWeight: 600 }}>via {p.method || "—"} · {formatShortDate(p.date)}</p>
+                    </div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        {/* Pending confirmation */}
-        {pending.length > 0 && (
-          <div style={{ padding: "8px 16px 4px" }}>
-            <p style={{ fontSize: 11, fontWeight: 800, color: "#999", textTransform: "uppercase", letterSpacing: 0.8, margin: "0 0 8px" }}>Awaiting Confirmation</p>
-            {pending.map((p, i) => (
-              <div key={p.id || i} style={{ background: "#FFFBF0", borderRadius: 14, padding: "12px 14px", marginBottom: 8, border: "1.5px solid #F5E6B0" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <div>
-                    <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#0A1E2B" }}>Payment via {p.method || "—"}</p>
-                    <p style={{ margin: "3px 0 0", fontSize: 11, fontWeight: 600, color: "#C48A00" }}>Pending · waiting for confirmation</p>
-                  </div>
-                  <span style={{ fontSize: 15, fontWeight: 800, color: "#C48A00" }}>${Number(p.amount || 0).toFixed(2)}</span>
-                </div>
-                {p.note && <p style={{ margin: "6px 0 0", fontSize: 12, color: "#888" }}>{p.note}</p>}
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Recently confirmed */}
-        {recentlyConfirmed.length > 0 && (
-          <div style={{ padding: "8px 16px 4px" }}>
-            <p style={{ fontSize: 11, fontWeight: 800, color: "#999", textTransform: "uppercase", letterSpacing: 0.8, margin: "0 0 8px" }}>Recently Confirmed</p>
-            {recentlyConfirmed.map((p, i) => (
-              <div key={p.id || i} style={{ background: "#F0FFF6", borderRadius: 14, padding: "12px 14px", marginBottom: 8, border: "1.5px solid #C5D9C2" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <div>
-                    <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#0A1E2B" }}>Payment confirmed</p>
-                    <p style={{ margin: "3px 0 0", fontSize: 11, fontWeight: 600, color: "#2E9E60" }}>via {p.method || "—"} · {formatShortDate(p.date)}</p>
-                  </div>
-                  <span style={{ fontSize: 15, fontWeight: 800, color: "#2E9E60" }}>${Number(p.amount || 0).toFixed(2)}</span>
-                </div>
-                {p.note && <p style={{ margin: "6px 0 0", fontSize: 12, color: "#888" }}>{p.note}</p>}
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Declined disputes — Emma's response to Cameron */}
-        {declinedDisputes.length > 0 && (
-          <div style={{ padding: "8px 16px 4px" }}>
-            <p style={{ fontSize: 11, fontWeight: 800, color: "#999", textTransform: "uppercase", letterSpacing: 0.8, margin: "0 0 8px" }}>Dispute Response</p>
-            {declinedDisputes.map((p, i) => (
-              <div key={p.id || i} style={{ background: "#FFF8F0", borderRadius: 14, padding: "12px 14px", marginBottom: 8, border: "1.5px solid #F5DABA" }}>
-                <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
-                  <div style={{ width: 32, height: 32, borderRadius: 10, background: "#FFF0E0", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                    <Icon path={icons.flag} size={16} color="#C48A00" />
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: "#0A1E2B" }}>Dispute declined</p>
-                    <p style={{ margin: "2px 0 4px", fontSize: 11, color: "#C48A00", fontWeight: 600 }}>
-                      {p.disputeDescription || "charge"} · {formatShortDate(p.date)}
+                  {p.rejectionReason && (
+                    <div style={{ marginTop: 8, background: "#FFF0E0", borderRadius: 10, padding: "8px 10px", border: "1px solid #F5C4A0" }}>
+                      <p style={{ margin: "0 0 2px", fontSize: 10, fontWeight: 800, color: "#E07A20", textTransform: "uppercase", letterSpacing: 0.5 }}>Emmanuella's note</p>
+                      <p style={{ margin: 0, fontSize: 12, color: "#555", lineHeight: 1.5, fontStyle: "italic" }}>"{p.rejectionReason}"</p>
+                    </div>
+                  )}
+                  {p.rejectionSuggestionKey && (
+                    <p style={{ margin: "6px 0 0", fontSize: 11, color: "#1B5C80", fontWeight: 700 }}>
+                      → Apply to: {p.rejectionSuggestionKey.replace("grp:", "").replace("exp:", "")}
                     </p>
-                    {p.declineReason ? (
-                      <div style={{ background: "#FFF3E0", border: "1px solid #F5DABA", borderRadius: 9, padding: "8px 10px" }}>
+                  )}
+                </div>
+              ))}
+            </>
+          )}
+
+          {/* ── 4. Recently confirmed ── */}
+          {recentlyConfirmed.length > 0 && (
+            <>
+              <SectionLabel>Payment Confirmed</SectionLabel>
+              {recentlyConfirmed.map((p, i) => (
+                <NotifCard
+                  key={p.id || i}
+                  bg="#F0FBF4" border="#B8D9C5"
+                  left={<Icon path={icons.check} size={18} color="#2D7A50" />}
+                  title="Payment confirmed ✓"
+                  sub={`via ${p.method || "—"} · ${formatShortDate(p.date)}`}
+                  right={<span style={{ color: "#2D7A50" }}>${Number(p.amount || 0).toFixed(2)}</span>}
+                  note={p.note}
+                />
+              ))}
+            </>
+          )}
+
+          {/* ── 5. Recent new charges ── */}
+          {recentCharges.length > 0 && (
+            <>
+              <SectionLabel>Expense Added</SectionLabel>
+              {recentCharges.map((e) => {
+                const addedDate = e.createdAt?.toDate
+                  ? e.createdAt.toDate().toLocaleDateString("en-US", { month: "short", day: "numeric" })
+                  : formatShortDate(e.date);
+                return (
+                  <NotifCard
+                    key={e.id}
+                    bg="#fff" border="#EDE7DC"
+                    onClick={() => { onNavigate("expenses"); onClose(); }}
+                    left={<Icon path={icons.plus} size={18} color="#1B5C80" />}
+                    title={e.description}
+                    sub={`${e.split === "split" ? "Split 50/50" : "Cam pays"} · added ${addedDate}`}
+                    right={<span style={{ color: "#00314B" }}>${camAmt(e).toFixed(2)}</span>}
+                  />
+                );
+              })}
+            </>
+          )}
+
+          {/* ── 6. Amount edited ── */}
+          {editedExpenses.length > 0 && (
+            <>
+              <SectionLabel>Amount Updated</SectionLabel>
+              {editedExpenses.map((e) => {
+                const wasAmt = Number(e.previousAmount || 0);
+                const nowAmt = Number(e.amount || 0);
+                const diff = nowAmt - wasAmt;
+                const diffColor = diff > 0 ? "#E05C6E" : "#2D7A50";
+                const diffLabel = diff > 0 ? `+$${diff.toFixed(2)}` : `-$${Math.abs(diff).toFixed(2)}`;
+                return (
+                  <div key={e.id} style={{ background: "#fff", borderRadius: 16, padding: "13px 14px", marginBottom: 8, border: "1.5px solid #EDE7DC" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                      <div style={{ width: 36, height: 36, borderRadius: 12, background: "#F0F4FA", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                        <Icon path={icons.edit} size={18} color="#1B5C80" />
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: "#0A1E2B", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          {e.description}
+                        </p>
+                        <p style={{ margin: "2px 0 0", fontSize: 11, color: "#888", fontWeight: 600 }}>
+                          Amount updated · {formatShortDate(e.updatedAt)}
+                        </p>
+                      </div>
+                      <div style={{ textAlign: "right", flexShrink: 0 }}>
+                        <p style={{ margin: 0, fontSize: 14, fontWeight: 900, color: "#00314B" }}>${camAmt(e).toFixed(2)}</p>
+                        <p style={{ margin: 0, fontSize: 11, fontWeight: 700, color: diffColor }}>
+                          {diffLabel} · was ${(e.split === "split" ? wasAmt / 2 : wasAmt).toFixed(2)}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </>
+          )}
+
+          {/* ── 7. Resolved disputes (accepted + declined) ── */}
+          {resolvedDisputes.length > 0 && (
+            <>
+              <SectionLabel>Dispute Response</SectionLabel>
+              {resolvedDisputes.map((p, i) => {
+                const accepted = p.disputeStatus === "accepted";
+                const bg = accepted ? "#F0FBF4" : "#FFF8F0";
+                const border = accepted ? "#B8D9C5" : "#F5DABA";
+                const iconColor = accepted ? "#2D7A50" : "#C48A00";
+                const iconPath = accepted ? icons.check : icons.flag;
+                const iconBg = accepted ? "#E0F5EA" : "#FFF0E0";
+                return (
+                  <div key={p.id || i} style={{ background: bg, borderRadius: 16, padding: "13px 14px", marginBottom: 8, border: `1.5px solid ${border}` }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: (!accepted && p.declineReason) ? 8 : 0 }}>
+                      <div style={{ width: 36, height: 36, borderRadius: 12, background: iconBg, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                        <Icon path={iconPath} size={18} color={iconColor} />
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: "#0A1E2B" }}>
+                          Dispute {accepted ? "accepted ✓" : "declined"}
+                        </p>
+                        <p style={{ margin: "2px 0 0", fontSize: 11, color: iconColor, fontWeight: 600 }}>
+                          {p.disputeDescription || "charge"} · {formatShortDate(p.date)}
+                        </p>
+                        {accepted && (
+                          <p style={{ margin: "3px 0 0", fontSize: 11, color: "#2D7A50", fontWeight: 600 }}>
+                            Emmanuella reviewed and accepted your dispute.
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    {!accepted && p.declineReason && (
+                      <div style={{ background: "#FFF3E0", border: "1px solid #F5DABA", borderRadius: 10, padding: "8px 10px" }}>
                         <p style={{ margin: "0 0 2px", fontSize: 10, fontWeight: 800, color: "#C48A00", textTransform: "uppercase", letterSpacing: 0.5 }}>Emmanuella's response</p>
                         <p style={{ margin: 0, fontSize: 12, color: "#555", lineHeight: 1.5 }}>"{p.declineReason}"</p>
                       </div>
-                    ) : (
+                    )}
+                    {!accepted && !p.declineReason && (
                       <p style={{ margin: 0, fontSize: 12, color: "#999", fontStyle: "italic" }}>The charge stands — no additional reason given.</p>
                     )}
                   </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+                );
+              })}
+            </>
+          )}
+
+        </div>
+      </motion.div>
     </>
   );
 }
@@ -4110,12 +4404,42 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
       {/* Header */}
       <div style={styles.header}>
         {/* Top row: greeting + action buttons */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4 }}>
-          <div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
             <p style={styles.headerSub}>{new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}</p>
-            <p style={styles.headerGreet}>Hey, {user === "emma" ? "Emmanuella" : "Cameron"} 👋</p>
+            <p style={styles.headerGreet}>
+              {(() => {
+                const h = new Date().getHours();
+                return h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening";
+              })()},
+            </p>
+            <p style={{ ...styles.headerGreet, color: "#1B5C80", marginTop: 1 }}>
+              {user === "emma" ? "Emmanuella" : "Cameron"} {user === "emma" ? "✨" : "👋"}
+            </p>
           </div>
-          <div style={{ display: "flex", gap: 8, alignItems: "center", paddingTop: 2 }}>
+          {/* Avatar circle */}
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8 }}>
+            <div style={{
+              width: 46, height: 46, borderRadius: "50%",
+              background: user === "emma"
+                ? "linear-gradient(135deg, #4E635E 0%, #00314B 100%)"
+                : "linear-gradient(135deg, #E8A0B0 0%, #C0485A 100%)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              boxShadow: "0 4px 14px rgba(0,49,75,0.22)",
+              border: "2px solid rgba(255,255,255,0.7)",
+              flexShrink: 0,
+            }}>
+              <span style={{ fontSize: 18, fontWeight: 900, color: "#fff", lineHeight: 1 }}>
+                {user === "emma" ? "E" : "C"}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Action buttons row */}
+        <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 14 }}>
+          <div style={{ flex: 1 }} />
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           {user === "cam" ? (
             /* Bell notification icon — Cameron only */
             (() => {
@@ -4129,19 +4453,17 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
                 const dueD = new Date(due + "T12:00:00");
                 return Math.ceil((dueD - today) / 86400000) <= 14;
               }).length;
-              const pendingCount = (payments || []).filter((p) => !p.confirmed).length;
-              const badgeCount = upcomingCount + pendingCount;
+              const pendingCount = (payments || []).filter((p) => !p.confirmed && !p.rejected).length;
+              const returnedCount = (payments || []).filter((p) => p.rejected).length;
+              const badgeCount = upcomingCount + pendingCount + returnedCount;
               return (
                 <button
                   type="button"
-                  style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center", width: 38, height: 38, borderRadius: "50%", border: "none", background: notifOpen ? "#E05C6E" : "#00314B", cursor: "pointer", boxShadow: "0 3px 10px rgba(0,49,75,0.3)" }}
+                  style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center", width: 46, height: 46, borderRadius: "50%", border: "none", background: notifOpen ? "linear-gradient(145deg, #A0253A, #E05C6E)" : "linear-gradient(145deg, #002B42, #1B5C80)", cursor: "pointer", boxShadow: notifOpen ? "0 4px 16px rgba(224,92,110,0.45)" : "0 4px 16px rgba(0,43,66,0.35)" }}
                   onClick={() => setNotifOpen((o) => !o)}
                   aria-label="Notifications"
                 >
-                  {/* Filled bell icon */}
-                  <svg width={28} height={28} viewBox="0 0 24 24" fill="#fff">
-                    <path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6V11c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/>
-                  </svg>
+                  <Icon path={icons.bell} size={22} color="#fff" />
                   {badgeCount > 0 && !notifOpen && (
                     <span style={{
                       position: "absolute",
@@ -4208,8 +4530,8 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
           ) : (
             <button style={styles.logoutBtn} onClick={onLogout}>Sign out</button>
           )}
+          </div>
         </div>
-      </div>
       </div>
 
       {searchOpen && (
@@ -4295,52 +4617,46 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
 
       {/* Urgent banner — Emma only */}
       {user !== "cam" && urgentCount > 0 && (
-        <div
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, ease: "easeOut" }}
           style={{
-            ...styles.urgentBanner,
+            margin: "12px 16px 0",
+            background: "linear-gradient(135deg, #4A0E1A 0%, #7A1830 100%)",
+            borderRadius: 20,
+            padding: "14px 16px",
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
             gap: 12,
+            cursor: "pointer",
+            boxShadow: "0 8px 24px rgba(224,92,110,0.28), inset 0 1px 0 rgba(255,255,255,0.1)",
+            border: "1px solid rgba(255,100,120,0.25)",
           }}
           onClick={() => onNavigate("urgent")}
           role="button"
         >
           <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
-            <div
-              style={{
-                width: 38,
-                height: 38,
-                borderRadius: 14,
-                background: "rgba(224,92,110,0.12)",
-                border: "1.5px solid #E8A0B0",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                flexShrink: 0,
-              }}
-            >
-              <Icon path={icons.fire} size={18} color="#E05C6E" />
+            <div style={{
+              width: 40, height: 40, borderRadius: 14,
+              background: "rgba(255,255,255,0.12)",
+              border: "1px solid rgba(255,255,255,0.15)",
+              display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+            }}>
+              <Icon path={icons.fire} size={20} color="#FFB4BD" />
             </div>
-
             <div style={{ minWidth: 0 }}>
-              <p style={styles.urgentBannerTitle}>
-                {user === "cam" && overdueCount > 0
-                  ? `${overdueCount} charge${overdueCount === 1 ? "" : "s"} overdue`
-                  : user === "cam"
-                    ? `${urgentCount} charge${urgentCount === 1 ? "" : "s"} due soon`
-                    : `${urgentCount} payment${urgentCount === 1 ? "" : "s"} due soon`}
+              <p style={{ margin: 0, fontSize: 14, fontWeight: 900, color: "#fff", letterSpacing: -0.2 }}>
+                {`${urgentCount} payment${urgentCount === 1 ? "" : "s"} due soon`}
               </p>
-              <p style={styles.urgentBannerSub}>
-                {user === "cam" ? "Tap to review your charges" : "Tap to see what needs attention"}
+              <p style={{ margin: "2px 0 0", fontSize: 11, color: "rgba(255,255,255,0.6)", fontWeight: 600 }}>
+                Tap to see what needs attention
               </p>
             </div>
           </div>
-
-          <div style={{ flexShrink: 0 }}>
-            <Icon path={icons.forward} size={20} color="#E05C6E" />
-          </div>
-        </div>
+          <Icon path={icons.forward} size={18} color="rgba(255,255,255,0.6)" />
+        </motion.div>
       )}
 
       {/* Pending Confirmations (Emma only) */}
@@ -4454,25 +4770,31 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
 
         {/* Section header */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-          <span style={{ fontSize: 15, fontWeight: 900, color: "#0A1E2B", letterSpacing: -0.2 }}>Spending</span>
+          <div>
+            <span style={{ fontSize: 17, fontWeight: 900, color: "#0A1E2B", letterSpacing: -0.4 }}>Spending</span>
+            <span style={{ fontSize: 11, fontWeight: 700, color: "#A6B7CB", marginLeft: 8 }}>
+              {new Date().toLocaleString("en-US", { month: "long" })}
+            </span>
+          </div>
           <button
-            style={{ background: "none", border: "none", fontSize: 12, fontWeight: 700, color: "#A6B7CB", cursor: "pointer", padding: 0 }}
+            style={{ background: "rgba(0,49,75,0.07)", border: "none", fontSize: 11, fontWeight: 800, color: "#1B5C80", cursor: "pointer", padding: "5px 12px", borderRadius: 20 }}
             onClick={() => onNavigate("expenses")}
           >
-            See all
+            See all →
           </button>
         </div>
 
-        {/* 2×2 filled category tiles */}
+        {/* 2×2 filled category tiles — upgraded */}
         {(() => {
           const TILES = [
             {
               id: "groceries",
               label: "Groceries",
-              bg: "linear-gradient(145deg, #3D5A54, #5E8278)",
-              shadow: "0 4px 12px rgba(61,90,84,0.28)",
+              bg: "linear-gradient(150deg, #2D4A44 0%, #4E7A72 100%)",
+              glow: "rgba(61,90,84,0.35)",
+              accent: "#7ECDB8",
               icon: (c) => (
-                <svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round">
+                <svg width={24} height={24} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
                   <path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/>
                   <line x1="3" y1="6" x2="21" y2="6"/>
                   <path d="M16 10a4 4 0 01-8 0"/>
@@ -4482,10 +4804,11 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
             {
               id: "eating",
               label: "Eating Out",
-              bg: "linear-gradient(145deg, #7A5C3A, #A8804E)",
-              shadow: "0 4px 12px rgba(122,92,58,0.28)",
+              bg: "linear-gradient(150deg, #5C3A1E 0%, #9B6A36 100%)",
+              glow: "rgba(122,92,58,0.35)",
+              accent: "#F5C87A",
               icon: (c) => (
-                <svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round">
+                <svg width={24} height={24} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
                   <path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 002-2V2"/>
                   <path d="M7 2v20"/>
                   <path d="M21 15V2a5 5 0 00-5 5v6c0 1.1.9 2 2 2h3zm0 0v7"/>
@@ -4495,10 +4818,11 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
             {
               id: "home",
               label: "Home",
-              bg: "linear-gradient(145deg, #00314B, #1B5C80)",
-              shadow: "0 4px 12px rgba(0,49,75,0.30)",
+              bg: "linear-gradient(150deg, #002238 0%, #0B4A70 100%)",
+              glow: "rgba(0,49,75,0.4)",
+              accent: "#7EC8E3",
               icon: (c) => (
-                <svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round">
+                <svg width={24} height={24} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
                   <path d={icons.home}/>
                 </svg>
               ),
@@ -4506,10 +4830,11 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
             {
               id: "misc",
               label: "Misc",
-              bg: "linear-gradient(145deg, #3A5568, #56788E)",
-              shadow: "0 4px 12px rgba(58,85,104,0.28)",
+              bg: "linear-gradient(150deg, #2A3F52 0%, #446480 100%)",
+              glow: "rgba(58,85,104,0.35)",
+              accent: "#A8C4DC",
               icon: (c) => (
-                <svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round">
+                <svg width={24} height={24} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
                   <rect x="3" y="3" width="7" height="7" rx="1.5"/>
                   <rect x="14" y="3" width="7" height="7" rx="1.5"/>
                   <rect x="14" y="14" width="7" height="7" rx="1.5"/>
@@ -4518,53 +4843,76 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
               ),
             },
           ];
+          const maxTotal = Math.max(...TILES.map(t => catTotals[t.id].total), 1);
           return (
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-              {TILES.map(tile => {
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+              {TILES.map((tile, idx) => {
                 const data = catTotals[tile.id];
                 const isEmpty = data.count === 0;
+                const fillPct = isEmpty ? 0 : Math.min(1, data.total / maxTotal);
                 return (
                   <motion.div
                     key={tile.id}
                     onClick={() => setActiveCat(tile.id)}
-                    whileTap={{ scale: 0.94 }}
-                    transition={{ type: "spring", stiffness: 420, damping: 22 }}
+                    initial={{ opacity: 0, y: 16 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ type: "spring", stiffness: 320, damping: 26, delay: idx * 0.06 }}
+                    whileTap={{ scale: 0.93 }}
                     style={{
-                      background: isEmpty ? "#E8E4DF" : tile.bg,
-                      borderRadius: 22,
-                      padding: "18px 16px 16px",
-                      boxShadow: isEmpty ? "none" : tile.shadow,
+                      background: isEmpty ? "rgba(220,218,214,0.55)" : tile.bg,
+                      borderRadius: 24,
+                      padding: "18px 16px 14px",
+                      boxShadow: isEmpty ? "none" : `0 8px 28px ${tile.glow}, 0 2px 6px rgba(0,0,0,0.12)`,
                       cursor: "pointer",
                       display: "flex",
                       flexDirection: "column",
-                      gap: 12,
-                      minHeight: 126,
-                      opacity: isEmpty ? 0.5 : 1,
+                      minHeight: 148,
+                      position: "relative",
+                      overflow: "hidden",
+                      opacity: isEmpty ? 0.55 : 1,
                     }}
                   >
+                    {/* Subtle shine overlay */}
+                    {!isEmpty && (
+                      <div style={{
+                        position: "absolute", top: 0, left: 0, right: 0, height: "50%",
+                        background: "linear-gradient(180deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0) 100%)",
+                        borderRadius: "24px 24px 0 0", pointerEvents: "none",
+                      }} />
+                    )}
+
                     {/* Icon bubble */}
                     <div style={{
-                      width: 42, height: 42, borderRadius: 14,
-                      background: isEmpty ? "rgba(0,0,0,0.06)" : "rgba(255,255,255,0.18)",
+                      width: 46, height: 46, borderRadius: 16,
+                      background: isEmpty ? "rgba(0,0,0,0.07)" : "rgba(255,255,255,0.16)",
+                      border: isEmpty ? "none" : "1px solid rgba(255,255,255,0.2)",
                       display: "flex", alignItems: "center", justifyContent: "center",
+                      marginBottom: "auto",
                     }}>
-                      {tile.icon(isEmpty ? "rgba(0,0,0,0.25)" : "rgba(255,255,255,0.9)")}
+                      {tile.icon(isEmpty ? "rgba(0,0,0,0.22)" : "rgba(255,255,255,0.92)")}
                     </div>
 
                     {/* Label + amount */}
-                    <div>
-                      <p style={{ margin: 0, fontSize: 10, fontWeight: 700, color: isEmpty ? "rgba(0,0,0,0.3)" : "rgba(255,255,255,0.65)", letterSpacing: 0.7, textTransform: "uppercase" }}>
+                    <div style={{ marginTop: 12 }}>
+                      <p style={{ margin: 0, fontSize: 10, fontWeight: 800, color: isEmpty ? "rgba(0,0,0,0.28)" : "rgba(255,255,255,0.6)", letterSpacing: 1, textTransform: "uppercase" }}>
                         {tile.label}
                       </p>
-                      <p style={{ margin: "4px 0 0", fontSize: 18, fontWeight: 900, color: isEmpty ? "rgba(0,0,0,0.2)" : "#fff", letterSpacing: -0.5 }}>
+                      <p style={{ margin: "3px 0 0", fontSize: 20, fontWeight: 900, color: isEmpty ? "rgba(0,0,0,0.18)" : "#fff", letterSpacing: -0.8 }}>
                         {isEmpty ? "—" : `$${data.total.toFixed(2)}`}
                       </p>
-                      {!isEmpty && (
-                        <p style={{ margin: "2px 0 0", fontSize: 10, color: "rgba(255,255,255,0.5)", fontWeight: 600 }}>
-                          {data.count} item{data.count !== 1 ? "s" : ""}
-                        </p>
-                      )}
                     </div>
+
+                    {/* Progress bar at bottom */}
+                    {!isEmpty && (
+                      <div style={{ marginTop: 10, height: 3, borderRadius: 999, background: "rgba(255,255,255,0.18)", overflow: "hidden" }}>
+                        <motion.div
+                          initial={{ width: 0 }}
+                          animate={{ width: `${fillPct * 100}%` }}
+                          transition={{ duration: 0.7, delay: 0.2 + idx * 0.08, ease: "easeOut" }}
+                          style={{ height: "100%", borderRadius: 999, background: tile.accent }}
+                        />
+                      </div>
+                    )}
                   </motion.div>
                 );
               })}
@@ -4797,21 +5145,22 @@ function CategoryAnalyticsSheet({ catId, expenses, catGroup, onClose }) {
 
           {/* Monthly bar chart */}
           <p style={{ margin: "0 0 12px", fontSize: 11, fontWeight: 700, color: "#BBB", textTransform: "uppercase", letterSpacing: 1 }}>Monthly Trend</p>
-          <div style={{ display: "flex", alignItems: "flex-end", gap: 8, height: 80, marginBottom: 20 }}>
+          <div style={{ display: "flex", alignItems: "flex-end", gap: 8, height: 110, marginBottom: 24 }}>
             {months.map(m => {
               const pct = m.total / maxMo;
               const isCurrent = m.key === `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
               return (
                 <div key={m.key} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-                  <p style={{ margin: 0, fontSize: 9, fontWeight: 700, color: meta.color, opacity: m.total ? 1 : 0 }}>
+                  <p style={{ margin: 0, fontSize: 9, fontWeight: 700, color: meta.color, opacity: m.total ? 1 : 0, lineHeight: 1 }}>
                     ${m.total > 0 ? (m.total >= 100 ? Math.round(m.total) : m.total.toFixed(0)) : ""}
                   </p>
-                  <div style={{ width: "100%", borderRadius: 6, overflow: "hidden", height: 48, display: "flex", alignItems: "flex-end", background: "#EDE9E2" }}>
+                  <div style={{ width: "100%", borderRadius: 8, overflow: "hidden", flex: 1, display: "flex", alignItems: "flex-end", background: "#EDE9E2" }}>
                     <div style={{
-                      width: "100%", borderRadius: 6,
-                      height: `${Math.max(pct * 100, m.total > 0 ? 6 : 0)}%`,
-                      background: isCurrent ? meta.bg : `${meta.color}55`,
-                      transition: "height 0.4s ease",
+                      width: "100%", borderRadius: 8,
+                      height: `${Math.max(pct * 100, m.total > 0 ? 5 : 0)}%`,
+                      background: isCurrent ? meta.bg : `${meta.color}44`,
+                      transition: "height 0.5s ease",
+                      boxShadow: isCurrent ? `0 -2px 8px ${meta.color}44` : "none",
                     }} />
                   </div>
                   <p style={{ margin: 0, fontSize: 10, fontWeight: isCurrent ? 800 : 600, color: isCurrent ? meta.color : "#BBB" }}>{m.label}</p>
@@ -4840,13 +5189,17 @@ function CategoryAnalyticsSheet({ catId, expenses, catGroup, onClose }) {
             <p style={{ fontSize: 13, color: "#CCC", textAlign: "center", padding: "24px 0" }}>No transactions yet.</p>
           )}
           <div style={{ display: "flex", flexDirection: "column", gap: 8, paddingBottom: 8 }}>
-            {sorted.map(e => (
-              <div key={e.id} style={{ background: "#fff", borderRadius: 14, padding: "12px 14px", display: "flex", justifyContent: "space-between", alignItems: "center", boxShadow: "0 1px 4px rgba(0,0,0,0.05)" }}>
-                <div style={{ minWidth: 0, flex: 1 }}>
-                  <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: "#0A1E2B", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.description}</p>
-                  <p style={{ margin: "2px 0 0", fontSize: 11, color: "#BBB", fontWeight: 600 }}>{e.date}{e.split === "split" ? " · split" : ""}</p>
+            {sorted.map((e, i) => (
+              <div key={e.id} style={{ background: "#fff", borderRadius: 14, overflow: "hidden", display: "flex", boxShadow: "0 2px 8px rgba(0,0,0,0.06)", position: "relative" }}>
+                {/* Left accent stripe */}
+                <div style={{ width: 4, flexShrink: 0, background: i === 0 ? meta.bg : `${meta.color}55` }} />
+                <div style={{ flex: 1, display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 14px" }}>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: "#0A1E2B", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.description}</p>
+                    <p style={{ margin: "2px 0 0", fontSize: 11, color: "#BBB", fontWeight: 600 }}>{e.date}{e.split === "split" ? " · split 50/50" : ""}</p>
+                  </div>
+                  <p style={{ margin: 0, fontSize: 18, fontWeight: 900, color: meta.color, marginLeft: 12, flexShrink: 0, letterSpacing: -0.4 }}>${share(e).toFixed(2)}</p>
                 </div>
-                <p style={{ margin: 0, fontSize: 15, fontWeight: 800, color: meta.color, marginLeft: 12, flexShrink: 0 }}>${share(e).toFixed(2)}</p>
               </div>
             ))}
           </div>
@@ -4863,6 +5216,9 @@ function UrgentScreen({ expenses, allExpenses = [], user, onBack, onMarkPaid, on
   const [expandedId, setExpandedId] = useState(null);
   const tabRef = useRef(null);
   const [pillStyle, setPillStyle] = useState({ left: 0, width: 0 });
+  const [editingNoteId, setEditingNoteId] = useState(null);
+  const [noteDraft, setNoteDraft] = useState("");
+  const [noteSaving, setNoteSaving] = useState(false);
 
   const tabs = [
     { id: "urgent", label: "Urgent" },
@@ -4896,94 +5252,232 @@ function UrgentScreen({ expenses, allExpenses = [], user, onBack, onMarkPaid, on
 
   const list = tab === "urgent" ? urgentSorted : mandatorySorted;
 
-  function renderExpenseCard(e) {
+  function renderExpenseCard(e, idx, arr) {
     const level = getUrgencyLevel(e);
-    const u = level ? URGENCY[level] : { bg: "#F5F7FA", border: "#E0E5EF", badge: "#A6B7CB", label: "SCHEDULED" };
     const days = getDaysUntilDue(e.nextDue || e.dueDate);
     const isExpanded = expandedId === e.id;
     const camAmt = e.split === "cam" ? Number(e.amount) : e.split === "split" ? Number(e.amount) / 2 : 0;
+    const isLast = idx === arr.length - 1;
 
-    const dueLabel = days === null ? null
-      : days < 0 ? `${Math.abs(days)}d overdue`
-      : days === 0 ? "Due TODAY"
-      : days === 1 ? "Due TOMORROW"
-      : `Due in ${days}d`;
+    // Dark gradient per urgency level
+    const gradient = level === "overdue"
+      ? "linear-gradient(145deg, #3A0A14 0%, #7A1830 100%)"
+      : level === "critical"
+        ? "linear-gradient(145deg, #2D1500 0%, #7A3800 100%)"
+        : level === "warning"
+          ? "linear-gradient(145deg, #1A1800 0%, #4A4200 100%)"
+          : "linear-gradient(145deg, #001828 0%, #003559 100%)";
+
+    const accentColor = level === "overdue" ? "#FF6B7A"
+      : level === "critical" ? "#FF9040"
+      : level === "warning" ? "#F0CC40"
+      : "#7AB8D8";
+
+    const dotColor = level === "overdue" ? "#E05C6E"
+      : level === "critical" ? "#E07820"
+      : level === "warning" ? "#C8A020"
+      : "#7A9BB5";
+
+    const countNum = days === null ? null : Math.abs(days);
+    const countLabel = days === null ? null
+      : days < 0 ? "days overdue"
+      : days === 0 ? "due today"
+      : days === 1 ? "due tomorrow"
+      : "days left";
+
+    const recurLabel = e.recurring && e.recurring !== "none"
+      ? ({ monthly: "Monthly", weekly: "Weekly", biweekly: "Every 2 wks", yearly: "Yearly", quarterly: "Quarterly" }[e.recurring] || e.recurring)
+      : null;
 
     return (
-      <div
-        key={e.id}
-        style={{ background: u.bg, border: `1.5px solid ${isExpanded ? u.badge : u.border}`, borderRadius: 16, marginBottom: 10, overflow: "hidden", cursor: "pointer" }}
-        onClick={() => setExpandedId(isExpanded ? null : e.id)}
-      >
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: 16 }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
-              <span style={{ background: u.badge, color: "#fff", borderRadius: 6, padding: "2px 8px", fontSize: 10, fontWeight: 800, letterSpacing: 0.5 }}>
-                {u.label}
-              </span>
-              {dueLabel && <span style={{ fontSize: 11, color: u.badge, fontWeight: 700 }}>{dueLabel}</span>}
-              {tab === "mandatory" && e.recurring && e.recurring !== "none" && (
-                <span style={{ fontSize: 10, color: "#A6B7CB", fontWeight: 700, background: "#EFF3F8", borderRadius: 6, padding: "2px 7px" }}>
-                  {e.recurring}
-                </span>
+      <div key={e.id} style={{ display: "flex", gap: 0, marginBottom: 0 }}>
+        {/* Timeline column */}
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", width: 36, flexShrink: 0 }}>
+          {/* Dot */}
+          <div style={{
+            width: 14, height: 14, borderRadius: "50%", flexShrink: 0, marginTop: 20,
+            background: dotColor,
+            boxShadow: `0 0 0 3px rgba(${level === "overdue" ? "224,92,110" : level === "critical" ? "224,120,32" : level === "warning" ? "200,160,32" : "122,155,181"}, 0.25)`,
+            zIndex: 1,
+          }} />
+          {/* Line below dot */}
+          {!isLast && (
+            <div style={{ flex: 1, width: 2, background: "rgba(0,0,0,0.08)", marginTop: 4, marginBottom: 4, borderRadius: 1 }} />
+          )}
+        </div>
+
+        {/* Card */}
+        <div style={{ flex: 1, marginBottom: isLast ? 0 : 10 }}>
+          <div
+            style={{
+              background: gradient,
+              borderRadius: 20,
+              overflow: "hidden",
+              cursor: "pointer",
+              boxShadow: isExpanded
+                ? `0 8px 28px rgba(0,0,0,0.35), 0 0 0 1.5px ${accentColor}55`
+                : "0 4px 16px rgba(0,0,0,0.22)",
+            }}
+            onClick={() => setExpandedId(isExpanded ? null : e.id)}
+          >
+            <div style={{ display: "flex", alignItems: "stretch", gap: 0, padding: "16px 16px 14px" }}>
+
+              {/* Countdown block */}
+              {countNum !== null && (
+                <div style={{
+                  display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+                  minWidth: 58, marginRight: 14, flexShrink: 0,
+                  background: "rgba(255,255,255,0.07)", borderRadius: 14, padding: "8px 6px",
+                }}>
+                  <span style={{ fontSize: days === 0 ? 18 : 30, fontWeight: 900, color: accentColor, lineHeight: 1, letterSpacing: -1 }}>
+                    {days === 0 ? "NOW" : days === 1 ? "1" : countNum}
+                  </span>
+                  <span style={{ fontSize: 9, fontWeight: 700, color: "rgba(255,255,255,0.45)", textTransform: "uppercase", letterSpacing: 0.4, textAlign: "center", marginTop: 3, lineHeight: 1.2 }}>
+                    {countLabel}
+                  </span>
+                </div>
               )}
+
+              {/* Main content */}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ margin: "0 0 3px", fontSize: 10, fontWeight: 700, color: accentColor, textTransform: "uppercase", letterSpacing: 0.8 }}>
+                      {level === "overdue" ? "Overdue" : level === "critical" ? "Due Soon" : level === "warning" ? "Upcoming" : "Scheduled"}
+                      {recurLabel && <span style={{ color: "rgba(255,255,255,0.35)", marginLeft: 5 }}>· {recurLabel}</span>}
+                    </p>
+                    <p style={{ margin: 0, fontSize: 15, fontWeight: 800, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {e.description}
+                    </p>
+                    <p style={{ margin: "3px 0 0", fontSize: 11, color: "rgba(255,255,255,0.4)", fontWeight: 500 }}>
+                      {[e.account, e.category].filter(Boolean).join(" · ")}
+                    </p>
+                  </div>
+                  {/* Amount */}
+                  <div style={{ textAlign: "right", flexShrink: 0 }}>
+                    <p style={{ margin: 0, fontSize: 22, fontWeight: 900, color: "#fff", letterSpacing: -0.8, lineHeight: 1 }}>
+                      ${Number(e.amount || 0).toFixed(2)}
+                    </p>
+                    {camAmt > 0 && (
+                      <p style={{ margin: "3px 0 0", fontSize: 11, fontWeight: 700, color: "#FFB3C8" }}>
+                        {isCam ? "you" : "cam"} ${camAmt.toFixed(2)}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Due date row */}
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 10 }}>
+                  {(e.nextDue || e.dueDate) && (
+                    <span style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.45)" }}>
+                      {days < 0 ? "Was due" : "Due"} {formatShortDate(e.nextDue || e.dueDate)}
+                    </span>
+                  )}
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginLeft: "auto" }}>
+                    {user === "emma" && !e._optimistic && (
+                      <button
+                        style={{ padding: "5px 12px", borderRadius: 8, border: "none", background: "rgba(255,255,255,0.15)", color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}
+                        onClick={(ev) => { ev.stopPropagation(); onMarkPaid(e.id); }}
+                      >
+                        Mark paid
+                      </button>
+                    )}
+                    <Icon path={isExpanded ? icons.chevronUp : icons.chevronDown} size={14} color="rgba(255,255,255,0.35)" />
+                  </div>
+                </div>
+              </div>
             </div>
-            <p style={{ fontSize: 14, fontWeight: 700, color: "#00314B", margin: "0 0 2px" }}>{e.description}</p>
-            <p style={{ fontSize: 11, color: "#888", margin: 0 }}>{[e.account, e.category].filter(Boolean).join(" · ")}</p>
-            {(e.nextDue || e.dueDate) && (
-              <p style={{ fontSize: 11, color: u.badge, fontWeight: 600, margin: "2px 0 0" }}>
-                Due: {formatShortDate(e.nextDue || e.dueDate)}
-              </p>
-            )}
-          </div>
-          <div style={{ textAlign: "right", flexShrink: 0 }}>
-            <p style={{ fontSize: 18, fontWeight: 800, color: "#00314B", margin: 0 }}>
-              ${Number(e.amount || 0).toFixed(2)}
-            </p>
-            {camAmt > 0 && (
-              <p style={{ fontSize: 12, color: "#E8A0B0", fontWeight: 700, margin: "2px 0 0" }}>
-                {isCam ? "You owe:" : "Cam owes:"} ${camAmt.toFixed(2)}
-              </p>
-            )}
-            {user === "emma" && !e._optimistic && (
-              <button style={styles.markPaidBtn} onClick={(ev) => { ev.stopPropagation(); onMarkPaid(e.id); }}>
-                Mark paid
-              </button>
+
+            {/* Expand panel */}
+            {isExpanded && (
+              <div
+                style={{ borderTop: "1px solid rgba(255,255,255,0.08)", padding: "12px 16px 16px", background: "rgba(0,0,0,0.25)" }}
+                onClick={(ev) => ev.stopPropagation()}
+              >
+                {e.referenceNum && (
+                  <p style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", margin: "0 0 10px" }}>
+                    <span style={{ fontWeight: 700, color: "rgba(255,255,255,0.8)" }}>Ref #</span> {e.referenceNum}
+                  </p>
+                )}
+
+                {/* Note — inline editable */}
+                <div style={{ marginBottom: 10 }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 5 }}>
+                    <p style={{ margin: 0, fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.35)", textTransform: "uppercase", letterSpacing: 0.4 }}>Note</p>
+                    {editingNoteId !== e.id && (
+                      <button
+                        type="button"
+                        onClick={() => { setEditingNoteId(e.id); setNoteDraft(e.note || ""); }}
+                        style={{ background: "rgba(255,255,255,0.1)", border: "none", borderRadius: 7, padding: "3px 9px", fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.6)", cursor: "pointer" }}
+                      >
+                        {e.note ? "Edit" : "+ Add note"}
+                      </button>
+                    )}
+                  </div>
+
+                  {editingNoteId === e.id ? (
+                    <div>
+                      <textarea
+                        autoFocus
+                        value={noteDraft}
+                        onChange={(ev) => setNoteDraft(ev.target.value)}
+                        placeholder="Write a note…"
+                        rows={3}
+                        style={{
+                          width: "100%", boxSizing: "border-box",
+                          background: "rgba(255,255,255,0.08)",
+                          border: `1.5px solid ${accentColor}55`,
+                          borderRadius: 10, padding: "9px 11px",
+                          fontSize: 13, color: "#fff", fontFamily: "inherit",
+                          resize: "none", outline: "none",
+                        }}
+                      />
+                      <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
+                        <button
+                          type="button"
+                          disabled={noteSaving}
+                          onClick={async () => {
+                            setNoteSaving(true);
+                            try { await updateExpenseInDb(e.id, { note: noteDraft }); } catch (_) {}
+                            setNoteSaving(false);
+                            setEditingNoteId(null);
+                          }}
+                          style={{ flex: 1, padding: "9px", borderRadius: 9, border: "none", background: accentColor, color: "#000", fontSize: 12, fontWeight: 800, cursor: "pointer" }}
+                        >
+                          {noteSaving ? "Saving…" : "Save"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditingNoteId(null)}
+                          style={{ padding: "9px 14px", borderRadius: 9, border: "none", background: "rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.6)", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : e.note ? (
+                    <p style={{ margin: 0, fontSize: 13, color: "rgba(255,255,255,0.75)", lineHeight: 1.5 }}>{e.note}</p>
+                  ) : (
+                    <p style={{ margin: 0, fontSize: 12, color: "rgba(255,255,255,0.25)", fontStyle: "italic" }}>No note yet.</p>
+                  )}
+                </div>
+                {e.receiptUrl && (
+                  <div style={{ marginBottom: 10, borderRadius: 12, overflow: "hidden" }}>
+                    <img src={e.receiptUrl} alt="Receipt" style={{ display: "block", width: "100%", maxHeight: 200, objectFit: "cover" }} />
+                  </div>
+                )}
+                {isCam && typeof onLogPaymentForKey === "function" && (
+                  <button
+                    style={{ width: "100%", padding: "12px", borderRadius: 12, border: "none", background: accentColor, color: "#000", fontSize: 13, fontWeight: 800, cursor: "pointer", letterSpacing: 0.2 }}
+                    onClick={() => onLogPaymentForKey(`exp:${e.id}`, camAmt > 0 ? camAmt : Number(e.amount))}
+                  >
+                    Log Payment →
+                  </button>
+                )}
+              </div>
             )}
           </div>
         </div>
-
-        {isExpanded && (
-          <div style={{ borderTop: `1px solid ${u.border}`, padding: "12px 16px 14px", background: "rgba(255,255,255,0.55)" }} onClick={(ev) => ev.stopPropagation()}>
-            {e.referenceNum && (
-              <p style={{ fontSize: 12, color: "#888", margin: "0 0 6px" }}>
-                <span style={{ fontWeight: 700, color: "#00314B" }}>Ref #</span> {e.referenceNum}
-              </p>
-            )}
-            {e.note && (
-              <div style={{ marginBottom: isCam ? 12 : 0 }}>
-                <p style={{ fontSize: 11, fontWeight: 700, color: "#A6B7CB", margin: "0 0 4px", textTransform: "uppercase", letterSpacing: 0.4 }}>Note</p>
-                {renderNote(e.note)}
-              </div>
-            )}
-            {!e.referenceNum && !e.note && !e.receiptUrl && (
-              <p style={{ fontSize: 12, color: "#BBB", margin: "0 0 8px", fontStyle: "italic" }}>No notes or reference number.</p>
-            )}
-            {e.receiptUrl && (
-              <div style={{ marginBottom: 8, borderRadius: 10, overflow: "hidden", border: "1.5px solid #EDE7DC" }}>
-                <img src={e.receiptUrl} alt="Receipt" style={{ display: "block", width: "100%", maxHeight: 200, objectFit: "cover" }} />
-              </div>
-            )}
-            {isCam && typeof onLogPaymentForKey === "function" && (
-              <button
-                style={{ marginTop: 8, width: "100%", padding: "11px", borderRadius: 12, border: "none", background: u.badge, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}
-                onClick={() => onLogPaymentForKey(`exp:${e.id}`, camAmt > 0 ? camAmt : Number(e.amount))}
-              >
-                Log Payment
-              </button>
-            )}
-          </div>
-        )}
       </div>
     );
   }
@@ -5071,7 +5565,18 @@ function UrgentScreen({ expenses, allExpenses = [], user, onBack, onMarkPaid, on
             </p>
           </div>
         ) : (
-          list.map(renderExpenseCard)
+          <div style={{ position: "relative" }}>
+            {/* Continuous timeline line behind all cards */}
+            <div style={{
+              position: "absolute",
+              left: 17, top: 27, bottom: 20,
+              width: 2,
+              background: "linear-gradient(to bottom, rgba(0,0,0,0.1) 0%, rgba(0,0,0,0.04) 100%)",
+              borderRadius: 1,
+              pointerEvents: "none",
+            }} />
+            {list.map((e, idx, arr) => renderExpenseCard(e, idx, arr))}
+          </div>
         )}
       </div>
 
@@ -5453,93 +5958,96 @@ function ExpensesScreen({
             </div>
           </div>
 
-          {/* Cam maroon summary pill */}
+          {/* Cam summary card — redesigned */}
           {isCam && (
-            <div style={island.pillWrap}>
-              <div style={island.maroonPill}>
-                <div style={{ display: "flex", alignItems: "stretch" }}>
-                  <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 2 }}>
-                    <span style={{ fontSize: 10, opacity: 0.55 }}>Still owe</span>
-                    <span style={{ fontSize: 18, fontWeight: 900, letterSpacing: -0.5, color: "#ffb3b3" }}>
+            <div style={{ padding: "0 12px 12px" }}>
+              <div style={{
+                background: "linear-gradient(145deg, #00253A 0%, #1A4D6B 100%)",
+                borderRadius: 20,
+                padding: "16px 16px 0",
+                boxShadow: "0 10px 30px rgba(0,37,58,0.28)",
+                overflow: "hidden",
+              }}>
+                {/* Top stat row */}
+                <div style={{ display: "flex", gap: 10, marginBottom: 14 }}>
+                  {/* Still Owe */}
+                  <div style={{ flex: 1, background: "rgba(255,255,255,0.07)", borderRadius: 14, padding: "12px 14px" }}>
+                    <p style={{ margin: "0 0 4px", fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.45)", textTransform: "uppercase", letterSpacing: 0.6 }}>Still Owe</p>
+                    <p style={{ margin: 0, fontSize: 24, fontWeight: 900, letterSpacing: -0.8, color: "#FFB3B3", lineHeight: 1 }}>
                       ${camChargeSummary.totalOwed.toFixed(2)}
-                    </span>
+                    </p>
                   </div>
-
-                  <div style={{ width: 1, background: "rgba(255,255,255,0.15)", margin: "0 12px" }} />
-
-                  <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 2 }}>
-                    <span style={{ fontSize: 10, opacity: 0.55 }}>Paid so far</span>
-                    <span style={{ fontSize: 18, fontWeight: 900, letterSpacing: -0.5, color: "#a8efc4" }}>
+                  {/* Paid So Far */}
+                  <div style={{ flex: 1, background: "rgba(255,255,255,0.07)", borderRadius: 14, padding: "12px 14px" }}>
+                    <p style={{ margin: "0 0 4px", fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.45)", textTransform: "uppercase", letterSpacing: 0.6 }}>Paid So Far</p>
+                    <p style={{ margin: 0, fontSize: 24, fontWeight: 900, letterSpacing: -0.8, color: "#A8EFC4", lineHeight: 1 }}>
                       ${camChargeSummary.totalPaid.toFixed(2)}
-                    </span>
-                  </div>
-
-                  <div style={{ width: 1, background: "rgba(255,255,255,0.15)", margin: "0 12px" }} />
-
-                  <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 2 }}>
-                    <span style={{ fontSize: 10, opacity: 0.55 }}>Overdue</span>
-                    <span
-                      style={{
-                        fontSize: 18,
-                        fontWeight: 900,
-                        letterSpacing: -0.5,
-                        color: camChargeSummary.overdueCount > 0 ? "#ffb3b3" : "#a8efc4",
-                      }}
-                    >
-                      {camChargeSummary.overdueCount}
-                    </span>
+                    </p>
                   </div>
                 </div>
 
-                <div style={{ marginTop: 12 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
-                    <span style={{ fontSize: 10, color: "rgba(255,255,255,0.55)" }}>Overall progress</span>
-                    <span style={{ fontSize: 10, color: "rgba(255,255,255,0.85)", fontWeight: 800 }}>
-                      {camChargePct}% cleared
-                    </span>
+                {/* Progress bar + footer row */}
+                <div style={{ margin: "0 -16px", background: "rgba(0,0,0,0.25)", padding: "10px 16px 12px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", fontWeight: 600 }}>{camChargePct}% cleared</span>
+                      {camChargeSummary.overdueCount > 0 && (
+                        <span style={{ fontSize: 10, fontWeight: 800, background: "rgba(224,92,110,0.25)", color: "#FFB3B3", borderRadius: 6, padding: "2px 8px" }}>
+                          {camChargeSummary.overdueCount} overdue
+                        </span>
+                      )}
+                    </div>
+                    {camChargeSummary.totalOwed > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => typeof onLogPaymentForKey === "function" && onLogPaymentForKey("general", camChargeSummary.totalOwed)}
+                        style={{ background: "linear-gradient(135deg, #E05C6E, #C0485A)", border: "none", borderRadius: 10, padding: "6px 14px", fontSize: 12, fontWeight: 800, color: "#fff", cursor: "pointer", letterSpacing: 0.2 }}
+                      >
+                        Pay Now →
+                      </button>
+                    )}
                   </div>
-
-                  <div style={{ background: "rgba(255,255,255,0.15)", borderRadius: 6, height: 7, overflow: "hidden" }}>
-                    <div
-                      style={{
-                        height: "100%",
-                        borderRadius: 6,
-                        background: "#a8efc4",
-                        width: `${camChargePct}%`,
-                        transition: "width 0.4s",
-                      }}
-                    />
+                  <div style={{ background: "rgba(255,255,255,0.12)", borderRadius: 6, height: 6, overflow: "hidden" }}>
+                    <div style={{ height: "100%", borderRadius: 6, background: "linear-gradient(90deg, #A8EFC4, #4DBF88)", width: `${camChargePct}%`, transition: "width 0.5s ease" }} />
                   </div>
                 </div>
               </div>
             </div>
           )}
 
-          {/* ★ CHANGE 3: Cam gets "Plans" chip, Emma doesn't */}
+          {/* Filter chips */}
           {!search.searchActive && (
             <div style={{ ...island.filterRow, WebkitOverflowScrolling: "touch", scrollbarWidth: "none", msOverflowStyle: "none" }}>
               {(isCam
-                ? [["all","All"],["unpaid","Unpaid"],["overdue","Overdue"],["installments","Plans"],["paid","Paid"]]
-                : [["all","All"],["unpaid","Unpaid"],["overdue","Overdue"],["paid","Paid"]]
-              ).map(([val, label]) => {
+                ? [["all","All","#7A9BB5"],["unpaid","Unpaid","#E8A0B0"],["overdue","Overdue","#E05C6E"],["installments","Plans","#5B6EBD"],["paid","Paid","#4E8040"]]
+                : [["all","All","#7A9BB5"],["unpaid","Unpaid","#E8A0B0"],["overdue","Overdue","#E05C6E"],["paid","Paid","#4E8040"]]
+              ).map(([val, label, accentColor]) => {
                 const isActive = statusFilter === val;
-                const isOverdue = val === "overdue";
                 return (
                   <button
                     key={val}
                     type="button"
-                    className={isActive ? "lg-chip-active" : ""}
                     onClick={() => setStatusFilter(val)}
                     style={{
-                      ...island.chip,
-                      transition: "background 0.22s ease, color 0.22s ease, border-color 0.22s ease, transform 0.1s ease",
-                      ...(isActive ? {
-                        ...island.chipActive,
-                        ...(isOverdue ? { background: "#E05C6E", borderColor: "#E05C6E", color: "#fff" } : {}),
-                        transform: "scale(1.04)",
-                      } : {}),
+                      flexShrink: 0,
+                      display: "flex", alignItems: "center", gap: 5,
+                      padding: "8px 16px",
+                      borderRadius: 999,
+                      border: isActive ? "none" : "1.5px solid #E8E0D5",
+                      background: isActive ? accentColor : "#fff",
+                      fontSize: 13,
+                      fontWeight: 800,
+                      color: isActive ? "#fff" : "#999",
+                      cursor: "pointer",
+                      whiteSpace: "nowrap",
+                      transition: "all 0.2s ease",
+                      transform: isActive ? "scale(1.05)" : "scale(1)",
+                      boxShadow: isActive ? `0 4px 12px ${accentColor}55` : "none",
                     }}
                   >
+                    {!isActive && (
+                      <span style={{ width: 6, height: 6, borderRadius: "50%", background: accentColor, flexShrink: 0 }} />
+                    )}
                     {label}
                   </button>
                 );
@@ -5547,43 +6055,37 @@ function ExpensesScreen({
             </div>
           )}
 
-          {/* Sort row */}
+          {/* Sort dropdown */}
           {!search.searchActive && (
             <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 12px 10px" }}>
               <span style={{ fontSize: 11, fontWeight: 700, color: "#AAA", textTransform: "uppercase", letterSpacing: 0.5, flexShrink: 0 }}>Sort</span>
-              <div style={{ display: "flex", gap: 6, overflowX: "auto", WebkitOverflowScrolling: "touch", scrollbarWidth: "none", msOverflowStyle: "none" }}>
-                {[
-                  ["newest",     "Newest"],
-                  ["oldest",     "Oldest"],
-                  ["amount",     "Highest $"],
-                  ["dueDate",    "Due Date"],
-                  ["unpaidFirst","Unpaid First"],
-                ].map(([val, label]) => (
-                  <button
-                    key={val}
-                    type="button"
-                    className={sortBy === val ? "lg-chip-active" : ""}
-                    onClick={() => setSortBy(val)}
-                    style={{
-                      flexShrink: 0,
-                      padding: "4px 12px",
-                      borderRadius: 999,
-                      border: "1.5px solid",
-                      borderColor: sortBy === val ? (isCam ? "#E05C6E" : "#00314B") : "#DDD5C5",
-                      background: sortBy === val ? (isCam ? "#FFF0F0" : "#EDE7DC") : "transparent",
-                      color: sortBy === val ? (isCam ? "#E05C6E" : "#00314B") : "#AAA",
-                      fontWeight: sortBy === val ? 700 : 500,
-                      fontSize: 11,
-                      cursor: "pointer",
-                      whiteSpace: "nowrap",
-                      transition: "background 0.22s ease, color 0.22s ease, border-color 0.22s ease, transform 0.1s ease",
-                      transform: sortBy === val ? "scale(1.05)" : "scale(1)",
-                      fontFamily: "inherit",
-                    }}
-                  >
-                    {label}
-                  </button>
-                ))}
+              <div style={{ position: "relative", display: "inline-flex", alignItems: "center" }}>
+                <select
+                  value={sortBy}
+                  onChange={(ev) => setSortBy(ev.target.value)}
+                  style={{
+                    appearance: "none", WebkitAppearance: "none",
+                    paddingLeft: 10, paddingRight: 26, paddingTop: 5, paddingBottom: 5,
+                    borderRadius: 10,
+                    border: "1.5px solid #E0D8CF",
+                    background: "#F5F1EB",
+                    color: isCam ? "#7A1C3E" : "#00314B",
+                    fontSize: 12,
+                    fontWeight: 700,
+                    fontFamily: "inherit",
+                    cursor: "pointer",
+                    outline: "none",
+                  }}
+                >
+                  <option value="newest">Newest</option>
+                  <option value="oldest">Oldest</option>
+                  <option value="amount">Highest $</option>
+                  <option value="dueDate">Due Date</option>
+                  <option value="unpaidFirst">Unpaid First</option>
+                </select>
+                <span style={{ position: "absolute", right: 8, pointerEvents: "none", display: "flex", alignItems: "center" }}>
+                  <Icon path={icons.chevronDown} size={12} color={isCam ? "#7A1C3E" : "#00314B"} />
+                </span>
               </div>
             </div>
           )}
@@ -5653,12 +6155,24 @@ function ExpensesScreen({
           {/* ── Mandatory section — always pinned at top ── */}
           {!searchOpen && pinnedMandatoryGrouped.length > 0 && (
             <>
-              <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "18px 4px 10px" }}>
-                <div style={{ width: 10, height: 10, borderRadius: 3, background: "linear-gradient(135deg, #E05C6E, #C0485A)", flexShrink: 0 }} />
-                <span style={{ fontSize: 12, fontWeight: 900, color: "#C0485A", textTransform: "uppercase", letterSpacing: 1 }}>Mandatory</span>
-                <div style={{ background: "#FFF0F2", border: "1px solid #F5C4CD", borderRadius: 20, padding: "2px 8px", fontSize: 11, fontWeight: 800, color: "#C0485A" }}>{pinnedMandatoryGrouped.length}</div>
-                <div style={{ flex: 1, height: 1, background: "linear-gradient(to right, #F5C4CD, transparent)" }} />
-              </div>
+              {(() => {
+                const mandatoryTotal = pinnedMandatoryGrouped.reduce((sum, item) => {
+                  const items = item._isGroup ? item.items : [item];
+                  return sum + items.reduce((s, e) => {
+                    const share = e.split === "cam" ? Number(e.amount||0) : e.split === "split" ? Number(e.amount||0)/2 : e.split === "ella" ? -Number(e.amount||0) : Number(e.amount||0);
+                    return s + (isCam ? Math.abs(share) : Number(e.amount||0));
+                  }, 0);
+                }, 0);
+                return (
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "18px 4px 10px" }}>
+                    <div style={{ width: 10, height: 10, borderRadius: 3, background: "linear-gradient(135deg, #E05C6E, #C0485A)", flexShrink: 0 }} />
+                    <span style={{ fontSize: 12, fontWeight: 900, color: "#C0485A", textTransform: "uppercase", letterSpacing: 1 }}>Mandatory</span>
+                    <div style={{ background: "#FFF0F2", border: "1px solid #F5C4CD", borderRadius: 20, padding: "2px 8px", fontSize: 11, fontWeight: 800, color: "#C0485A" }}>{pinnedMandatoryGrouped.length}</div>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: "#C0485A", opacity: 0.7 }}>${mandatoryTotal.toFixed(2)}</span>
+                    <div style={{ flex: 1, height: 1, background: "linear-gradient(to right, #F5C4CD, transparent)" }} />
+                  </div>
+                );
+              })()}
               {pinnedMandatoryGrouped.map((item, i) => (
                 <motion.div
                   key={item._isGroup ? `grp:${item.gid}` : item.id}
@@ -5679,14 +6193,24 @@ function ExpensesScreen({
           {/* ── Regular section ── */}
           {(searchOpen ? listToRender : regularGroupedList).length > 0 && (
             <>
-              {!searchOpen && pinnedMandatoryGrouped.length > 0 && (
-                <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "18px 4px 10px" }}>
-                  <div style={{ width: 10, height: 10, borderRadius: 3, background: "linear-gradient(135deg, #00314B, #1B4D6B)", flexShrink: 0 }} />
-                  <span style={{ fontSize: 12, fontWeight: 900, color: "#00314B", textTransform: "uppercase", letterSpacing: 1 }}>Expenses</span>
-                  <div style={{ background: "#E8F0F5", border: "1px solid #B8CDD8", borderRadius: 20, padding: "2px 8px", fontSize: 11, fontWeight: 800, color: "#00314B" }}>{regularGroupedList.length}</div>
-                  <div style={{ flex: 1, height: 1, background: "linear-gradient(to right, #B8CDD8, transparent)" }} />
-                </div>
-              )}
+              {!searchOpen && pinnedMandatoryGrouped.length > 0 && (() => {
+                const regularTotal = regularGroupedList.reduce((sum, item) => {
+                  const items = item._isGroup ? item.items : [item];
+                  return sum + items.reduce((s, e) => {
+                    const share = e.split === "cam" ? Number(e.amount||0) : e.split === "split" ? Number(e.amount||0)/2 : e.split === "ella" ? -Number(e.amount||0) : Number(e.amount||0);
+                    return s + (isCam ? Math.abs(share) : Number(e.amount||0));
+                  }, 0);
+                }, 0);
+                return (
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "18px 4px 10px" }}>
+                    <div style={{ width: 10, height: 10, borderRadius: 3, background: "linear-gradient(135deg, #00314B, #1B4D6B)", flexShrink: 0 }} />
+                    <span style={{ fontSize: 12, fontWeight: 900, color: "#00314B", textTransform: "uppercase", letterSpacing: 1 }}>Expenses</span>
+                    <div style={{ background: "#E8F0F5", border: "1px solid #B8CDD8", borderRadius: 20, padding: "2px 8px", fontSize: 11, fontWeight: 800, color: "#00314B" }}>{regularGroupedList.length}</div>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: "#00314B", opacity: 0.6 }}>${regularTotal.toFixed(2)}</span>
+                    <div style={{ flex: 1, height: 1, background: "linear-gradient(to right, #B8CDD8, transparent)" }} />
+                  </div>
+                );
+              })()}
               {(searchOpen ? listToRender : regularGroupedList).map((item, i) => (
                 <motion.div
                   key={item._isGroup ? `grp:${item.gid}` : item.id}
@@ -5710,7 +6234,47 @@ function ExpensesScreen({
         </div>
       )}
 
-      <div style={{ height: 80 }} />
+      {/* ── Total summary card (scrolls with content) ── */}
+      {(() => {
+        const footerList = searchOpen ? listToRender : [...pinnedMandatoryGrouped, ...regularGroupedList];
+        const footerTotal = footerList.reduce((sum, item) => {
+          const items = item._isGroup ? item.items : [item];
+          return sum + items.reduce((s, e) => {
+            const share = e.split === "cam" ? Number(e.amount||0) : e.split === "split" ? Number(e.amount||0)/2 : e.split === "ella" ? -Number(e.amount||0) : Number(e.amount||0);
+            return s + (isCam ? Math.abs(share) : Number(e.amount||0));
+          }, 0);
+        }, 0);
+        const footerCount = footerList.reduce((n, item) => n + (item._isGroup ? item.items.length : 1), 0);
+        if (footerCount === 0) return null;
+        const unpaidCount = (searchOpen ? listToRender : combinedFiltered).filter(e => e.status !== "paid").length;
+        return (
+          <div style={{
+            margin: "12px 16px 0",
+            background: isCam ? "linear-gradient(135deg, #00253A, #1A4D6B)" : "linear-gradient(135deg, #00314B, #1B5C80)",
+            borderRadius: 20,
+            padding: "14px 18px",
+            display: "flex", alignItems: "center", justifyContent: "space-between",
+            boxShadow: "0 6px 20px rgba(0,0,0,0.15)",
+          }}>
+            <div>
+              <p style={{ margin: 0, fontSize: 11, color: "rgba(255,255,255,0.5)", fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.6 }}>
+                {statusFilter === "all" ? "All" : statusFilter === "unpaid" ? "Unpaid" : statusFilter === "overdue" ? "Overdue" : statusFilter === "paid" ? "Paid" : "Plans"} · {footerCount} item{footerCount !== 1 ? "s" : ""}
+              </p>
+              <p style={{ margin: "2px 0 0", fontSize: 24, fontWeight: 900, color: "#fff", letterSpacing: -0.8, lineHeight: 1 }}>
+                ${footerTotal.toFixed(2)}
+              </p>
+            </div>
+            {unpaidCount > 0 && (
+              <div style={{ textAlign: "right" }}>
+                <p style={{ margin: 0, fontSize: 10, color: "rgba(255,255,255,0.45)", fontWeight: 600 }}>unpaid</p>
+                <p style={{ margin: "2px 0 0", fontSize: 22, fontWeight: 900, color: "#FFB3B3", letterSpacing: -0.4, lineHeight: 1 }}>{unpaidCount}</p>
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+      <div style={{ height: 100 }} />
 
       {quickAddOpen && (
         <QuickAddModal
@@ -5785,10 +6349,10 @@ function HistoryScreen({ expenses, payments, user, targets = [], onBack, onConfi
     return null;
   }
 
-  const hRow = (label, value, mono = false) => (
+  const hRow = (label, value, mono = false, light = false) => (
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
-      <span style={{ fontSize: 12, color: "#AAA", fontWeight: 600, flexShrink: 0 }}>{label}</span>
-      <span style={{ fontSize: 12, fontWeight: 700, color: "#1A1A1A", textAlign: "right", fontFamily: mono ? "monospace" : "inherit" }}>{value}</span>
+      <span style={{ fontSize: 12, color: light ? "#888" : "rgba(255,255,255,0.55)", fontWeight: 600, flexShrink: 0 }}>{label}</span>
+      <span style={{ fontSize: 12, fontWeight: 700, color: light ? "#1A1A2E" : "#fff", textAlign: "right", fontFamily: mono ? "monospace" : "inherit" }}>{value}</span>
     </div>
   );
 
@@ -5880,11 +6444,18 @@ function HistoryScreen({ expenses, payments, user, targets = [], onBack, onConfi
           if (d >= yesterday) return "Yesterday";
           return d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: d.getFullYear() !== today.getFullYear() ? "numeric" : undefined });
         }
+        let globalIdx = 0;
         return groups.map((group, gi) => (
-          <div key={group.date} style={{ margin: "0 16px", marginBottom: gi === groups.length - 1 ? 0 : 4 }}>
+          <motion.div
+            key={group.date}
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: gi * 0.07, type: "spring", stiffness: 340, damping: 28 }}
+            style={{ margin: "0 16px", marginBottom: gi === groups.length - 1 ? 0 : 4 }}
+          >
             {/* Date header */}
             <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "16px 0 10px" }}>
-              <span style={{ fontSize: 12, fontWeight: 800, color: "#AAA", textTransform: "uppercase", letterSpacing: 0.8, whiteSpace: "nowrap" }}>{dateLabel(group.date)}</span>
+              <span style={{ fontSize: 11, fontWeight: 800, color: "#888", background: "#E8E8EE", borderRadius: 20, padding: "3px 12px", whiteSpace: "nowrap", letterSpacing: 0.3 }}>{dateLabel(group.date)}</span>
               <div style={{ flex: 1, height: 1, background: "#EBEBF0" }} />
             </div>
             {/* Timeline items */}
@@ -5893,6 +6464,7 @@ function HistoryScreen({ expenses, payments, user, targets = [], onBack, onConfi
                 const rowId = item._kind === "payment" ? item.id : `exp-${item.id}`;
                 const isOpen = expandedId === rowId;
                 const isLastInGroup = ii === group.items.length - 1;
+                const itemDelay = gi * 0.07 + ii * 0.05;
 
                 if (item._kind === "payment") {
             const isConfirmed = item.confirmed;
@@ -5901,33 +6473,44 @@ function HistoryScreen({ expenses, payments, user, targets = [], onBack, onConfi
             const lbl = paymentTargetLabel(item);
             const rExp = relatedExpense(item);
 
-            const iconBg = isDispute ? "#FFF0F4" : isConfirmed ? "#E8F5EE" : isRejected ? "#FFF0F0" : "#FFF8E8";
-            const iconColor = isDispute ? "#C0485A" : isConfirmed ? "#2D7A50" : isRejected ? "#E05C6E" : "#C8A020";
-            const iconPath = isDispute ? icons.flag : isRejected ? icons.x : isConfirmed ? icons.chevronDown : icons.clock;
+            // Method-based icon colors
+            const methodColors = { Zelle: { bg: "#F0EBF8", color: "#6B2FBF" }, "Cash App": { bg: "#E6FAF0", color: "#00A82A" }, Venmo: { bg: "#E6F2FB", color: "#3D95CE" }, "Apple Pay": { bg: "#F0F0F0", color: "#1A1A1A" }, Cash: { bg: "#EBF5E8", color: "#4A8040" } };
+            const mc = methodColors[item.method] || { bg: "#FFF8E8", color: "#C8A020" };
+            const iconBg = isDispute ? "#FFF0F4" : isRejected ? "#FFF0F0" : isConfirmed ? (methodColors[item.method]?.bg || "#E8F5EE") : mc.bg;
+            const iconColor = isDispute ? "#C0485A" : isRejected ? "#E05C6E" : isConfirmed ? (methodColors[item.method]?.color || "#2D7A50") : mc.color;
+            const iconPath = isDispute ? icons.flag : isRejected ? icons.x : isConfirmed ? icons.check : icons.clock;
             const amtColor = isDispute ? "#C0485A" : isConfirmed ? "#2D7A50" : isRejected ? "#E05C6E" : "#C8A020";
             const statusLabel = isDispute
               ? (item.resolution === "accepted" ? "resolved" : item.resolution === "denied" ? "declined" : "disputed")
               : isConfirmed ? "confirmed" : isRejected ? "returned" : "pending";
 
             return (
-              <div key={rowId}>
+              <motion.div
+                key={rowId}
+                initial={{ opacity: 0, x: -14 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: itemDelay, type: "spring", stiffness: 340, damping: 28 }}
+              >
                 <div
                   role="button"
                   onClick={() => setExpandedId(isOpen ? null : rowId)}
                   style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 16px", cursor: "pointer", borderBottom: isLastInGroup && !isOpen ? "none" : "1px solid #F2F2F5" }}
                 >
-                  <div style={{ width: 44, height: 44, borderRadius: 14, background: iconBg, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <div style={{ width: 46, height: 46, borderRadius: 16, background: iconBg, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, boxShadow: `0 2px 8px ${iconColor}22` }}>
                     <Icon path={iconPath} size={20} color={iconColor} />
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <p style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "#1A1A2E", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    <p style={{ margin: 0, fontSize: 15, fontWeight: 800, color: "#1A1A2E", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {isDispute ? `Dispute — ${item.disputeDescription || "charge"}` : `${item.method} Payment`}
                     </p>
-                    <p style={{ margin: "2px 0 0", fontSize: 12, color: amtColor, fontWeight: 600, textTransform: "capitalize" }}>{statusLabel}</p>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: "#fff", background: amtColor, borderRadius: 6, padding: "1px 7px", textTransform: "capitalize" }}>{statusLabel}</span>
+                      {lbl && <span style={{ fontSize: 11, color: "#BBB", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{lbl}</span>}
+                    </div>
                   </div>
                   <div style={{ textAlign: "right", flexShrink: 0 }}>
                     {!isDispute && (
-                      <p style={{ margin: 0, fontSize: 15, fontWeight: 800, color: amtColor }}>
+                      <p style={{ margin: 0, fontSize: isConfirmed ? 20 : 16, fontWeight: 900, color: amtColor, letterSpacing: -0.5 }}>
                         {isConfirmed ? "+" : "−"}${Number(item.amount || 0).toFixed(2)}
                       </p>
                     )}
@@ -5935,24 +6518,29 @@ function HistoryScreen({ expenses, payments, user, targets = [], onBack, onConfi
                   </div>
                 </div>
 
-                {isOpen && (
+                <motion.div
+                    initial={false}
+                    animate={{ height: isOpen ? "auto" : 0, opacity: isOpen ? 1 : 0 }}
+                    transition={{ type: "tween", duration: 0.28, ease: [0.25, 0.46, 0.45, 0.94] }}
+                    style={{ overflow: "hidden" }}
+                  >
                   <div style={{ padding: "0 16px 16px", display: "flex", flexDirection: "column", gap: 10, borderBottom: isLastInGroup ? "none" : "1px solid #F2F2F5" }}>
-                    <div style={{ background: isDispute ? "#FFF7F8" : "#F8F8FB", borderRadius: 14, padding: 14, display: "flex", flexDirection: "column", gap: 9 }}>
+                    <div style={{ background: isDispute ? "linear-gradient(145deg, #2A0810, #4A1020)" : isConfirmed ? "linear-gradient(145deg, #061A10, #0D3020)" : isRejected ? "linear-gradient(145deg, #2A0808, #4A1010)" : "linear-gradient(145deg, #1A1408, #2E2410)", borderRadius: 16, padding: 14, display: "flex", flexDirection: "column", gap: 9 }}>
                       {isDispute ? (
                         <>
                           {item.disputeDescription && hRow("Charge", item.disputeDescription)}
                           {item.disputeReason && (
-                            <div style={{ paddingTop: item.disputeDescription ? 6 : 0, borderTop: item.disputeDescription ? "1px solid #F0E0E4" : "none" }}>
-                              <p style={{ margin: "0 0 3px", fontSize: 10, fontWeight: 800, color: "#C0485A", textTransform: "uppercase", letterSpacing: 0.5 }}>Reason</p>
-                              <p style={{ margin: 0, fontSize: 12, color: "#555", lineHeight: 1.5 }}>"{item.disputeReason}"</p>
+                            <div style={{ paddingTop: item.disputeDescription ? 6 : 0, borderTop: item.disputeDescription ? "1px solid rgba(255,255,255,0.08)" : "none" }}>
+                              <p style={{ margin: "0 0 3px", fontSize: 10, fontWeight: 800, color: "#FF8090", textTransform: "uppercase", letterSpacing: 0.5 }}>Reason</p>
+                              <p style={{ margin: 0, fontSize: 12, color: "rgba(255,255,255,0.65)", lineHeight: 1.5 }}>"{item.disputeReason}"</p>
                             </div>
                           )}
                           {hRow("Date", formatHistoryDate(item.date))}
                           {hRow("Status", statusLabel.charAt(0).toUpperCase() + statusLabel.slice(1))}
                           {item.resolution === "denied" && item.declineReason && (
-                            <div style={{ paddingTop: 6, borderTop: "1px solid #F0E0E4" }}>
+                            <div style={{ paddingTop: 6, borderTop: "1px solid rgba(255,255,255,0.08)" }}>
                               <p style={{ margin: "0 0 3px", fontSize: 10, fontWeight: 800, color: "#E07A20", textTransform: "uppercase", letterSpacing: 0.5 }}>Response</p>
-                              <p style={{ margin: 0, fontSize: 12, color: "#555", fontStyle: "italic" }}>"{item.declineReason}"</p>
+                              <p style={{ margin: 0, fontSize: 12, color: "rgba(255,255,255,0.6)", fontStyle: "italic" }}>"{item.declineReason}"</p>
                             </div>
                           )}
                         </>
@@ -5964,17 +6552,17 @@ function HistoryScreen({ expenses, payments, user, targets = [], onBack, onConfi
                           {lbl && hRow("Applied to", lbl)}
                           {item.note && hRow("Note", `"${item.note}"`)}
                           {isRejected && item.rejectionReason && (
-                            <div style={{ paddingTop: 8, borderTop: "1px solid #EEE" }}>
+                            <div style={{ paddingTop: 8, borderTop: "1px solid rgba(255,255,255,0.08)" }}>
                               <p style={{ margin: "0 0 3px", fontSize: 10, fontWeight: 800, color: "#E07A20", textTransform: "uppercase", letterSpacing: 0.5 }}>Emmanuella's note</p>
-                              <p style={{ margin: 0, fontSize: 12, color: "#555", fontStyle: "italic" }}>"{item.rejectionReason}"</p>
+                              <p style={{ margin: 0, fontSize: 12, color: "rgba(255,255,255,0.6)", fontStyle: "italic" }}>"{item.rejectionReason}"</p>
                             </div>
                           )}
                         </>
                       )}
                     </div>
                     {rExp && (
-                      <div style={{ background: "#F8F8FB", borderRadius: 14, padding: 14, display: "flex", flexDirection: "column", gap: 9 }}>
-                        <p style={{ margin: "0 0 6px", fontSize: 10, fontWeight: 800, color: "#AAA", textTransform: "uppercase", letterSpacing: 0.5 }}>Related Expense</p>
+                      <div style={{ background: "rgba(255,255,255,0.07)", borderRadius: 14, padding: 14, display: "flex", flexDirection: "column", gap: 9 }}>
+                        <p style={{ margin: "0 0 6px", fontSize: 10, fontWeight: 800, color: "rgba(255,255,255,0.35)", textTransform: "uppercase", letterSpacing: 0.5 }}>Related Expense</p>
                         {hRow(rExp.description, `$${Number(rExp.amount || 0).toFixed(2)}`)}
                         {rExp.split && hRow("Split", splitLabel(rExp.split))}
                         {rExp.status && hRow("Status", rExp.status === "paid" ? "Paid" : "Unpaid")}
@@ -6001,8 +6589,8 @@ function HistoryScreen({ expenses, payments, user, targets = [], onBack, onConfi
                       </div>
                     )}
                   </div>
-                )}
-              </div>
+                </motion.div>
+            </motion.div>
             );
           }
 
@@ -6011,7 +6599,12 @@ function HistoryScreen({ expenses, payments, user, targets = [], onBack, onConfi
           const isPaid = item.status === "paid";
 
           return (
-            <div key={rowId}>
+            <motion.div
+              key={rowId}
+              initial={{ opacity: 0, x: -14 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: itemDelay, type: "spring", stiffness: 340, damping: 28 }}
+            >
               <div
                 role="button"
                 onClick={() => setExpandedId(isOpen ? null : rowId)}
@@ -6036,18 +6629,23 @@ function HistoryScreen({ expenses, payments, user, targets = [], onBack, onConfi
                 </div>
               </div>
 
-              {isOpen && (
+              <motion.div
+                initial={false}
+                animate={{ height: isOpen ? "auto" : 0, opacity: isOpen ? 1 : 0 }}
+                transition={{ type: "tween", duration: 0.28, ease: [0.25, 0.46, 0.45, 0.94] }}
+                style={{ overflow: "hidden" }}
+              >
                 <div style={{ padding: "0 16px 16px", display: "flex", flexDirection: "column", gap: 10, borderBottom: isLastInGroup ? "none" : "1px solid #F2F2F5" }}>
                   <div style={{ background: "#F8F8FB", borderRadius: 14, padding: 14, display: "flex", flexDirection: "column", gap: 9 }}>
-                    {hRow("Full amount", `$${Number(item.amount || 0).toFixed(2)}`)}
-                    {item.split && hRow("Split", splitLabel(item.split))}
-                    {item.category && hRow("Category", item.category)}
-                    {item.account && hRow("Charged to", item.account)}
-                    {item.recurring && item.recurring !== "none" && hRow("Recurring", item.recurring)}
-                    {(item.dueDate || item.nextDue) && hRow("Due date", formatShortDate(item.dueDate || item.nextDue))}
-                    {item.referenceNum && hRow("Ref #", item.referenceNum, true)}
-                    {item.note && hRow("Note", `"${item.note}"`)}
-                    {hRow("Status", isPaid ? "Paid ✓" : "Unpaid")}
+                    {hRow("Full amount", `$${Number(item.amount || 0).toFixed(2)}`, false, true)}
+                    {item.split && hRow("Split", splitLabel(item.split), false, true)}
+                    {item.category && hRow("Category", item.category, false, true)}
+                    {item.account && hRow("Charged to", item.account, false, true)}
+                    {item.recurring && item.recurring !== "none" && hRow("Recurring", item.recurring, false, true)}
+                    {(item.dueDate || item.nextDue) && hRow("Due date", formatShortDate(item.dueDate || item.nextDue), false, true)}
+                    {item.referenceNum && hRow("Ref #", item.referenceNum, true, true)}
+                    {item.note && hRow("Note", `"${item.note}"`, false, true)}
+                    {hRow("Status", isPaid ? "Paid ✓" : "Unpaid", false, true)}
                   </div>
                   {isPaid && user === "emma" && typeof onDeleteExpense === "function" && (
                     <button
@@ -6058,12 +6656,12 @@ function HistoryScreen({ expenses, payments, user, targets = [], onBack, onConfi
                     </button>
                   )}
                 </div>
-              )}
-            </div>
+              </motion.div>
+            </motion.div>
           );
               })}
             </div>
-          </div>
+          </motion.div>
         ));
       })()}
       <div style={{ height: 80 }} />
@@ -6455,7 +7053,7 @@ function ExpandableExpenseRow({ expense: e, user, onDelete, onEdit, onMarkPaid, 
       <div style={{
         position: "absolute",
         left: 0, top: 0, bottom: 0,
-        width: 4,
+        width: 6,
         borderRadius: "20px 0 0 20px",
         background: e.status === "paid"
           ? "linear-gradient(180deg, #A6B49E, #4E635E)"
@@ -6469,7 +7067,7 @@ function ExpandableExpenseRow({ expense: e, user, onDelete, onEdit, onMarkPaid, 
       }} />
 
       <div
-        style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 14px 14px 18px", cursor: "pointer" }}
+        style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 14px 14px 20px", cursor: "pointer" }}
         onClick={() => { if (e._deleting || e._marking) return; setExpanded(o => !o); }}
         role="button"
       >
@@ -6521,17 +7119,22 @@ function ExpandableExpenseRow({ expense: e, user, onDelete, onEdit, onMarkPaid, 
 
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
-            <p style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "#1A1A2E", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
-              {e.description}
-            </p>
-            <p style={{ margin: 0, fontSize: 16, fontWeight: 800, color: "#1A1A2E", flexShrink: 0, letterSpacing: -0.3 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <p style={{ margin: "0 0 2px", fontSize: 13, fontWeight: 600, color: "#9AA0B0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {isCam ? `${e.account || ""} · ${e.category || ""}` : `${formatShortDate(e.date)} · ${e.account || ""}`}
+              </p>
+              <p style={{ margin: 0, fontSize: 15, fontWeight: 800, color: "#1A1A2E", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {e.description}
+              </p>
+            </div>
+            <p style={{ margin: 0, fontSize: 22, fontWeight: 900, color: "#1A1A2E", flexShrink: 0, letterSpacing: -0.8, lineHeight: 1.1 }}>
               ${Number(isCam ? Math.abs(camShare) : Number(e.amount || 0)).toFixed(2)}
             </p>
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 4, gap: 8 }}>
-            <p style={{ margin: 0, fontSize: 12, color: "#9AA0B0", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {isCam ? `${e.account || ""} · ${e.category || ""}` : `${formatShortDate(e.date)} · ${e.account || ""}`}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", marginTop: 5, gap: 8 }}>
+            <p style={{ margin: 0, fontSize: 12, color: "#9AA0B0", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
+              {""}
             </p>
             <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
               {!isCam && camAmt !== 0 && (
@@ -7219,14 +7822,18 @@ function AddExpenseModal({ onSave, onClose, user }) {
               <button
                 type="button"
                 onClick={() => setShowNotes(p => !p)}
-                style={{ display: "flex", alignItems: "center", gap: 5, background: "none", border: "none", cursor: "pointer", padding: "2px 0", color: showNotes ? "#1B4D6B" : "#BBB" }}
+                style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", background: showNotes ? "#EAF0EE" : "#F0EDE8", border: "none", borderRadius: 12, padding: "10px 13px", cursor: "pointer" }}
               >
-                <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/>
-                  <line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
-                </svg>
-                <span style={{ fontSize: 12, fontWeight: 700 }}>{showNotes ? "Hide details" : "Add details"}</span>
-                <svg width={11} height={11} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" style={{ transform: showNotes ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <div style={{ width: 28, height: 28, borderRadius: 8, background: showNotes ? "#4E635E" : "#D0C8BC", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                    <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/>
+                      <line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
+                    </svg>
+                  </div>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: showNotes ? "#00314B" : "#888" }}>{showNotes ? "Hide details" : "Add note, ref # or receipt"}</span>
+                </div>
+                <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke={showNotes ? "#4E635E" : "#BBB"} strokeWidth={2.5} strokeLinecap="round" style={{ transform: showNotes ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s", flexShrink: 0 }}>
                   <polyline points="6 9 12 15 18 9"/>
                 </svg>
               </button>
@@ -7316,14 +7923,29 @@ function AddExpenseModal({ onSave, onClose, user }) {
           <div style={groupCard}>
             {groupLabel("Who Pays", "#C0485A")}
 
-            <LiquidSegmented
-              options={splitOptions.map(([v, l]) => [v, l])}
-              value={form.split}
-              onChange={(v) => set("split", v)}
-              containerStyle={{ background: "rgba(0,49,75,0.08)" }}
-              activeColor="#00314B"
-              inactiveColor="#888"
-            />
+            <div style={{ display: "flex", gap: 8 }}>
+              {splitOptions.map(([val, label, color]) => {
+                const isActive = form.split === val;
+                return (
+                  <button
+                    key={val}
+                    type="button"
+                    onClick={() => set("split", val)}
+                    style={{
+                      flex: 1, padding: "10px 6px", borderRadius: 14, border: "none",
+                      background: isActive ? color : "#EEE9E0",
+                      color: isActive ? "#fff" : "#888",
+                      fontSize: 12, fontWeight: 800, cursor: "pointer",
+                      boxShadow: isActive ? `0 4px 12px ${color}55` : "none",
+                      transition: "all 0.2s ease",
+                      transform: isActive ? "scale(1.04)" : "scale(1)",
+                    }}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
 
             <div>
               <label style={{ ...styles.fieldLabel, marginBottom: 5 }}>Charged to</label>
@@ -7918,14 +8540,16 @@ function LogPaymentModal({ balance, onSave, onClose, user, targets = [], planSum
             <span style={{ fontSize: 22, fontWeight: 900, color: "#00314B" }}>${Number(initialAmount).toFixed(2)}</span>
           </div>
 
-          <div style={styles.splitRow}>
-            {["Zelle", "Cash App", "Venmo", "Cash", "Apple Pay"].map(m => (
+          <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 4 }}>
+            {[["Zelle","#6B2FBF"],["Cash App","#00A82A"],["Venmo","#3D95CE"],["Cash","#4A8040"],["Apple Pay","#1A1A1A"]].map(([m, color]) => (
               <button key={m} style={{
                 ...styles.splitOption,
-                fontSize: 12,
-                background: form.method === m ? "#A6B49E" : "#EEE9E0",
+                fontSize: 12, flexShrink: 0,
+                background: form.method === m ? color : "#EEE9E0",
                 color: form.method === m ? "#fff" : "#666",
-                fontWeight: form.method === m ? 700 : 400,
+                fontWeight: form.method === m ? 800 : 500,
+                boxShadow: form.method === m ? `0 3px 10px ${color}44` : "none",
+                transition: "all 0.18s ease",
               }} onClick={() => set("method", m)}>{m}</button>
             ))}
           </div>
@@ -7999,47 +8623,66 @@ function LogPaymentModal({ balance, onSave, onClose, user, targets = [], planSum
           )}
 
           <label style={styles.label}>Apply payment to</label>
-          <select
-            style={styles.input}
-            value={form.appliedToKey}
-            onChange={(e) => {
-              const key = e.target.value;
-              set("appliedToKey", key);
-              // If user hasn't typed an amount yet, auto-fill a suggested amount for the selected target.
-              if (!form.amount && targetSummaries && key !== "general") {
-                const s = targetSummaries.get(key);
-                if (s && s.suggested != null) {
-                  const suggested = Math.max(0, Number(s.suggested || 0));
-                  const cap = Math.max(0, Math.abs(Number(s.remaining || 0)));
-                  set("amount", String(Number(Math.min(suggested, cap)).toFixed(2)));
-                }
-              }
-            }}
-          >
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 4 }}>
             {(targets.length ? targets : [{ key: "general", label: "General (not assigned)" }]).map((t) => {
-              const summary =
-                targetSummaries && t.key && t.key !== "general" ? targetSummaries.get(t.key) : null;
-              const remainingText = summary
-                ? ` · $${Number(summary.remaining || 0).toFixed(2)} remaining`
-                : "";
-
+              const summary = targetSummaries && t.key && t.key !== "general" ? targetSummaries.get(t.key) : null;
+              const remaining = summary ? Math.max(0, Number(summary.remaining || 0)) : null;
+              const charged = summary ? Math.max(0, Number(summary.charged || 0)) : null;
+              const pct = charged && remaining != null ? Math.round(((charged - remaining) / charged) * 100) : null;
+              const isSelected = form.appliedToKey === t.key;
               return (
-                <option key={t.key} value={t.key}>
-                  {t.label}{remainingText}
-                </option>
+                <button
+                  key={t.key}
+                  type="button"
+                  onClick={() => {
+                    set("appliedToKey", t.key);
+                    if (!form.amount && summary?.suggested != null) {
+                      const s = Math.max(0, Number(summary.suggested || 0));
+                      const cap = Math.max(0, Math.abs(Number(summary.remaining || 0)));
+                      set("amount", String(Number(Math.min(s, cap)).toFixed(2)));
+                    }
+                  }}
+                  style={{
+                    width: "100%", textAlign: "left", border: "none", cursor: "pointer", borderRadius: 14,
+                    background: isSelected ? "linear-gradient(135deg, #00314B, #1B5C80)" : "#F5F1EB",
+                    padding: "12px 14px",
+                    boxShadow: isSelected ? "0 4px 14px rgba(0,49,75,0.25)" : "none",
+                    transition: "all 0.18s ease",
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                    <span style={{ fontSize: 13, fontWeight: 800, color: isSelected ? "#fff" : "#00314B" }}>{t.label}</span>
+                    {remaining != null && (
+                      <span style={{ fontSize: 13, fontWeight: 900, color: isSelected ? "#A8EFC4" : "#E05C6E" }}>${remaining.toFixed(2)}</span>
+                    )}
+                  </div>
+                  {pct != null && (
+                    <div style={{ marginTop: 8 }}>
+                      <div style={{ background: isSelected ? "rgba(255,255,255,0.15)" : "#E8E0D5", borderRadius: 4, height: 4, overflow: "hidden" }}>
+                        <div style={{ height: "100%", width: `${pct}%`, background: isSelected ? "#A8EFC4" : "#A6B49E", borderRadius: 4, transition: "width 0.4s" }} />
+                      </div>
+                      <span style={{ fontSize: 10, color: isSelected ? "rgba(255,255,255,0.5)" : "#AAA", fontWeight: 600, marginTop: 3, display: "block" }}>{pct}% paid</span>
+                    </div>
+                  )}
+                  {t.key === "general" && !summary && (
+                    <span style={{ fontSize: 11, color: isSelected ? "rgba(255,255,255,0.5)" : "#BBB", fontWeight: 500 }}>Not tied to a specific expense</span>
+                  )}
+                </button>
               );
             })}
-          </select>
+          </div>
 
           <label style={styles.label}>How did you pay?</label>
-          <div style={styles.splitRow}>
-            {["Zelle","Cash App","Venmo","Cash","Apple Pay"].map(m => (
+          <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+            {[["Zelle","#6B2FBF"],["Cash App","#00A82A"],["Venmo","#3D95CE"],["Cash","#4A8040"],["Apple Pay","#1A1A1A"]].map(([m, color]) => (
               <button key={m} style={{
                 ...styles.splitOption,
-                fontSize: 12,
-                background: form.method === m ? "#A6B49E" : "#EEE9E0",
+                fontSize: 12, flexShrink: 0,
+                background: form.method === m ? color : "#EEE9E0",
                 color: form.method === m ? "#fff" : "#666",
-                fontWeight: form.method === m ? 700 : 400,
+                fontWeight: form.method === m ? 800 : 500,
+                boxShadow: form.method === m ? `0 3px 10px ${color}44` : "none",
+                transition: "all 0.18s ease",
               }} onClick={() => set("method", m)}>{m}</button>
             ))}
           </div>
@@ -8419,7 +9062,7 @@ logPayBtn: {
 
 // ── STYLES ────────────────────────────────────────────────────────────
 const styles = {
-  app: { maxWidth: 430, margin: "0 auto", minHeight: "100%", background: "#F5F1EB", position: "relative", fontFamily: "'DM Sans', system-ui, sans-serif", paddingTop: "env(safe-area-inset-top)" },
+  app: { maxWidth: 430, margin: "0 auto", minHeight: "100%", background: "linear-gradient(170deg, #EAF0F6 0%, #F5F1EB 55%, #EDE8E0 100%)", position: "relative", fontFamily: "'DM Sans', system-ui, sans-serif", paddingTop: "env(safe-area-inset-top)" },
   screen: { padding: "0 0 20px" },
 
 typeFilterRow: {
@@ -8513,7 +9156,7 @@ typeFilterChipActive: {
   loginNote: { fontSize: 11, color: "#AAA", margin: 0 },
 
   // Header
-  header: { background: "#fff", padding: "calc(env(safe-area-inset-top, 47px) + 14px) 20px 0", borderBottom: "1px solid #F0EAE0" },
+  header: { background: "rgba(255,255,255,0.72)", backdropFilter: "blur(24px)", WebkitBackdropFilter: "blur(24px)", padding: "calc(env(safe-area-inset-top, 47px) + 16px) 20px 14px", borderBottom: "1px solid rgba(0,0,0,0.06)", boxShadow: "0 1px 12px rgba(0,49,75,0.06)" },
 iconBtn: {
   width: 42,
   height: 42,
@@ -8541,8 +9184,8 @@ iconBtn: {
   searchEmptySub: { margin: "6px 0 0", fontSize: 12, color: "#888" },
   searchEmptyCenter: { textAlign: "center", padding: "60px 20px" },
   searchEmptyEmoji: { fontSize: 48, marginBottom: 12 },
-  headerGreet: { fontSize: 28, fontWeight: 900, color: "#00314B", margin: 0, letterSpacing: -0.5 },
-  headerSub: { fontSize: 12, color: "#AAA", margin: "0 0 14px", fontWeight: 600 },
+  headerGreet: { fontSize: 30, fontWeight: 900, color: "#00314B", margin: 0, letterSpacing: -0.8, lineHeight: 1.1 },
+  headerSub: { fontSize: 11, color: "#A6B7CB", margin: "0 0 6px", fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.8 },
   logoutBtn: { fontSize: 12, color: "#888", background: "rgba(255,255,255,0.7)", border: "none", borderRadius: 20, padding: "6px 14px", cursor: "pointer" },
 
   // Balance Card
