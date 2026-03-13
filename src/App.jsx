@@ -1331,12 +1331,15 @@ function LoginScreen() {
 
   return (
     <div style={{
-      minHeight: "100dvh",
+      position: "fixed",
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
       background: "#0D2818",
       display: "flex",
       flexDirection: "column",
       padding: "calc(env(safe-area-inset-top, 47px) + 44px) 32px calc(env(safe-area-inset-bottom, 20px) + 44px)",
-      position: "relative",
       overflow: "hidden",
       fontFamily: "'DM Sans', system-ui, sans-serif",
     }}>
@@ -2879,15 +2882,35 @@ function DisputeModal({ expense, onSubmit, onClose }) {
 
 // ── CAM QUICK PAY MODAL ───────────────────────────────────────────────
 const PAYMENT_METHODS = ["Zelle", "Venmo", "Cash App", "Cash", "Apple Pay", "Other"];
-const PRESET_AMOUNTS = [20, 50];
+const PRESET_AMOUNTS = [20, 50, 100];
 
 function CamQuickPayModal({ expenses = [], targetSummaries, onSubmit, onClose }) {
   const [step, setStep] = useState("amount"); // "amount" | "target" | "confirm"
-  const [selectedAmt, setSelectedAmt] = useState(null); // 20 | 50 | "custom"
+  const [selectedAmt, setSelectedAmt] = useState(null); // 20 | 50 | 100 | "custom"
   const [customVal, setCustomVal] = useState("");
   const [targetMode, setTargetMode] = useState(null); // "overdue" | "specific"
   const [selectedExpIds, setSelectedExpIds] = useState(new Set());
   const [method, setMethod] = useState("Zelle");
+  const methodTabRefs = useRef([]);
+  const [methodPill, setMethodPill] = useState({ left: 0, width: 0 });
+  const methodContainerRef = useRef(null);
+
+  useEffect(() => {
+    const measure = () => {
+      const idx = PAYMENT_METHODS.indexOf(method);
+      const el = methodTabRefs.current[idx];
+      const container = methodContainerRef.current;
+      if (el && container) {
+        const elRect = el.getBoundingClientRect();
+        const conRect = container.getBoundingClientRect();
+        setMethodPill({ left: elRect.left - conRect.left + container.scrollLeft, width: elRect.width });
+      }
+    };
+    measure();
+    // Retry after paint in case layout isn't ready yet
+    const raf = requestAnimationFrame(measure);
+    return () => cancelAnimationFrame(raf);
+  }, [method, step]);
 
   const finalAmount = selectedAmt === "custom" ? parseFloat(customVal) || 0 : (selectedAmt || 0);
 
@@ -3001,38 +3024,49 @@ function CamQuickPayModal({ expenses = [], targetSummaries, onSubmit, onClose })
 
         {/* ── STEP 1: Amount ── */}
         {step === "amount" && (
-          <div style={{ padding: "0 20px 24px" }}>
-            {/* Preset chips */}
-            <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
-              {PRESET_AMOUNTS.map(amt => (
-                <button key={amt} type="button"
-                  onClick={() => { setSelectedAmt(amt); setCustomVal(""); }}
-                  style={{
-                    flex: 1, padding: "18px 0", borderRadius: 16, border: "2px solid",
-                    borderColor: selectedAmt === amt ? "#00314B" : "#DDD5C5",
-                    background: selectedAmt === amt ? "#00314B" : "#F5F1EB",
-                    color: selectedAmt === amt ? "#fff" : "#00314B",
-                    fontSize: 22, fontWeight: 900, cursor: "pointer", transition: "all 0.15s",
-                  }}>
-                  ${amt}
-                </button>
-              ))}
-              <button type="button"
-                onClick={() => setSelectedAmt("custom")}
-                style={{
-                  flex: 1, padding: "18px 0", borderRadius: 16, border: "2px solid",
-                  borderColor: selectedAmt === "custom" ? "#A6B7CB" : "#DDD5C5",
-                  background: selectedAmt === "custom" ? "#EEE9E0" : "#F5F1EB",
-                  color: selectedAmt === "custom" ? "#A6B7CB" : "#888",
-                  fontSize: 15, fontWeight: 800, cursor: "pointer", transition: "all 0.15s",
-                }}>
-                Custom
-              </button>
+          <div style={{ padding: "0 20px 28px" }}>
+
+            {/* Preset amount cards — 3 across */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: 12 }}>
+              {PRESET_AMOUNTS.map(amt => {
+                const sel = selectedAmt === amt;
+                return (
+                  <motion.button key={amt} type="button"
+                    whileTap={{ scale: 0.94 }}
+                    onClick={() => { setSelectedAmt(amt); setCustomVal(""); }}
+                    style={{
+                      padding: "22px 0", borderRadius: 18, border: "none",
+                      background: sel ? "linear-gradient(145deg, #00314B, #1B5C80)" : "#F5F1EB",
+                      color: sel ? "#fff" : "#00314B",
+                      fontSize: 26, fontWeight: 900, cursor: "pointer",
+                      boxShadow: sel ? "0 6px 18px rgba(0,49,75,0.28)" : "0 2px 6px rgba(0,0,0,0.06)",
+                      transition: "background 0.18s, box-shadow 0.18s, color 0.18s",
+                      fontFamily: "inherit",
+                    }}>
+                    ${amt}
+                  </motion.button>
+                );
+              })}
             </div>
+
+            {/* Custom amount card */}
+            <motion.button type="button"
+              whileTap={{ scale: 0.97 }}
+              onClick={() => setSelectedAmt("custom")}
+              style={{
+                width: "100%", padding: "16px", borderRadius: 18, border: "none",
+                background: selectedAmt === "custom" ? "#EEE9E0" : "#F5F1EB",
+                color: selectedAmt === "custom" ? "#00314B" : "#AAA",
+                fontSize: 15, fontWeight: 800, cursor: "pointer",
+                boxShadow: "0 2px 6px rgba(0,0,0,0.05)",
+                marginBottom: 24, fontFamily: "inherit", transition: "background 0.18s, color 0.18s",
+              }}>
+              {selectedAmt === "custom" ? "Custom amount" : "Enter custom amount"}
+            </motion.button>
 
             {/* Custom amount input */}
             {selectedAmt === "custom" && (
-              <div style={{ position: "relative", display: "flex", alignItems: "center", marginBottom: 16 }}>
+              <div style={{ position: "relative", display: "flex", alignItems: "center", marginBottom: 24, marginTop: -16 }}>
                 <span style={{ position: "absolute", left: 16, fontSize: 22, fontWeight: 900, color: "#00314B", pointerEvents: "none" }}>$</span>
                 <input
                   autoFocus type="number" min="0.01" step="0.01" placeholder="0.00"
@@ -3043,35 +3077,49 @@ function CamQuickPayModal({ expenses = [], targetSummaries, onSubmit, onClose })
               </div>
             )}
 
-            {/* Payment method */}
-            <p style={{ fontSize: 12, fontWeight: 700, color: "#999", textTransform: "uppercase", letterSpacing: 0.8, margin: "0 0 10px" }}>Payment Method</p>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 24 }}>
-              {PAYMENT_METHODS.map(m => (
+            {/* Payment method — swipeable sliding pill row */}
+            <p style={{ fontSize: 11, fontWeight: 700, color: "#BBB", textTransform: "uppercase", letterSpacing: 1, margin: "0 0 10px" }}>Pay via</p>
+            <div ref={methodContainerRef}
+              style={{ position: "relative", display: "flex", gap: 0, overflowX: "auto", scrollbarWidth: "none", borderRadius: 14, background: "#F0ECE5", padding: 4, marginBottom: 24 }}>
+              {/* sliding pill */}
+              <div style={{
+                position: "absolute", top: 4, height: "calc(100% - 8px)",
+                left: methodPill.left, width: methodPill.width,
+                borderRadius: 10, background: "#00314B",
+                transition: "left 0.25s cubic-bezier(0.34,1.56,0.64,1), width 0.2s ease",
+                pointerEvents: "none", zIndex: 0,
+              }} />
+              {PAYMENT_METHODS.map((m, i) => (
                 <button key={m} type="button"
+                  ref={el => methodTabRefs.current[i] = el}
                   onClick={() => setMethod(m)}
                   style={{
-                    padding: "7px 14px", borderRadius: 999, border: "1.5px solid",
-                    borderColor: method === m ? "#00314B" : "#DDD5C5",
-                    background: method === m ? "#00314B" : "#fff",
+                    position: "relative", zIndex: 1, flexShrink: 0,
+                    padding: "9px 14px", borderRadius: 10, border: "none",
+                    background: "transparent",
                     color: method === m ? "#fff" : "#888",
-                    fontSize: 12, fontWeight: 700, cursor: "pointer",
+                    fontSize: 13, fontWeight: 700, cursor: "pointer",
+                    transition: "color 0.2s", whiteSpace: "nowrap", fontFamily: "inherit",
                   }}>
                   {m}
                 </button>
               ))}
             </div>
 
-            <button type="button"
+            <motion.button type="button"
+              whileTap={{ scale: 0.97 }}
               disabled={!canProceedAmount}
               onClick={() => setStep("target")}
               style={{
-                width: "100%", padding: "16px", borderRadius: 16, border: "none",
-                background: canProceedAmount ? "linear-gradient(135deg, #00314B, #1B4D6B)" : "#DDD5C5",
-                color: canProceedAmount ? "#fff" : "#AAA",
+                width: "100%", padding: "17px", borderRadius: 18, border: "none",
+                background: canProceedAmount ? "linear-gradient(135deg, #00314B, #1B4D6B)" : "#E8E3DC",
+                color: canProceedAmount ? "#fff" : "#BBB",
                 fontSize: 16, fontWeight: 800, cursor: canProceedAmount ? "pointer" : "default",
+                fontFamily: "inherit", boxShadow: canProceedAmount ? "0 6px 18px rgba(0,49,75,0.22)" : "none",
+                transition: "background 0.2s, box-shadow 0.2s",
               }}>
               Next →
-            </button>
+            </motion.button>
           </div>
         )}
 
@@ -3553,6 +3601,7 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
   const [searchVal, setSearchVal] = useState("");
   const [notifOpen, setNotifOpen] = useState(false);
   const [plansOpen, setPlansOpen] = useState(false);
+  const [activeCat, setActiveCat] = useState(null);
   const [notifPermission, setNotifPermission] = useState(() =>
     typeof Notification !== "undefined" ? Notification.permission : "granted"
   );
@@ -3607,10 +3656,14 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
 
   function catGroup(e) {
     const desc = (e.description || "").toLowerCase();
+    // Home keywords take priority over any category label
+    const homeKw = ["best buy","bestbuy","rent","utilities","utility","electric","electricity"];
+    if (["Household","Utilities","Insurance"].includes(e.category) || homeKw.some(k => desc.includes(k))) return "home";
     if (e.category === "Groceries") return "groceries";
+    const grocKw = ["instacart","shipt","wegmans","kroger","whole foods","wholefoods","publix","fresh market","freshmarket"];
+    if (grocKw.some(k => desc.includes(k))) return "groceries";
     const foodKw = ["doordash","uber eats","ubereats","grubhub","7-eleven","restaurant","takeout","chipotle","mcdonald","pizza","starbucks","coffee","sushi","taco","burger","wendys","chick-fil","panera","subway","dunkin","applebee","olive garden"];
     if (e.category === "Entertainment" || foodKw.some(k => desc.includes(k))) return "eating";
-    if (["Household","Utilities","Insurance"].includes(e.category)) return "home";
     return "misc";
   }
 
@@ -4073,7 +4126,7 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
                 return (
                   <motion.div
                     key={tile.id}
-                    onClick={() => onNavigate("expenses")}
+                    onClick={() => setActiveCat(tile.id)}
                     whileTap={{ scale: 0.94 }}
                     transition={{ type: "spring", stiffness: 420, damping: 22 }}
                     style={{
@@ -4232,7 +4285,174 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
           onNavigate={onNavigate}
         />
       )}
+
+      <AnimatePresence>
+        {activeCat && (
+          <CategoryAnalyticsSheet
+            catId={activeCat}
+            expenses={expenses || []}
+            catGroup={catGroup}
+            onClose={() => setActiveCat(null)}
+          />
+        )}
+      </AnimatePresence>
     </div>
+  );
+}
+
+// ── CATEGORY ANALYTICS SHEET ─────────────────────────────────────────
+const CAT_META = {
+  groceries: { label: "Groceries", bg: "linear-gradient(145deg, #3D5A54, #5E8278)", color: "#3D5A54", light: "#EAF0EE" },
+  eating:    { label: "Eating Out", bg: "linear-gradient(145deg, #7A5C3A, #A8804E)", color: "#7A5C3A", light: "#F2EDE6" },
+  home:      { label: "Home",       bg: "linear-gradient(145deg, #00314B, #1B5C80)", color: "#00314B", light: "#E5EEF4" },
+  misc:      { label: "Misc",       bg: "linear-gradient(145deg, #3A5568, #56788E)", color: "#3A5568", light: "#EAEEf2" },
+};
+
+function CategoryAnalyticsSheet({ catId, expenses, catGroup, onClose }) {
+  const meta = CAT_META[catId] || CAT_META.misc;
+
+  // All expenses in this category (unpaid)
+  const catExps = expenses.filter(e => catGroup(e) === catId);
+
+  function share(e) {
+    const a = Number(e.amount || 0);
+    if (e.split === "ella") return 0;
+    return e.split === "split" ? a / 2 : a;
+  }
+
+  const total = catExps.reduce((s, e) => s + share(e), 0);
+  const avg   = catExps.length ? total / catExps.length : 0;
+  const biggest = catExps.reduce((b, e) => share(e) > share(b || { amount: 0 }) ? e : b, null);
+
+  // Monthly totals — last 5 months
+  const now = new Date();
+  const months = Array.from({ length: 5 }, (_, i) => {
+    const d = new Date(now.getFullYear(), now.getMonth() - (4 - i), 1);
+    return {
+      key: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`,
+      label: d.toLocaleDateString("en-US", { month: "short" }),
+      total: 0,
+    };
+  });
+  for (const e of catExps) {
+    const mo = (e.date || "").slice(0, 7);
+    const slot = months.find(m => m.key === mo);
+    if (slot) slot.total += share(e);
+  }
+  const maxMo = Math.max(...months.map(m => m.total), 1);
+
+  // Recent transactions sorted newest first
+  const sorted = [...catExps].sort((a, b) => new Date(b.date) - new Date(a.date));
+
+  return (
+    <>
+      <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 900 }} />
+      <motion.div
+        initial={{ y: "100%" }}
+        animate={{ y: 0 }}
+        exit={{ y: "100%" }}
+        transition={{ type: "spring", stiffness: 340, damping: 34 }}
+        style={{
+          position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)",
+          width: "100%", maxWidth: 430, zIndex: 901,
+          borderRadius: "26px 26px 0 0", overflow: "hidden",
+          background: "#F7F4EF", paddingBottom: "max(28px, env(safe-area-inset-bottom))",
+          maxHeight: "90vh", display: "flex", flexDirection: "column",
+          boxShadow: "0 -8px 40px rgba(0,0,0,0.22)",
+        }}
+      >
+        {/* Gradient header */}
+        <div style={{ background: meta.bg, padding: "20px 20px 24px", flexShrink: 0 }}>
+          <div style={{ display: "flex", justifyContent: "center", marginBottom: 14 }}>
+            <div style={{ width: 40, height: 4, borderRadius: 2, background: "rgba(255,255,255,0.35)" }} />
+          </div>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div>
+              <p style={{ margin: 0, fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.6)", textTransform: "uppercase", letterSpacing: 1 }}>Spending</p>
+              <p style={{ margin: "2px 0 0", fontSize: 26, fontWeight: 900, color: "#fff", letterSpacing: -0.5 }}>{meta.label}</p>
+            </div>
+            <button onClick={onClose} type="button"
+              style={{ background: "rgba(255,255,255,0.2)", border: "none", borderRadius: 10, width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "#fff", fontSize: 18, fontWeight: 700 }}>
+              ✕
+            </button>
+          </div>
+
+          {/* Key stat row */}
+          <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
+            {[
+              { label: "Total", value: `$${total.toFixed(2)}` },
+              { label: "Items", value: catExps.length },
+              { label: "Avg", value: catExps.length ? `$${avg.toFixed(2)}` : "—" },
+            ].map(s => (
+              <div key={s.label} style={{ flex: 1, background: "rgba(255,255,255,0.15)", borderRadius: 14, padding: "10px 12px" }}>
+                <p style={{ margin: 0, fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.6)", textTransform: "uppercase", letterSpacing: 0.8 }}>{s.label}</p>
+                <p style={{ margin: "4px 0 0", fontSize: 18, fontWeight: 900, color: "#fff" }}>{s.value}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Scrollable body */}
+        <div style={{ overflowY: "auto", flex: 1, padding: "20px 20px 8px" }}>
+
+          {/* Monthly bar chart */}
+          <p style={{ margin: "0 0 12px", fontSize: 11, fontWeight: 700, color: "#BBB", textTransform: "uppercase", letterSpacing: 1 }}>Monthly Trend</p>
+          <div style={{ display: "flex", alignItems: "flex-end", gap: 8, height: 80, marginBottom: 20 }}>
+            {months.map(m => {
+              const pct = m.total / maxMo;
+              const isCurrent = m.key === `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+              return (
+                <div key={m.key} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                  <p style={{ margin: 0, fontSize: 9, fontWeight: 700, color: meta.color, opacity: m.total ? 1 : 0 }}>
+                    ${m.total > 0 ? (m.total >= 100 ? Math.round(m.total) : m.total.toFixed(0)) : ""}
+                  </p>
+                  <div style={{ width: "100%", borderRadius: 6, overflow: "hidden", height: 48, display: "flex", alignItems: "flex-end", background: "#EDE9E2" }}>
+                    <div style={{
+                      width: "100%", borderRadius: 6,
+                      height: `${Math.max(pct * 100, m.total > 0 ? 6 : 0)}%`,
+                      background: isCurrent ? meta.bg : `${meta.color}55`,
+                      transition: "height 0.4s ease",
+                    }} />
+                  </div>
+                  <p style={{ margin: 0, fontSize: 10, fontWeight: isCurrent ? 800 : 600, color: isCurrent ? meta.color : "#BBB" }}>{m.label}</p>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Biggest expense */}
+          {biggest && (
+            <>
+              <p style={{ margin: "0 0 10px", fontSize: 11, fontWeight: 700, color: "#BBB", textTransform: "uppercase", letterSpacing: 1 }}>Biggest Charge</p>
+              <div style={{ background: meta.light, borderRadius: 16, padding: "12px 14px", marginBottom: 20, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <p style={{ margin: 0, fontSize: 14, fontWeight: 800, color: "#0A1E2B", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{biggest.description}</p>
+                  <p style={{ margin: "2px 0 0", fontSize: 11, color: "#999", fontWeight: 600 }}>{biggest.date}</p>
+                </div>
+                <p style={{ margin: 0, fontSize: 18, fontWeight: 900, color: meta.color, marginLeft: 12, flexShrink: 0 }}>${share(biggest).toFixed(2)}</p>
+              </div>
+            </>
+          )}
+
+          {/* Transaction list */}
+          <p style={{ margin: "0 0 10px", fontSize: 11, fontWeight: 700, color: "#BBB", textTransform: "uppercase", letterSpacing: 1 }}>All Transactions</p>
+          {sorted.length === 0 && (
+            <p style={{ fontSize: 13, color: "#CCC", textAlign: "center", padding: "24px 0" }}>No transactions yet.</p>
+          )}
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, paddingBottom: 8 }}>
+            {sorted.map(e => (
+              <div key={e.id} style={{ background: "#fff", borderRadius: 14, padding: "12px 14px", display: "flex", justifyContent: "space-between", alignItems: "center", boxShadow: "0 1px 4px rgba(0,0,0,0.05)" }}>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: "#0A1E2B", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.description}</p>
+                  <p style={{ margin: "2px 0 0", fontSize: 11, color: "#BBB", fontWeight: 600 }}>{e.date}{e.split === "split" ? " · split" : ""}</p>
+                </div>
+                <p style={{ margin: 0, fontSize: 15, fontWeight: 800, color: meta.color, marginLeft: 12, flexShrink: 0 }}>${share(e).toFixed(2)}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </motion.div>
+    </>
   );
 }
 
