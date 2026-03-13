@@ -238,23 +238,6 @@ function formatPaymentDateTime(p) {
   return `${mon} ${day} · ${time}`;
 }
 
-function PaymentMethodIcon({ method }) {
-  const configs = {
-    "Apple Pay":  { bg: "#000", color: "#fff", label: "Pay" },
-    "Venmo":      { bg: "#008CFF", color: "#fff", label: "V" },
-    "Zelle":      { bg: "#6D1ED4", color: "#fff", label: "Z" },
-    "Cash App":   { bg: "#00C244", color: "#fff", label: "$" },
-    "Cash":       { bg: "#2D5A4A", color: "#fff", label: "$" },
-  };
-  const cfg = configs[method] || { bg: "#A6B49E", color: "#fff", label: "P" };
-  return (
-    <div style={{ width: 44, height: 44, borderRadius: 12, background: cfg.bg, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-      <span style={{ fontSize: method === "Apple Pay" ? 10 : 16, fontWeight: 900, color: cfg.color, letterSpacing: method === "Apple Pay" ? -0.3 : 0 }}>
-        {cfg.label}
-      </span>
-    </div>
-  );
-}
 
 // ── SEARCH FRAMEWORK (web) ───────────────────────────────────────────
 function useExpensesSearchLogic(expenses) {
@@ -1295,6 +1278,7 @@ export default function App() {
       {screen === "urgent" && (
   <UrgentScreen
     expenses={urgentExpenses}
+    allExpenses={expenses}
     user={user}
     onBack={() => setScreen("dashboard")}
     onMarkPaid={handleMarkPaid}
@@ -4226,178 +4210,216 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
 }
 
 // ── URGENT SCREEN ────────────────────────────────────────────────────
-function UrgentScreen({ expenses, user, onBack, onMarkPaid, onLogPaymentForKey }) {
+function UrgentScreen({ expenses, allExpenses = [], user, onBack, onMarkPaid, onLogPaymentForKey }) {
   const isCam = user === "cam";
+  const [tab, setTab] = useState("urgent"); // "urgent" | "mandatory"
   const [expandedId, setExpandedId] = useState(null);
+  const tabRef = useRef(null);
+  const [pillStyle, setPillStyle] = useState({ left: 0, width: 0 });
 
-  const sorted = [...expenses].sort(
+  const tabs = [
+    { id: "urgent", label: "Urgent" },
+    { id: "mandatory", label: "Mandatory" },
+  ];
+
+  useEffect(() => {
+    if (!tabRef.current) return;
+    const container = tabRef.current;
+    const idx = tabs.findIndex(t => t.id === tab);
+    const btn = container.children[idx + 1]; // +1 to skip the pill div
+    if (!btn) return;
+    const cRect = container.getBoundingClientRect();
+    const bRect = btn.getBoundingClientRect();
+    setPillStyle({ left: bRect.left - cRect.left, width: bRect.width });
+  }, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Urgent: overdue/due soon
+  const urgentSorted = [...expenses].sort(
     (a, b) => (getDaysUntilDue(a.nextDue || a.dueDate) ?? 999) - (getDaysUntilDue(b.nextDue || b.dueDate) ?? 999)
   );
+
+  // Mandatory: expenses explicitly marked as mandatory, sorted by next due date
+  const mandatorySorted = [...allExpenses]
+    .filter(e => e.mandatory)
+    .sort((a, b) => {
+      const da = getDaysUntilDue(a.nextDue || a.dueDate) ?? 999;
+      const db = getDaysUntilDue(b.nextDue || b.dueDate) ?? 999;
+      return da - db;
+    });
+
+  const list = tab === "urgent" ? urgentSorted : mandatorySorted;
+
+  function renderExpenseCard(e) {
+    const level = getUrgencyLevel(e);
+    const u = level ? URGENCY[level] : { bg: "#F5F7FA", border: "#E0E5EF", badge: "#A6B7CB", label: "SCHEDULED" };
+    const days = getDaysUntilDue(e.nextDue || e.dueDate);
+    const isExpanded = expandedId === e.id;
+    const camAmt = e.split === "cam" ? Number(e.amount) : e.split === "split" ? Number(e.amount) / 2 : 0;
+
+    const dueLabel = days === null ? null
+      : days < 0 ? `${Math.abs(days)}d overdue`
+      : days === 0 ? "Due TODAY"
+      : days === 1 ? "Due TOMORROW"
+      : `Due in ${days}d`;
+
+    return (
+      <div
+        key={e.id}
+        style={{ background: u.bg, border: `1.5px solid ${isExpanded ? u.badge : u.border}`, borderRadius: 16, marginBottom: 10, overflow: "hidden", cursor: "pointer" }}
+        onClick={() => setExpandedId(isExpanded ? null : e.id)}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: 16 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
+              <span style={{ background: u.badge, color: "#fff", borderRadius: 6, padding: "2px 8px", fontSize: 10, fontWeight: 800, letterSpacing: 0.5 }}>
+                {u.label}
+              </span>
+              {dueLabel && <span style={{ fontSize: 11, color: u.badge, fontWeight: 700 }}>{dueLabel}</span>}
+              {tab === "mandatory" && e.recurring && e.recurring !== "none" && (
+                <span style={{ fontSize: 10, color: "#A6B7CB", fontWeight: 700, background: "#EFF3F8", borderRadius: 6, padding: "2px 7px" }}>
+                  {e.recurring}
+                </span>
+              )}
+            </div>
+            <p style={{ fontSize: 14, fontWeight: 700, color: "#00314B", margin: "0 0 2px" }}>{e.description}</p>
+            <p style={{ fontSize: 11, color: "#888", margin: 0 }}>{[e.account, e.category].filter(Boolean).join(" · ")}</p>
+            {(e.nextDue || e.dueDate) && (
+              <p style={{ fontSize: 11, color: u.badge, fontWeight: 600, margin: "2px 0 0" }}>
+                Due: {formatShortDate(e.nextDue || e.dueDate)}
+              </p>
+            )}
+          </div>
+          <div style={{ textAlign: "right", flexShrink: 0 }}>
+            <p style={{ fontSize: 18, fontWeight: 800, color: "#00314B", margin: 0 }}>
+              ${Number(e.amount || 0).toFixed(2)}
+            </p>
+            {camAmt > 0 && (
+              <p style={{ fontSize: 12, color: "#E8A0B0", fontWeight: 700, margin: "2px 0 0" }}>
+                {isCam ? "You owe:" : "Cam owes:"} ${camAmt.toFixed(2)}
+              </p>
+            )}
+            {user === "emma" && !e._optimistic && (
+              <button style={styles.markPaidBtn} onClick={(ev) => { ev.stopPropagation(); onMarkPaid(e.id); }}>
+                Mark paid
+              </button>
+            )}
+          </div>
+        </div>
+
+        {isExpanded && (
+          <div style={{ borderTop: `1px solid ${u.border}`, padding: "12px 16px 14px", background: "rgba(255,255,255,0.55)" }} onClick={(ev) => ev.stopPropagation()}>
+            {e.referenceNum && (
+              <p style={{ fontSize: 12, color: "#888", margin: "0 0 6px" }}>
+                <span style={{ fontWeight: 700, color: "#00314B" }}>Ref #</span> {e.referenceNum}
+              </p>
+            )}
+            {e.note && (
+              <div style={{ marginBottom: isCam ? 12 : 0 }}>
+                <p style={{ fontSize: 11, fontWeight: 700, color: "#A6B7CB", margin: "0 0 4px", textTransform: "uppercase", letterSpacing: 0.4 }}>Note</p>
+                {renderNote(e.note)}
+              </div>
+            )}
+            {!e.referenceNum && !e.note && (
+              <p style={{ fontSize: 12, color: "#BBB", margin: "0 0 8px", fontStyle: "italic" }}>No notes or reference number.</p>
+            )}
+            {isCam && typeof onLogPaymentForKey === "function" && (
+              <button
+                style={{ marginTop: 8, width: "100%", padding: "11px", borderRadius: 12, border: "none", background: u.badge, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}
+                onClick={() => onLogPaymentForKey(`exp:${e.id}`, camAmt > 0 ? camAmt : Number(e.amount))}
+              >
+                Log Payment
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div style={styles.screen}>
       <div style={styles.subHeader}>
         <button
           type="button"
-          style={{
-            ...styles.logoutBtn,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: "6px 12px",
-            minWidth: 40,
-            height: 32,
-            background: "rgba(255,255,255,0.7)",
-            color: "#00314B",
-          }}
+          style={{ ...styles.logoutBtn, display: "flex", alignItems: "center", justifyContent: "center", padding: "6px 12px", minWidth: 40, height: 32, background: "rgba(255,255,255,0.7)", color: "#00314B" }}
           onClick={onBack}
           aria-label="Back"
         >
           <Icon path={icons.back} size={18} />
         </button>
-
-        <h2 style={{ ...styles.subTitle, flex: 1, textAlign: "center", minWidth: 0 }}>Urgent</h2>
-
+        <h2 style={{ ...styles.subTitle, flex: 1, textAlign: "center", minWidth: 0 }}>
+          {tab === "urgent" ? "Urgent" : "Mandatory"}
+        </h2>
         <div style={{ minWidth: 40, height: 32 }} />
       </div>
 
-      <div style={{ padding: "0 16px 8px", fontSize: 12, color: "#888" }}>
-        Entries with a due date that are overdue or coming up soon
+      {/* Sliding pill toggle */}
+      <div style={{ padding: "0 16px 16px" }}>
+        <div
+          ref={tabRef}
+          style={{ position: "relative", display: "flex", background: "rgba(166,180,158,0.13)", borderRadius: 14, padding: 4, gap: 0 }}
+        >
+          {/* Sliding pill */}
+          <div
+            style={{
+              position: "absolute",
+              top: 4,
+              height: "calc(100% - 8px)",
+              left: pillStyle.width ? pillStyle.left : (tab === "urgent" ? 4 : "50%"),
+              width: pillStyle.width || "50%",
+              background: tab === "urgent"
+                ? "linear-gradient(135deg, #E05C6E, #C0485A)"
+                : "linear-gradient(135deg, #A6B49E, #4E635E)",
+              borderRadius: 10,
+              transition: "left 0.38s cubic-bezier(0.34,1.56,0.64,1), width 0.38s cubic-bezier(0.34,1.56,0.64,1), background 0.3s ease",
+              boxShadow: "0 2px 8px rgba(0,0,0,0.12)",
+              pointerEvents: "none",
+            }}
+          />
+          {tabs.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => { setTab(t.id); setExpandedId(null); }}
+              style={{
+                flex: 1,
+                padding: "9px 0",
+                border: "none",
+                background: "transparent",
+                color: tab === t.id ? "#fff" : "#888",
+                fontSize: 13,
+                fontWeight: 700,
+                cursor: "pointer",
+                borderRadius: 10,
+                position: "relative",
+                zIndex: 1,
+                transition: "color 0.25s ease",
+              }}
+            >
+              {t.label}
+              {t.id === "urgent" && expenses.length > 0 && (
+                <span style={{ marginLeft: 5, background: tab === "urgent" ? "rgba(255,255,255,0.3)" : "#E05C6E", color: "#fff", borderRadius: 999, fontSize: 10, fontWeight: 800, padding: "1px 6px" }}>
+                  {expenses.length}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div style={{ padding: "0 16px" }}>
-        {sorted.length === 0 ? (
+        {list.length === 0 ? (
           <div style={{ textAlign: "center", padding: "60px 20px" }}>
-            <p style={{ fontSize: 48, margin: 0 }}>✅</p>
+            <p style={{ fontSize: 48, margin: 0 }}>{tab === "urgent" ? "✅" : "📋"}</p>
             <p style={{ fontWeight: 700, color: "#00314B", fontSize: 18, margin: "12px 0 4px" }}>
-              All clear!
+              {tab === "urgent" ? "All clear!" : "No recurring bills"}
             </p>
-            <p style={{ color: "#999", fontSize: 13, margin: 0 }}>No overdue or upcoming payments</p>
+            <p style={{ color: "#999", fontSize: 13, margin: 0 }}>
+              {tab === "urgent" ? "No overdue or upcoming payments" : "Add recurring expenses to see them here"}
+            </p>
           </div>
         ) : (
-          sorted.map((e) => {
-            const level = getUrgencyLevel(e);
-            const u = URGENCY[level];
-            const days = getDaysUntilDue(e.nextDue || e.dueDate);
-            const isExpanded = expandedId === e.id;
-
-            const dueLabel =
-              days < 0
-                ? `${Math.abs(days)} day${Math.abs(days) !== 1 ? "s" : ""} overdue`
-                : days === 0
-                ? "Due TODAY"
-                : days === 1
-                ? "Due TOMORROW"
-                : `Due in ${days} days`;
-
-            const camAmt = e.split === "cam" ? Number(e.amount) : e.split === "split" ? Number(e.amount) / 2 : 0;
-
-            return (
-              <div
-                key={e.id}
-                style={{
-                  background: u.bg,
-                  border: `1.5px solid ${isExpanded ? u.badge : u.border}`,
-                  borderRadius: 16,
-                  marginBottom: 10,
-                  overflow: "hidden",
-                  cursor: "pointer",
-                }}
-                onClick={() => setExpandedId(isExpanded ? null : e.id)}
-              >
-                {/* Header row */}
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: 16 }}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                      <span
-                        style={{
-                          background: u.badge,
-                          color: "#fff",
-                          borderRadius: 6,
-                          padding: "2px 8px",
-                          fontSize: 10,
-                          fontWeight: 800,
-                          letterSpacing: 0.5,
-                        }}
-                      >
-                        {u.label}
-                      </span>
-                      <span style={{ fontSize: 11, color: u.badge, fontWeight: 700 }}>{dueLabel}</span>
-                    </div>
-                    <p style={{ fontSize: 14, fontWeight: 700, color: "#00314B", margin: "0 0 2px" }}>
-                      {e.description}
-                    </p>
-                    <p style={{ fontSize: 11, color: "#888", margin: 0 }}>
-                      {e.account} · {e.category}
-                    </p>
-                    <p style={{ fontSize: 11, color: u.badge, fontWeight: 600, margin: "2px 0 0" }}>
-                      Due: {formatShortDate(e.nextDue || e.dueDate)}
-                    </p>
-                  </div>
-                  <div style={{ textAlign: "right", flexShrink: 0 }}>
-                    <p style={{ fontSize: 18, fontWeight: 800, color: "#00314B", margin: 0 }}>
-                      ${Number(e.amount || 0).toFixed(2)}
-                    </p>
-                    {camAmt > 0 && (
-                      <p style={{ fontSize: 12, color: "#E8A0B0", fontWeight: 700, margin: "2px 0 0" }}>
-                        {isCam ? "You owe:" : "Cam owes:"} ${camAmt.toFixed(2)}
-                      </p>
-                    )}
-                    {user === "emma" && !e._optimistic && (
-                      <button
-                        style={styles.markPaidBtn}
-                        onClick={(ev) => { ev.stopPropagation(); onMarkPaid(e.id); }}
-                      >
-                        Mark paid
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                {/* Expanded section */}
-                {isExpanded && (
-                  <div
-                    style={{ borderTop: `1px solid ${u.border}`, padding: "12px 16px 14px", background: "rgba(255,255,255,0.55)" }}
-                    onClick={(ev) => ev.stopPropagation()}
-                  >
-                    {e.referenceNum && (
-                      <p style={{ fontSize: 12, color: "#888", margin: "0 0 6px" }}>
-                        <span style={{ fontWeight: 700, color: "#00314B" }}>Ref #</span> {e.referenceNum}
-                      </p>
-                    )}
-                    {e.note && (
-                      <div style={{ marginBottom: isCam ? 12 : 0 }}>
-                        <p style={{ fontSize: 11, fontWeight: 700, color: "#A6B7CB", margin: "0 0 4px", textTransform: "uppercase", letterSpacing: 0.4 }}>Note</p>
-                        {renderNote(e.note)}
-                      </div>
-                    )}
-                    {!e.referenceNum && !e.note && (
-                      <p style={{ fontSize: 12, color: "#BBB", margin: "0 0 8px", fontStyle: "italic" }}>No notes or reference number.</p>
-                    )}
-                    {isCam && typeof onLogPaymentForKey === "function" && (
-                      <button
-                        style={{
-                          marginTop: 8,
-                          width: "100%",
-                          padding: "11px",
-                          borderRadius: 12,
-                          border: "none",
-                          background: u.badge,
-                          color: "#fff",
-                          fontSize: 13,
-                          fontWeight: 700,
-                          cursor: "pointer",
-                        }}
-                        onClick={() => onLogPaymentForKey(`exp:${e.id}`, camAmt > 0 ? camAmt : Number(e.amount))}
-                      >
-                        Log Payment
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
-            );
-          })
+          list.map(renderExpenseCard)
         )}
       </div>
 
@@ -4993,31 +5015,24 @@ function ExpensesScreen({
 
 // ── HISTORY SCREEN ────────────────────────────────────────────────────
 function HistoryScreen({ expenses, payments, user, targets = [], onBack, onConfirm, onDeleteConfirmedPayment, onDeleteExpense }) {
-  const [expandedPaymentId, setExpandedPaymentId] = useState(null);
+  const [expandedId, setExpandedId] = useState(null);
+  const [filter, setFilter] = useState("all"); // "all" | "payments" | "charges"
 
   const all = [
-    ...payments.map((p) => ({ ...p, type: "payment" })),
+    ...payments.map((p) => ({ ...p, _kind: "payment" })),
     ...expenses.flatMap((e) => {
-      // Show ONE history row per expense.
-      // If it has a paid timestamp, show it as a paid event with that timestamp.
-      if (e.lastPaidAt) {
-        return [
-          {
-            ...e,
-            type: "expense",
-            status: "paid",
-            date: e.lastPaidAt,
-            _paidEvent: true,
-          },
-        ];
-      }
-      return [{ ...e, type: "expense" }];
+      if (e.lastPaidAt) return [{ ...e, _kind: "expense", status: "paid", date: e.lastPaidAt, _paidEvent: true }];
+      return [{ ...e, _kind: "expense" }];
     }),
   ].sort((a, b) => new Date(b.date) - new Date(a.date));
 
-  const targetLabelByKey = new Map(
-    (targets || []).map((t) => [t.key, t.label])
-  );
+  const filtered = all.filter((item) => {
+    if (filter === "payments") return item._kind === "payment";
+    if (filter === "charges") return item._kind === "expense";
+    return true;
+  });
+
+  const targetLabelByKey = new Map((targets || []).map((t) => [t.key, t.label]));
 
   function paymentTargetLabel(p) {
     const key = p.appliedToKey || (p.appliedToGroupId ? `grp:${p.appliedToGroupId}` : "general");
@@ -5036,145 +5051,133 @@ function HistoryScreen({ expenses, payments, user, targets = [], onBack, onConfi
     return null;
   }
 
+  const hRow = (label, value, mono = false) => (
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+      <span style={{ fontSize: 12, color: "#AAA", fontWeight: 600, flexShrink: 0 }}>{label}</span>
+      <span style={{ fontSize: 12, fontWeight: 700, color: "#1A1A1A", textAlign: "right", fontFamily: mono ? "monospace" : "inherit" }}>{value}</span>
+    </div>
+  );
+
+  const splitLabel = (s) => s === "cam" ? "Cameron pays full" : s === "split" ? "Split 50/50" : s === "ella" ? "Emmanuella pays full" : s;
+
   return (
-    <div style={styles.screen}>
-      <div style={styles.subHeader}>
+    <div style={{ ...styles.screen, background: "#F5F6FA" }}>
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "center", padding: "16px 16px 8px", background: "#F5F6FA" }}>
         <button
           type="button"
-          style={{
-            ...styles.logoutBtn,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: "6px 12px",
-            minWidth: 40,
-            height: 32,
-            background: "rgba(255,255,255,0.7)",
-            color: "#00314B",
-          }}
           onClick={onBack}
           aria-label="Back"
+          style={{ width: 36, height: 36, borderRadius: 12, border: "none", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", boxShadow: "0 1px 4px rgba(0,0,0,0.08)", flexShrink: 0 }}
         >
-          <Icon path={icons.back} size={18} />
+          <Icon path={icons.back} size={18} color="#1A1A2E" />
         </button>
-
-        <h2 style={{ ...styles.subTitle, flex: 1, textAlign: "center", minWidth: 0 }}>History</h2>
-
-        <div style={{ minWidth: 40, height: 32 }} />
+        <h2 style={{ flex: 1, textAlign: "center", margin: 0, fontSize: 18, fontWeight: 800, color: "#1A1A2E", letterSpacing: -0.3 }}>My Transactions</h2>
+        <div style={{ width: 36 }} />
       </div>
 
-      {/* Step 5: Add PaymentTimeline framework component */}
-      {all.map((item, i) => {
-        if (item.type === "payment") {
-          const lbl  = paymentTargetLabel(item);
-          const rExp = relatedExpense(item);
-          const isOpen = expandedPaymentId === item.id;
-          const isConfirmed = item.confirmed;
-          const isRejected  = item.rejected && !item.confirmed;
-          const statusColor = isConfirmed ? "#2D5A4A" : isRejected ? "#E07A20" : "#C8A020";
-          const statusBg   = isConfirmed ? "#EBF5EF"  : isRejected ? "#FFF0E0" : "#FDF7E3";
-          return (
-            <div key={i} style={{ borderBottom: "1px solid #EDE7DC" }}>
-              {/* Collapsed header — always visible, tap to toggle */}
-              <div
-                role="button"
-                style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 16px", cursor: "pointer" }}
-                onClick={() => setExpandedPaymentId(isOpen ? null : item.id)}
-              >
-                <PaymentMethodIcon method={item.method} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-                    <p style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "#1A1A1A", flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+      {/* Filter chips */}
+      <div style={{ display: "flex", gap: 8, padding: "10px 16px 14px", overflowX: "auto" }}>
+        {[["all", "All"], ["payments", "Payments"], ["charges", "Charges"]].map(([val, label]) => (
+          <button
+            key={val}
+            type="button"
+            onClick={() => setFilter(val)}
+            style={{
+              padding: "8px 18px",
+              borderRadius: 999,
+              border: "none",
+              background: filter === val ? "#1A3A2E" : "#fff",
+              color: filter === val ? "#fff" : "#555",
+              fontSize: 13,
+              fontWeight: 700,
+              cursor: "pointer",
+              whiteSpace: "nowrap",
+              boxShadow: filter === val ? "none" : "0 1px 4px rgba(0,0,0,0.07)",
+              transition: "all 0.15s ease",
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* Transaction list */}
+      <div style={{ background: "#fff", borderRadius: 20, margin: "0 12px", overflow: "hidden", boxShadow: "0 2px 12px rgba(0,0,0,0.06)" }}>
+        {filtered.length === 0 && (
+          <div style={{ padding: 32, textAlign: "center", color: "#BBB", fontSize: 13, fontWeight: 600 }}>No transactions</div>
+        )}
+        {filtered.map((item, i) => {
+          const rowId = item._kind === "payment" ? item.id : `exp-${item.id}`;
+          const isOpen = expandedId === rowId;
+          const isLast = i === filtered.length - 1;
+
+          if (item._kind === "payment") {
+            const isConfirmed = item.confirmed;
+            const isRejected = item.rejected && !item.confirmed;
+            const lbl = paymentTargetLabel(item);
+            const rExp = relatedExpense(item);
+
+            // Icon: green down arrow = confirmed, red X = rejected, yellow clock = pending
+            const iconBg = isConfirmed ? "#E8F5EE" : isRejected ? "#FFF0F0" : "#FFF8E8";
+            const iconColor = isConfirmed ? "#2D7A50" : isRejected ? "#E05C6E" : "#C8A020";
+            const iconPath = isRejected ? icons.x : isConfirmed ? icons.chevronDown : icons.clock;
+            const amtColor = isConfirmed ? "#2D7A50" : isRejected ? "#E05C6E" : "#C8A020";
+            const statusLabel = isConfirmed ? "confirmed" : isRejected ? "returned" : "pending";
+
+            return (
+              <div key={rowId}>
+                <div
+                  role="button"
+                  onClick={() => setExpandedId(isOpen ? null : rowId)}
+                  style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 16px", cursor: "pointer", borderBottom: isLast && !isOpen ? "none" : "1px solid #F2F2F5" }}
+                >
+                  <div style={{ width: 44, height: 44, borderRadius: 14, background: iconBg, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                    <Icon path={iconPath} size={20} color={iconColor} />
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "#1A1A2E", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {item.method} Payment
                     </p>
-                    <p style={{ margin: 0, fontSize: 16, fontWeight: 800, color: "#2D5A4A", flexShrink: 0 }}>
-                      -${Number(item.amount || 0).toFixed(2)}
-                    </p>
+                    <p style={{ margin: "2px 0 0", fontSize: 12, color: "#AAA", fontWeight: 500 }}>{statusLabel}</p>
                   </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 4 }}>
-                    <span style={{ fontSize: 11, fontWeight: 700, color: statusColor, background: statusBg, borderRadius: 6, padding: "2px 8px" }}>
-                      {isConfirmed ? "confirmed" : isRejected ? "returned" : "pending"}
-                    </span>
-                    <Icon path={isOpen ? icons.chevronUp : icons.chevronDown} size={13} color="#CCC" />
+                  <div style={{ textAlign: "right", flexShrink: 0 }}>
+                    <p style={{ margin: 0, fontSize: 15, fontWeight: 800, color: amtColor }}>
+                      {isConfirmed ? "+" : "−"}${Number(item.amount || 0).toFixed(2)}
+                    </p>
+                    <p style={{ margin: "2px 0 0", fontSize: 11, color: "#BBB" }}>{formatHistoryDate(item.date)}</p>
                   </div>
                 </div>
-              </div>
 
-              {/* Expanded detail panel */}
-              {isOpen && (() => {
-                const hRow = (label, value, mono = false) => (
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
-                    <span style={{ fontSize: 11, color: "#AAA", fontWeight: 600, flexShrink: 0 }}>{label}</span>
-                    <span style={{ fontSize: 12, fontWeight: 700, color: "#1A1A1A", textAlign: "right", fontFamily: mono ? "monospace" : "inherit" }}>{value}</span>
-                  </div>
-                );
-                const splitLabel = (s) => s === "cam" ? "Cameron pays full" : s === "split" ? "Split 50/50" : s === "ella" ? "Emmanuella pays full" : s;
-                return (
-                  <div style={{ padding: "0 16px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
-
-                    {/* ── Payment receipt ── */}
-                    <div style={{ background: isConfirmed ? "#EEF5EE" : isRejected ? "#FFF8F0" : "#FDFAF0", borderRadius: 14, padding: "14px", border: `1.5px solid ${isConfirmed ? "#C5DDCA" : isRejected ? "#F5C4A0" : "#ECD98A"}` }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, paddingBottom: 10, borderBottom: `1px solid ${isConfirmed ? "#D5E8D8" : isRejected ? "#F0D0B0" : "#F0E6A0"}` }}>
-                        <span style={{ fontSize: 11, fontWeight: 800, color: "#888", textTransform: "uppercase", letterSpacing: 0.6 }}>Payment</span>
-                        <span style={{ fontSize: 11, fontWeight: 800, color: statusColor, background: statusBg, borderRadius: 6, padding: "3px 10px" }}>
-                          {isConfirmed ? "✓ Confirmed" : isRejected ? "↩ Returned" : "⏳ Pending"}
-                        </span>
-                      </div>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                        {hRow("Amount", `$${Number(item.amount || 0).toFixed(2)}`)}
-                        {hRow("Method", item.method)}
-                        {hRow("Date paid", formatPaymentDateTime(item))}
-                        {item.note && hRow("Note", `"${item.note}"`)}
-                        {isRejected && item.rejectionReason && (
-                          <div style={{ marginTop: 4, paddingTop: 8, borderTop: `1px solid #F0D0B0` }}>
-                            <p style={{ margin: "0 0 3px", fontSize: 10, fontWeight: 800, color: "#E07A20", textTransform: "uppercase", letterSpacing: 0.5 }}>Emmanuella's note</p>
-                            <p style={{ margin: 0, fontSize: 12, color: "#555", fontStyle: "italic", lineHeight: 1.5 }}>"{item.rejectionReason}"</p>
-                          </div>
-                        )}
-                      </div>
+                {isOpen && (
+                  <div style={{ padding: "0 16px 16px", display: "flex", flexDirection: "column", gap: 10, borderBottom: isLast ? "none" : "1px solid #F2F2F5" }}>
+                    <div style={{ background: "#F8F8FB", borderRadius: 14, padding: 14, display: "flex", flexDirection: "column", gap: 9 }}>
+                      {hRow("Amount", `$${Number(item.amount || 0).toFixed(2)}`)}
+                      {hRow("Method", item.method)}
+                      {hRow("Date", formatPaymentDateTime(item))}
+                      {lbl && hRow("Applied to", lbl)}
+                      {item.note && hRow("Note", `"${item.note}"`)}
+                      {isRejected && item.rejectionReason && (
+                        <div style={{ paddingTop: 8, borderTop: "1px solid #EEE" }}>
+                          <p style={{ margin: "0 0 3px", fontSize: 10, fontWeight: 800, color: "#E07A20", textTransform: "uppercase", letterSpacing: 0.5 }}>Emmanuella's note</p>
+                          <p style={{ margin: 0, fontSize: 12, color: "#555", fontStyle: "italic" }}>"{item.rejectionReason}"</p>
+                        </div>
+                      )}
                     </div>
-
-                    {/* ── Original expense ── */}
-                    {rExp ? (
-                      <div style={{ background: "#F5F1EB", borderRadius: 14, padding: "14px", border: "1.5px solid #EDE7DC" }}>
-                        <div style={{ marginBottom: 10, paddingBottom: 10, borderBottom: "1px solid #EDE7DC" }}>
-                          <span style={{ fontSize: 11, fontWeight: 800, color: "#888", textTransform: "uppercase", letterSpacing: 0.6 }}>Original Expense</span>
-                        </div>
-                        {/* Description + full amount */}
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, marginBottom: 10 }}>
-                          <span style={{ fontSize: 14, fontWeight: 800, color: "#00314B", flex: 1, minWidth: 0 }}>{rExp.description}</span>
-                          <span style={{ fontSize: 14, fontWeight: 900, color: "#00314B", flexShrink: 0 }}>${Number(rExp.amount || 0).toFixed(2)}</span>
-                        </div>
-                        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                          {rExp.category && hRow("Category", rExp.category)}
-                          {rExp.split && hRow("Split", splitLabel(rExp.split))}
-                          {rExp.account && hRow("Charged to", rExp.account)}
-                          {rExp.recurring && rExp.recurring !== "none" && hRow("Recurring", rExp.recurring)}
-                          {rExp.dueDate && hRow("Due date", formatShortDate(rExp.dueDate))}
-                          {rExp.referenceNum && hRow("Ref #", rExp.referenceNum, true)}
-                          {rExp.note && hRow("Expense note", `"${rExp.note}"`)}
-                          {/* Expense paid status */}
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: 6, borderTop: "1px solid #EDE7DC", marginTop: 2 }}>
-                            <span style={{ fontSize: 11, color: "#AAA", fontWeight: 600 }}>Expense status</span>
-                            <span style={{ fontSize: 11, fontWeight: 800, color: rExp.status === "paid" ? "#2D5A4A" : "#C8A020", background: rExp.status === "paid" ? "#EBF5EF" : "#FDF7E3", borderRadius: 6, padding: "3px 10px" }}>
-                              {rExp.status === "paid" ? "Paid" : "Unpaid"}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    ) : (
-                      <div style={{ background: "#F5F1EB", borderRadius: 14, padding: "12px 14px", border: "1.5px solid #EDE7DC" }}>
-                        {hRow("Applied to", lbl || "General balance")}
+                    {rExp && (
+                      <div style={{ background: "#F8F8FB", borderRadius: 14, padding: 14, display: "flex", flexDirection: "column", gap: 9 }}>
+                        <p style={{ margin: "0 0 6px", fontSize: 10, fontWeight: 800, color: "#AAA", textTransform: "uppercase", letterSpacing: 0.5 }}>Related Expense</p>
+                        {hRow(rExp.description, `$${Number(rExp.amount || 0).toFixed(2)}`)}
+                        {rExp.split && hRow("Split", splitLabel(rExp.split))}
+                        {rExp.status && hRow("Status", rExp.status === "paid" ? "Paid" : "Unpaid")}
                       </div>
                     )}
-
-                    {/* ── Actions (Emma only) ── */}
                     {user === "emma" && (
                       <div style={{ display: "flex", gap: 8 }}>
-                        {!isConfirmed && (
+                        {!isConfirmed && !isRejected && (
                           <button
                             style={{ flex: 1, background: "linear-gradient(135deg, #A6B49E, #4E635E)", color: "#fff", border: "none", borderRadius: 12, padding: "12px 0", fontSize: 13, fontWeight: 800, cursor: "pointer" }}
-                            onClick={() => { onConfirm(item.id); setExpandedPaymentId(null); }}
+                            onClick={() => { onConfirm(item.id); setExpandedId(null); }}
                           >
                             ✓ Confirm Payment
                           </button>
@@ -5190,89 +5193,69 @@ function HistoryScreen({ expenses, payments, user, targets = [], onBack, onConfi
                       </div>
                     )}
                   </div>
-                );
-              })()}
-            </div>
-          );
-        }
-
-        // Expense row — tappable to expand full details
-        const isExpOpen = expandedPaymentId === `exp-${item.id}`;
-        const splitLabel = (s) => s === "cam" ? "Cameron pays full" : s === "split" ? "Split 50/50" : s === "ella" ? "Emmanuella pays full" : s;
-        const hRow = (label, value, mono = false) => (
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
-            <span style={{ fontSize: 11, color: "#AAA", fontWeight: 600, flexShrink: 0 }}>{label}</span>
-            <span style={{ fontSize: 12, fontWeight: 700, color: "#1A1A1A", textAlign: "right", fontFamily: mono ? "monospace" : "inherit" }}>{value}</span>
-          </div>
-        );
-        return (
-          <div key={i} style={{ borderBottom: "1px solid #EDE7DC" }}>
-            {/* Collapsed header */}
-            <div
-              role="button"
-              style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 16px", cursor: "pointer" }}
-              onClick={() => setExpandedPaymentId(isExpOpen ? null : `exp-${item.id}`)}
-            >
-              <div style={{ ...styles.historyIcon, background: "#EDE4F5", flexShrink: 0 }}>
-                <Icon path={icons.list} size={18} color="#5B3B8C" />
+                )}
               </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-                  <p style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "#1A1A1A", flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            );
+          }
+
+          // Expense row
+          const expAmt = item.split === "split" ? item.amount / 2 : item.amount;
+          const isPaid = item.status === "paid";
+
+          return (
+            <div key={rowId}>
+              <div
+                role="button"
+                onClick={() => setExpandedId(isOpen ? null : rowId)}
+                style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 16px", cursor: "pointer", borderBottom: isLast && !isOpen ? "none" : "1px solid #F2F2F5" }}
+              >
+                <div style={{ width: 44, height: 44, borderRadius: 14, background: isPaid ? "#E8F5EE" : "#F0EEFF", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <Icon path={isPaid ? icons.check : icons.chevronUp} size={20} color={isPaid ? "#2D7A50" : "#7B5EA7"} />
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "#1A1A2E", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {item.description}
                   </p>
-                  <p style={{ margin: 0, fontSize: 16, fontWeight: 800, color: "#9E4C6A", flexShrink: 0 }}>
-                    ${(item.split === "split" ? item.amount / 2 : item.amount).toFixed(2)}
+                  <p style={{ margin: "2px 0 0", fontSize: 12, color: "#AAA", fontWeight: 500 }}>
+                    {item.category || (item.split === "split" ? "Split 50/50" : "Charge")}
                   </p>
                 </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 4 }}>
-                  <span style={{ fontSize: 11, color: "#AAA" }}>{formatHistoryDate(item.date)}</span>
-                  {item.status === "paid" && (
-                    <span style={{ fontSize: 11, fontWeight: 700, color: "#2D5A4A", background: "#EBF5EF", borderRadius: 6, padding: "2px 8px" }}>paid</span>
-                  )}
-                  <Icon path={isExpOpen ? icons.chevronUp : icons.chevronDown} size={13} color="#CCC" />
+                <div style={{ textAlign: "right", flexShrink: 0 }}>
+                  <p style={{ margin: 0, fontSize: 15, fontWeight: 800, color: "#1A1A2E" }}>
+                    −${Number(expAmt || 0).toFixed(2)}
+                  </p>
+                  <p style={{ margin: "2px 0 0", fontSize: 11, color: "#BBB" }}>{formatHistoryDate(item.date)}</p>
                 </div>
               </div>
-            </div>
 
-            {/* Expanded detail panel */}
-            {isExpOpen && (
-              <div style={{ padding: "0 16px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
-                <div style={{ background: "#F5F1EB", borderRadius: 14, padding: "14px", border: "1.5px solid #EDE7DC" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, marginBottom: 10, paddingBottom: 10, borderBottom: "1px solid #EDE7DC" }}>
-                    <span style={{ fontSize: 14, fontWeight: 800, color: "#00314B", flex: 1, minWidth: 0 }}>{item.description}</span>
-                    <span style={{ fontSize: 14, fontWeight: 900, color: "#00314B", flexShrink: 0 }}>${Number(item.amount || 0).toFixed(2)}</span>
-                  </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    {item.category && hRow("Category", item.category)}
+              {isOpen && (
+                <div style={{ padding: "0 16px 16px", display: "flex", flexDirection: "column", gap: 10, borderBottom: isLast ? "none" : "1px solid #F2F2F5" }}>
+                  <div style={{ background: "#F8F8FB", borderRadius: 14, padding: 14, display: "flex", flexDirection: "column", gap: 9 }}>
+                    {hRow("Full amount", `$${Number(item.amount || 0).toFixed(2)}`)}
                     {item.split && hRow("Split", splitLabel(item.split))}
+                    {item.category && hRow("Category", item.category)}
                     {item.account && hRow("Charged to", item.account)}
                     {item.recurring && item.recurring !== "none" && hRow("Recurring", item.recurring)}
                     {(item.dueDate || item.nextDue) && hRow("Due date", formatShortDate(item.dueDate || item.nextDue))}
                     {item.referenceNum && hRow("Ref #", item.referenceNum, true)}
                     {item.note && hRow("Note", `"${item.note}"`)}
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: 6, borderTop: "1px solid #EDE7DC", marginTop: 2 }}>
-                      <span style={{ fontSize: 11, color: "#AAA", fontWeight: 600 }}>Status</span>
-                      <span style={{ fontSize: 11, fontWeight: 800, color: item.status === "paid" ? "#2D5A4A" : "#C8A020", background: item.status === "paid" ? "#EBF5EF" : "#FDF7E3", borderRadius: 6, padding: "3px 10px" }}>
-                        {item.status === "paid" ? "Paid" : "Unpaid"}
-                      </span>
-                    </div>
+                    {hRow("Status", isPaid ? "Paid ✓" : "Unpaid")}
                   </div>
+                  {isPaid && user === "emma" && typeof onDeleteExpense === "function" && (
+                    <button
+                      style={{ background: "#FFF0F2", color: "#C0485A", border: "1.5px solid #F5C4CD", borderRadius: 12, padding: "12px 0", fontSize: 13, fontWeight: 700, cursor: "pointer", width: "100%" }}
+                      onClick={() => onDeleteExpense(item.id)}
+                    >
+                      Delete
+                    </button>
+                  )}
                 </div>
-                {item.status === "paid" && user === "emma" && typeof onDeleteExpense === "function" && (
-                  <button
-                    style={{ background: "#FFF0F2", color: "#C0485A", border: "1.5px solid #F5C4CD", borderRadius: 12, padding: "12px 0", fontSize: 13, fontWeight: 700, cursor: "pointer", width: "100%" }}
-                    onClick={() => onDeleteExpense(item.id)}
-                  >
-                    Delete
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
-        );
-      })}
-      <div style={{height: 80}} />
+              )}
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ height: 80 }} />
     </div>
   );
 }
