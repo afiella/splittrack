@@ -1524,6 +1524,7 @@ export default function App() {
     user={user}
     onBack={() => setScreen("dashboard")}
     onMarkPaid={handleMarkPaid}
+    onEditExpense={(exp) => setEditingExpense(exp)}
     onLogPaymentForKey={(key, amount) => {
       setPaymentDraftKey(key || "general");
       setPaymentDraftAmount(amount ?? null);
@@ -5210,7 +5211,7 @@ function CategoryAnalyticsSheet({ catId, expenses, catGroup, onClose }) {
 }
 
 // ── URGENT SCREEN ────────────────────────────────────────────────────
-function UrgentScreen({ expenses, allExpenses = [], user, onBack, onMarkPaid, onLogPaymentForKey }) {
+function UrgentScreen({ expenses, allExpenses = [], user, onBack, onMarkPaid, onEditExpense, onLogPaymentForKey }) {
   const isCam = user === "cam";
   const [tab, setTab] = useState("urgent"); // "urgent" | "mandatory"
   const [expandedId, setExpandedId] = useState(null);
@@ -5466,14 +5467,24 @@ function UrgentScreen({ expenses, allExpenses = [], user, onBack, onMarkPaid, on
                     <img src={e.receiptUrl} alt="Receipt" style={{ display: "block", width: "100%", maxHeight: 200, objectFit: "cover" }} />
                   </div>
                 )}
-                {isCam && typeof onLogPaymentForKey === "function" && (
-                  <button
-                    style={{ width: "100%", padding: "12px", borderRadius: 12, border: "none", background: accentColor, color: "#000", fontSize: 13, fontWeight: 800, cursor: "pointer", letterSpacing: 0.2 }}
-                    onClick={() => onLogPaymentForKey(`exp:${e.id}`, camAmt > 0 ? camAmt : Number(e.amount))}
-                  >
-                    Log Payment →
-                  </button>
-                )}
+                <div style={{ display: "flex", gap: 8 }}>
+                  {isCam && typeof onLogPaymentForKey === "function" && (
+                    <button
+                      style={{ flex: 1, padding: "12px", borderRadius: 12, border: "none", background: accentColor, color: "#000", fontSize: 13, fontWeight: 800, cursor: "pointer", letterSpacing: 0.2 }}
+                      onClick={() => onLogPaymentForKey(`exp:${e.id}`, camAmt > 0 ? camAmt : Number(e.amount))}
+                    >
+                      Log Payment →
+                    </button>
+                  )}
+                  {typeof onEditExpense === "function" && (
+                    <button
+                      style={{ padding: "12px 18px", borderRadius: 12, border: "none", background: "rgba(255,255,255,0.12)", color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}
+                      onClick={() => onEditExpense(e)}
+                    >
+                      Edit
+                    </button>
+                  )}
+                </div>
               </div>
             )}
           </div>
