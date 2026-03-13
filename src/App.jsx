@@ -8803,7 +8803,7 @@ function BottomNav({ screen, onNavigate, urgentCount = 0, hidden = false }) {
           ref={el => btnRefs.current[i] = el}
           className="lg-btn"
           style={{ ...styles.navBtn, position: "relative", zIndex: 1 }}
-          onClick={() => onNavigate(t.id)}
+          onPointerDown={() => onNavigate(t.id)}
         >
           <div
             style={{ position: "relative", transition: "transform 0.3s cubic-bezier(.34,1.56,.64,1)", transform: screen === t.id ? "scale(1.1) translateY(-1px)" : "scale(1)" }}
