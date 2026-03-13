@@ -665,6 +665,9 @@ const icons = {
   trash:       "M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16",
   flag:        "M3 3v18M3 7l9-4 9 4v8l-9 4-9-4V7z",
   bell:        "M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9",
+  camera:      "M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9zm13 3a4 4 0 11-8 0 4 4 0 018 0z",
+  user:        "M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z",
+  settings:    "M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z",
 };
 
 function Icon({ path, size = 20, color = "currentColor" }) {
@@ -4284,6 +4287,182 @@ function NotifEnableBanner({ user, notifPermission, setNotifPermission, setToken
 }
 
 // ── DASHBOARD ─────────────────────────────────────────────────────────
+// ── USER PROFILE MODAL ────────────────────────────────────────────────
+const EMMA_REMINDERS = [
+  { key: "newExpense",   label: "New expense added",    sub: "When a charge is logged to Cameron",      icon: "💳" },
+  { key: "paymentLogged",label: "Payment logged",       sub: "When Cameron submits a payment",          icon: "📨" },
+  { key: "overdueAlert", label: "Overdue alerts",       sub: "When an expense passes its due date",     icon: "⚠️" },
+  { key: "dailyReminder",label: "Daily due reminders",  sub: "Reminders 1–2 days before due dates",     icon: "📅" },
+  { key: "monthlySummary",label: "Monthly summary",     sub: "Digest on the 1st of each month",        icon: "📊" },
+];
+
+function UserProfileModal({ user, onClose, onLogout }) {
+  const avatarKey = `avatar_${user}`;
+  const remindersKey = `reminders_${user}`;
+  const [avatarUrl, setAvatarUrl] = useState(() => localStorage.getItem(avatarKey) || null);
+  const [reminders, setReminders] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(remindersKey) || "{}"); } catch { return {}; }
+  });
+  const fileRef = useRef(null);
+
+  function handlePhotoChange(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const url = ev.target.result;
+      localStorage.setItem(avatarKey, url);
+      setAvatarUrl(url);
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function removePhoto() {
+    localStorage.removeItem(avatarKey);
+    setAvatarUrl(null);
+    if (fileRef.current) fileRef.current.value = "";
+  }
+
+  function toggleReminder(key) {
+    setReminders((prev) => {
+      const next = { ...prev, [key]: !(prev[key] !== false) };
+      localStorage.setItem(remindersKey, JSON.stringify(next));
+      return next;
+    });
+  }
+
+  const isEmma = user === "emma";
+  const avatarGradient = isEmma
+    ? "linear-gradient(135deg, #4E635E 0%, #00314B 100%)"
+    : "linear-gradient(135deg, #E8A0B0 0%, #C0485A 100%)";
+
+  return (
+    <AnimatePresence>
+      <motion.div
+        key="profile-backdrop"
+        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+        style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 900 }}
+        onClick={onClose}
+      />
+      <motion.div
+        key="profile-sheet"
+        initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
+        transition={{ type: "spring", stiffness: 340, damping: 32 }}
+        style={{
+          position: "fixed", bottom: 0, left: 0, right: 0,
+          background: "linear-gradient(170deg, #EAF0F6 0%, #F5F1EB 100%)",
+          borderRadius: "26px 26px 0 0",
+          zIndex: 901,
+          paddingBottom: "max(28px, env(safe-area-inset-bottom))",
+          maxHeight: "90dvh", overflowY: "auto",
+          boxShadow: "0 -8px 40px rgba(0,0,0,0.18)",
+        }}
+      >
+        {/* Handle + close */}
+        <div style={{ display: "flex", justifyContent: "center", paddingTop: 10 }}>
+          <div style={{ width: 38, height: 4, borderRadius: 2, background: "#D5C9BC" }} />
+        </div>
+        <button
+          onClick={onClose}
+          style={{ position: "absolute", top: 16, right: 16, width: 32, height: 32, borderRadius: "50%", border: "none", background: "rgba(0,0,0,0.08)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+        >
+          <Icon path={icons.x} size={16} color="#666" />
+        </button>
+
+        {/* Avatar + name */}
+        <div style={{ textAlign: "center", padding: "24px 20px 20px" }}>
+          <div style={{ position: "relative", display: "inline-block" }}>
+            {avatarUrl ? (
+              <img src={avatarUrl} alt="Profile" style={{ width: 88, height: 88, borderRadius: "50%", objectFit: "cover", border: "3px solid #fff", boxShadow: "0 4px 16px rgba(0,49,75,0.18)" }} />
+            ) : (
+              <div style={{ width: 88, height: 88, borderRadius: "50%", background: avatarGradient, display: "flex", alignItems: "center", justifyContent: "center", border: "3px solid #fff", boxShadow: "0 4px 16px rgba(0,49,75,0.18)" }}>
+                <span style={{ fontSize: 34, fontWeight: 900, color: "#fff" }}>{isEmma ? "E" : "C"}</span>
+              </div>
+            )}
+            {/* Camera button */}
+            <button
+              onClick={() => fileRef.current?.click()}
+              style={{ position: "absolute", bottom: 2, right: 2, width: 28, height: 28, borderRadius: "50%", border: "2px solid #fff", background: "#00314B", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 2px 8px rgba(0,0,0,0.2)" }}
+            >
+              <Icon path={icons.camera} size={14} color="#fff" />
+            </button>
+            <input ref={fileRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handlePhotoChange} />
+          </div>
+
+          <h2 style={{ margin: "14px 0 2px", fontSize: 22, fontWeight: 900, color: "#00314B", letterSpacing: -0.5 }}>
+            {isEmma ? "Emmanuella" : "Cameron"}
+          </h2>
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: isEmma ? "#00314B" : "#C0485A", borderRadius: 999, padding: "3px 12px" }}>
+            <span style={{ fontSize: 11, fontWeight: 800, color: "#fff", textTransform: "uppercase", letterSpacing: 0.8 }}>
+              {isEmma ? "Account Holder" : "Member"}
+            </span>
+          </div>
+
+          {avatarUrl && (
+            <button onClick={removePhoto} style={{ display: "block", margin: "10px auto 0", background: "none", border: "none", color: "#C0485A", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+              Remove photo
+            </button>
+          )}
+        </div>
+
+        {/* Reminder settings — Emma only */}
+        {isEmma && (
+          <div style={{ margin: "0 16px 16px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+              <Icon path={icons.bell} size={16} color="#00314B" />
+              <span style={{ fontSize: 13, fontWeight: 900, color: "#00314B", textTransform: "uppercase", letterSpacing: 0.8 }}>Reminder Settings</span>
+            </div>
+            <div style={{ background: "#fff", borderRadius: 18, overflow: "hidden", boxShadow: "0 4px 18px rgba(0,49,75,0.10), 0 1px 4px rgba(0,0,0,0.06)" }}>
+              {EMMA_REMINDERS.map((r, i) => {
+                const isOn = reminders[r.key] !== false;
+                return (
+                  <div
+                    key={r.key}
+                    style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 16px", borderBottom: i < EMMA_REMINDERS.length - 1 ? "1px solid rgba(0,49,75,0.06)" : "none", cursor: "pointer" }}
+                    onClick={() => toggleReminder(r.key)}
+                  >
+                    <span style={{ fontSize: 20, flexShrink: 0, width: 28 }}>{r.icon}</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: "#00314B" }}>{r.label}</p>
+                      <p style={{ margin: "2px 0 0", fontSize: 11, color: "#999" }}>{r.sub}</p>
+                    </div>
+                    {/* Toggle */}
+                    <div
+                      style={{ width: 44, height: 26, borderRadius: 13, background: isOn ? "#00314B" : "#D5C9BC", position: "relative", transition: "background 0.2s", flexShrink: 0 }}
+                    >
+                      <div style={{ position: "absolute", top: 3, left: isOn ? 21 : 3, width: 20, height: 20, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 4px rgba(0,0,0,0.2)", transition: "left 0.2s cubic-bezier(.34,1.56,.64,1)" }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <p style={{ margin: "10px 4px 0", fontSize: 11, color: "#AAA", lineHeight: 1.5 }}>
+              Push notification preferences are stored on this device.
+            </p>
+          </div>
+        )}
+
+        {/* Account section */}
+        <div style={{ margin: "0 16px 16px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+            <Icon path={icons.user} size={16} color="#00314B" />
+            <span style={{ fontSize: 13, fontWeight: 900, color: "#00314B", textTransform: "uppercase", letterSpacing: 0.8 }}>Account</span>
+          </div>
+          <div style={{ background: "#fff", borderRadius: 18, overflow: "hidden", boxShadow: "0 4px 18px rgba(0,49,75,0.10), 0 1px 4px rgba(0,0,0,0.06)" }}>
+            <button
+              onClick={onLogout}
+              style={{ width: "100%", padding: "16px", background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 12, color: "#C0485A" }}
+            >
+              <span style={{ fontSize: 18 }}>🚪</span>
+              <span style={{ fontSize: 14, fontWeight: 700 }}>Sign out</span>
+            </button>
+          </div>
+        </div>
+      </motion.div>
+    </AnimatePresence>
+  );
+}
+
 function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, payments, syncingPayments, urgentCount, targetSummaries, onOpenTarget, onAddExpense, onLogPayment, onQuickPay, onConfirm, onResolveDispute, onRejectPayment, onDeletePendingPayment, onDismissRejectedPayment, onNavigate, onLogout, onSwitchView, viewingAsCam, onLogPaymentForKey, onDisputeExpense }) {
   const pending = payments.filter((p) => !p.confirmed && !p.rejected);
   // Cam dashboard urgent banner improvement: Step 3
@@ -4298,6 +4477,8 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
     typeof Notification !== "undefined" ? Notification.permission : "granted"
   );
   const [tokenSaved, setTokenSaved] = useState(() => localStorage.getItem("fcmTokenSaved") === user);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [avatarUrl, setAvatarUrl] = useState(() => localStorage.getItem(`avatar_${user}`) || null);
 
   const sortedByDate = (expenses || [])
     .filter((e) => e.status !== "paid")
@@ -4420,20 +4601,19 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
           </div>
           {/* Avatar circle */}
           <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8 }}>
-            <div style={{
-              width: 46, height: 46, borderRadius: "50%",
-              background: user === "emma"
-                ? "linear-gradient(135deg, #4E635E 0%, #00314B 100%)"
-                : "linear-gradient(135deg, #E8A0B0 0%, #C0485A 100%)",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              boxShadow: "0 4px 14px rgba(0,49,75,0.22)",
-              border: "2px solid rgba(255,255,255,0.7)",
-              flexShrink: 0,
-            }}>
-              <span style={{ fontSize: 18, fontWeight: 900, color: "#fff", lineHeight: 1 }}>
-                {user === "emma" ? "E" : "C"}
-              </span>
-            </div>
+            <button
+              onClick={() => setProfileOpen(true)}
+              style={{ width: 46, height: 46, borderRadius: "50%", border: "2px solid rgba(255,255,255,0.7)", padding: 0, cursor: "pointer", overflow: "hidden", flexShrink: 0, boxShadow: "0 4px 14px rgba(0,49,75,0.22)", background: "transparent" }}
+              aria-label="Profile"
+            >
+              {avatarUrl ? (
+                <img src={avatarUrl} alt="Profile" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} onError={() => setAvatarUrl(null)} />
+              ) : (
+                <div style={{ width: "100%", height: "100%", background: user === "emma" ? "linear-gradient(135deg, #4E635E 0%, #00314B 100%)" : "linear-gradient(135deg, #E8A0B0 0%, #C0485A 100%)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <span style={{ fontSize: 18, fontWeight: 900, color: "#fff", lineHeight: 1 }}>{user === "emma" ? "E" : "C"}</span>
+                </div>
+              )}
+            </button>
           </div>
         </div>
 
@@ -4521,15 +4701,13 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
               )}
             </button>
           )}
-          {onSwitchView ? (
+          {onSwitchView && (
             <button
               style={{ ...styles.logoutBtn, background: viewingAsCam ? "#00314B" : "rgba(255,255,255,0.7)", color: viewingAsCam ? "#C4B5FD" : "#888", fontWeight: 700 }}
               onClick={onSwitchView}
             >
               {viewingAsCam ? "My view" : "Cam's view"}
             </button>
-          ) : (
-            <button style={styles.logoutBtn} onClick={onLogout}>Sign out</button>
           )}
           </div>
         </div>
@@ -5191,7 +5369,7 @@ function CategoryAnalyticsSheet({ catId, expenses, catGroup, onClose }) {
           )}
           <div style={{ display: "flex", flexDirection: "column", gap: 8, paddingBottom: 8 }}>
             {sorted.map((e, i) => (
-              <div key={e.id} style={{ background: "#fff", borderRadius: 14, overflow: "hidden", display: "flex", boxShadow: "0 2px 8px rgba(0,0,0,0.06)", position: "relative" }}>
+              <div key={e.id} style={{ background: "#fff", borderRadius: 14, overflow: "hidden", display: "flex", boxShadow: "0 3px 14px rgba(0,49,75,0.09), 0 1px 3px rgba(0,0,0,0.05)", position: "relative" }}>
                 {/* Left accent stripe */}
                 <div style={{ width: 4, flexShrink: 0, background: i === 0 ? meta.bg : `${meta.color}55` }} />
                 <div style={{ flex: 1, display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 14px" }}>
@@ -5206,6 +5384,20 @@ function CategoryAnalyticsSheet({ catId, expenses, catGroup, onClose }) {
           </div>
         </div>
       </motion.div>
+
+      {/* User Profile Modal */}
+      <AnimatePresence>
+        {profileOpen && (
+          <UserProfileModal
+            user={user}
+            onClose={() => {
+              setProfileOpen(false);
+              setAvatarUrl(localStorage.getItem(`avatar_${user}`) || null);
+            }}
+            onLogout={onLogout}
+          />
+        )}
+      </AnimatePresence>
     </>
   );
 }
@@ -5316,8 +5508,8 @@ function UrgentScreen({ expenses, allExpenses = [], user, onBack, onMarkPaid, on
               overflow: "hidden",
               cursor: "pointer",
               boxShadow: isExpanded
-                ? `0 8px 28px rgba(0,0,0,0.35), 0 0 0 1.5px ${accentColor}55`
-                : "0 4px 16px rgba(0,0,0,0.22)",
+                ? `0 10px 36px rgba(0,0,0,0.32), 0 4px 12px rgba(0,0,0,0.18), 0 0 0 1.5px ${accentColor}55`
+                : "0 6px 24px rgba(0,0,0,0.20), 0 2px 8px rgba(0,0,0,0.10)",
             }}
             onClick={() => setExpandedId(isExpanded ? null : e.id)}
           >
@@ -8782,7 +8974,7 @@ function BottomNav({ screen, onNavigate, urgentCount = 0, hidden = false }) {
 
 // ── FRAMEWORK STYLES ─────────────────────────────────────────────────
 const fw = {
-  expenseCard: { background: "#fff", borderRadius: 20, marginBottom: 10, overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.06), 0 6px 20px rgba(0,0,0,0.04)", border: "1px solid rgba(0,0,0,0.05)" },
+  expenseCard: { background: "#fff", borderRadius: 20, marginBottom: 10, overflow: "hidden", boxShadow: "0 2px 12px rgba(0,49,75,0.10), 0 1px 4px rgba(0,0,0,0.06)", border: "1px solid rgba(0,49,75,0.06)" },
   expenseTop: { display: "flex", alignItems: "center", gap: 12, padding: "14px 14px 14px 18px", cursor: "pointer" },
   expenseInfo: { flex: 1, minWidth: 0 },
   expenseDesc: { fontSize: 13, fontWeight: 600, color: "#00314B", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" },
@@ -8799,8 +8991,8 @@ payPlanCard: {
   marginTop: 12,
   background: "#fff",
   borderRadius: 16,
-  border: "1px solid #EDE7DC",
-  boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
+  border: "1px solid rgba(0,49,75,0.07)",
+  boxShadow: "0 4px 18px rgba(0,49,75,0.10), 0 1px 4px rgba(0,0,0,0.06)",
   padding: "12px 12px",
 },
 payPlanTop: {
@@ -8902,8 +9094,8 @@ payMetaCard: {
   marginTop: 10,
   background: "#fff",
   borderRadius: 16,
-  border: "1px solid #EDE7DC",
-  boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
+  border: "1px solid rgba(0,49,75,0.07)",
+  boxShadow: "0 4px 18px rgba(0,49,75,0.10), 0 1px 4px rgba(0,0,0,0.06)",
   padding: "12px 12px",
 },
 payMetaRow: {
@@ -8972,7 +9164,7 @@ logPayBtn: {
   markPaidBtn: { flex: 1, padding: "9px", borderRadius: 12, border: "none", background: "#A6B49E", color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer" },
   deleteBtn: { flex: 1, padding: "9px", borderRadius: 12, border: "none", background: "#FFF0F0", color: "#E05C6E", fontWeight: 700, fontSize: 13, cursor: "pointer" },
 
-  insightCard: { background: "#fff", borderRadius: 16, margin: "0 16px 12px", overflow: "hidden", boxShadow: "0 2px 8px rgba(0,0,0,0.06)" },
+  insightCard: { background: "#fff", borderRadius: 16, margin: "0 16px 12px", overflow: "hidden", boxShadow: "0 4px 18px rgba(0,49,75,0.10), 0 1px 4px rgba(0,0,0,0.06)" },
   insightHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 16px", cursor: "pointer" },
   insightTitle: { fontSize: 14, fontWeight: 700, color: "#00314B" },
   insightBody: { padding: "4px 16px 16px", display: "flex", gap: 12 },
@@ -8993,7 +9185,7 @@ logPayBtn: {
   summaryBreakdown: { marginTop: 16, borderTop: "1px solid rgba(255,255,255,0.15)", paddingTop: 12 },
   summaryRow: { display: "flex", justifyContent: "space-between", marginBottom: 8 },
 
-  timelineCard: { background: "#fff", borderRadius: 16, overflow: "hidden", boxShadow: "0 2px 8px rgba(0,0,0,0.06)", margin: "0 16px 12px" },
+  timelineCard: { background: "#fff", borderRadius: 16, overflow: "hidden", boxShadow: "0 4px 18px rgba(0,49,75,0.10), 0 1px 4px rgba(0,0,0,0.06)", margin: "0 16px 12px" },
   timelineHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 16px", cursor: "pointer" },
   countBadge: { background: "#A6B49E", color: "#fff", fontSize: 11, fontWeight: 800, padding: "2px 8px", borderRadius: 10 },
   timelineItem: { display: "flex", gap: 12, marginBottom: 4 },
@@ -9049,11 +9241,11 @@ typeFilterChipActive: {
     backdropFilter: "blur(8px)",
   },
   islandCard: {
-    background: "rgba(255,255,255,0.85)",
-    border: "1.5px solid #EDE7DC",
+    background: "rgba(255,255,255,0.90)",
+    border: "1.5px solid rgba(0,49,75,0.08)",
     borderRadius: 26,
     padding: "12px 12px 12px",
-    boxShadow: "0 10px 30px rgba(0,49,75,0.12)",
+    boxShadow: "0 8px 32px rgba(0,49,75,0.16), 0 2px 8px rgba(0,0,0,0.06)",
   },
   islandHeaderRow: {
     display: "flex",
@@ -9109,12 +9301,13 @@ iconBtn: {
   borderRadius: 14,
   border: "none",
   cursor: "pointer",
-  background: "rgba(255,255,255,0.85)",
+  background: "rgba(255,255,255,0.90)",
+  boxShadow: "0 2px 10px rgba(0,49,75,0.10), 0 1px 3px rgba(0,0,0,0.06)",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
 },  
-  searchBar: { margin: "-6px 16px 12px", background: "#fff", borderRadius: 14, border: "1px solid #EDE7DC", display: "flex", alignItems: "center", gap: 8, padding: "10px 12px", boxShadow: "0 2px 10px rgba(0,0,0,0.04)" },
+  searchBar: { margin: "-6px 16px 12px", background: "#fff", borderRadius: 14, border: "1px solid rgba(0,49,75,0.07)", display: "flex", alignItems: "center", gap: 8, padding: "10px 12px", boxShadow: "0 3px 14px rgba(0,49,75,0.09), 0 1px 3px rgba(0,0,0,0.05)" },
   searchIcon: { fontSize: 14, opacity: 0.7 },
   searchInput: { flex: 1, border: "none", outline: "none", fontSize: 13, background: "transparent", color: "#00314B" },
   clearSearch: { width: 28, height: 28, borderRadius: 10, border: "none", cursor: "pointer", background: "#EEE9E0", color: "#888", display: "flex", alignItems: "center", justifyContent: "center" },
@@ -9125,7 +9318,7 @@ iconBtn: {
   expensesSearchClearBtn: { position: "absolute", right: 10, width: 20, height: 20, borderRadius: 10, border: "none", cursor: "pointer", background: "#CCC", color: "#fff", fontSize: 11, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" },
   expensesSearchCancel: { background: "none", border: "none", cursor: "pointer", color: "#A6B49E", fontSize: 14, fontWeight: 700 },
   expensesResultCount: { padding: "0 16px 8px", fontSize: 12, color: "#AAA", fontWeight: 600 },
-  searchEmptyWrap: { margin: "6px 16px 14px", background: "#fff", border: "1px solid #EDE7DC", borderRadius: 14, padding: "14px 14px", boxShadow: "0 2px 10px rgba(0,0,0,0.04)", textAlign: "center" },
+  searchEmptyWrap: { margin: "6px 16px 14px", background: "#fff", border: "1px solid rgba(0,49,75,0.07)", borderRadius: 14, padding: "14px 14px", boxShadow: "0 3px 14px rgba(0,49,75,0.09), 0 1px 3px rgba(0,0,0,0.05)", textAlign: "center" },
   searchEmptyTitle: { margin: 0, fontSize: 14, fontWeight: 800, color: "#00314B" },
   searchEmptySub: { margin: "6px 0 0", fontSize: 12, color: "#888" },
   searchEmptyCenter: { textAlign: "center", padding: "60px 20px" },
@@ -9153,7 +9346,7 @@ iconBtn: {
   sectionTitle: { fontSize: 14, fontWeight: 700, color: "#00314B" },
   seeAll: { fontSize: 12, color: "#A6B49E", background: "none", border: "none", cursor: "pointer", fontWeight: 600 },
   progressSubTitle: { margin: "6px 0 10px", fontSize: 12, fontWeight: 800, color: "#5B3B8C" },
-  planCard: { background: "#fff", borderRadius: 16, padding: "14px 14px", marginBottom: 10, boxShadow: "0 2px 10px rgba(0,0,0,0.04)", border: "1px solid #EDE7DC" },
+  planCard: { background: "#fff", borderRadius: 16, padding: "14px 14px", marginBottom: 10, boxShadow: "0 4px 18px rgba(0,49,75,0.09), 0 1px 4px rgba(0,0,0,0.05)", border: "1px solid rgba(0,49,75,0.07)" },
   planTopRow: { display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline" },
   planTitle: { margin: 0, fontSize: 13, fontWeight: 800, color: "#00314B", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
   planRemaining: { margin: 0, fontSize: 13, fontWeight: 800, color: "#5B3B8C", flexShrink: 0 },
@@ -9161,12 +9354,12 @@ iconBtn: {
   planMetaText: { fontSize: 11, color: "#888", fontWeight: 600 },
   progressTrack: { marginTop: 10, height: 10, background: "#EEE9E0", borderRadius: 999, overflow: "hidden" },
   progressFill: { height: "100%", background: "linear-gradient(135deg, #A6B49E, #4E635E)", borderRadius: 999 },
-  oneTimeRow: { background: "#fff", borderRadius: 14, padding: "12px 14px", marginBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "center", boxShadow: "0 2px 8px rgba(0,0,0,0.04)", border: "1px solid #EDE7DC" },
+  oneTimeRow: { background: "#fff", borderRadius: 14, padding: "12px 14px", marginBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "center", boxShadow: "0 3px 14px rgba(0,49,75,0.09), 0 1px 3px rgba(0,0,0,0.05)", border: "1px solid rgba(0,49,75,0.06)" },
   oneTimeLabel: { fontSize: 12, fontWeight: 700, color: "#00314B", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 240 },
   oneTimeAmt: { fontSize: 12, fontWeight: 800, color: "#E05C6E" },
 
   // Pending
-  pendingCard: { background: "#FBF5E0", borderRadius: 14, padding: "14px 16px", marginBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "center", border: "1px solid #E8C878" },
+  pendingCard: { background: "#FBF5E0", borderRadius: 14, padding: "14px 16px", marginBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "center", border: "1px solid #E8C878", boxShadow: "0 3px 14px rgba(200,160,32,0.10), 0 1px 4px rgba(0,0,0,0.05)" },
   pendingAmt: { fontSize: 18, fontWeight: 800, color: "#5A3A10", margin: 0 },
   pendingMeta: { fontSize: 12, color: "#8A6A30", margin: "2px 0 0" },
   confirmBtn: { display: "flex", alignItems: "center", gap: 6, background: "#A6B49E", color: "#fff", border: "none", borderRadius: 10, padding: "8px 14px", fontSize: 13, fontWeight: 700, cursor: "pointer" },
@@ -9175,10 +9368,10 @@ iconBtn: {
 
   // Action Buttons
   actionRow: { display: "flex", gap: 10, padding: "8px 16px 16px" },
-  actionBtn: { flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "14px", borderRadius: 16, border: "none", color: "#fff", fontWeight: 700, fontSize: 14, cursor: "pointer", boxShadow: "0 4px 16px rgba(0,0,0,0.12)" },
+  actionBtn: { flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "14px", borderRadius: 16, border: "none", color: "#fff", fontWeight: 700, fontSize: 14, cursor: "pointer", boxShadow: "0 6px 22px rgba(0,0,0,0.18), 0 2px 6px rgba(0,0,0,0.10)" },
 
   // Expense Row
-  expenseRow: { display: "flex", alignItems: "center", gap: 10, background: "#fff", borderRadius: 14, padding: "12px 14px", marginBottom: 8, boxShadow: "0 2px 8px rgba(0,0,0,0.04)" },
+  expenseRow: { display: "flex", alignItems: "center", gap: 10, background: "#fff", borderRadius: 14, padding: "12px 14px", marginBottom: 8, boxShadow: "0 3px 14px rgba(0,49,75,0.09), 0 1px 3px rgba(0,0,0,0.05)" },
   splitDot: { width: 8, height: 8, borderRadius: "50%", flexShrink: 0 },
   expenseInfo: { flex: 1, minWidth: 0 },
   expenseDesc: { fontSize: 13, fontWeight: 600, color: "#00314B", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" },
@@ -9192,7 +9385,7 @@ iconBtn: {
   // Sub screens
   subHeader: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "calc(env(safe-area-inset-top, 47px) + 16px) 16px 16px" },
   subTitle: { fontSize: 20, fontWeight: 800, color: "#00314B", margin: 0 },
-  backBtn: { background: "#fff", border: "none", borderRadius: 12, width: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", boxShadow: "0 2px 8px rgba(0,0,0,0.08)" },
+  backBtn: { background: "#fff", border: "none", borderRadius: 12, width: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", boxShadow: "0 3px 14px rgba(0,49,75,0.12), 0 1px 4px rgba(0,0,0,0.06)" },
   addSmall: { background: "#A6B49E", border: "none", borderRadius: 12, width: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" },
 
   filterRow: { display: "flex", gap: 8, padding: "0 16px 16px", overflowX: "auto" },
@@ -9249,7 +9442,7 @@ iconBtn: {
   menuWrap: { position: "relative", display: "inline-block", marginTop: 6 },
   menuDotBtn: { background: "#EEE9E0", border: "none", borderRadius: 10, fontSize: 18, fontWeight: 800, color: "#888", padding: "4px 10px", cursor: "pointer", letterSpacing: 1, minWidth: 40, minHeight: 36, lineHeight: 1, display: "flex", alignItems: "center", justifyContent: "center" },
   menuDotBtnActive: { background: "#EAE0F8", color: "#5B3B8C" },
-  menuPopup: { position: "absolute", right: 0, top: "110%", background: "#fff", borderRadius: 14, boxShadow: "0 8px 30px rgba(0,0,0,0.15)", zIndex: 100, minWidth: 160, overflow: "hidden", border: "1px solid #EDE7DC" },
+  menuPopup: { position: "absolute", right: 0, top: "110%", background: "#fff", borderRadius: 14, boxShadow: "0 8px 32px rgba(0,49,75,0.18), 0 2px 8px rgba(0,0,0,0.08)", zIndex: 100, minWidth: 160, overflow: "hidden", border: "1px solid rgba(0,49,75,0.07)" },
   menuItem: { display: "block", width: "100%", padding: "14px 18px", textAlign: "left", background: "none", border: "none", borderBottom: "1px solid #EEE9E0", fontSize: 14, fontWeight: 600, color: "#00314B", cursor: "pointer", fontFamily: "'DM Sans', system-ui, sans-serif" },
   menuItemDelete: { borderBottom: "none", color: "#E05C6E" },
 
