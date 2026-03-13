@@ -5244,7 +5244,7 @@ function UrgentScreen({ expenses, allExpenses = [], user, onBack, onMarkPaid, on
 
   // Mandatory: expenses explicitly marked as mandatory, sorted by next due date
   const mandatorySorted = [...allExpenses]
-    .filter(e => e.mandatory)
+    .filter(e => e.mandatory && e.status !== "paid")
     .sort((a, b) => {
       const da = getDaysUntilDue(a.nextDue || a.dueDate) ?? 999;
       const db = getDaysUntilDue(b.nextDue || b.dueDate) ?? 999;
@@ -6468,7 +6468,7 @@ function HistoryScreen({ expenses, payments, user, targets = [], onBack, onConfi
               <div style={{ flex: 1, height: 1, background: "#EBEBF0" }} />
             </div>
             {/* Timeline items */}
-            <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 0, background: "linear-gradient(145deg, #0D1B2A, #415A77)", borderRadius: 18, overflow: "hidden", boxShadow: "0 4px 20px rgba(13,27,42,0.4)" }}>
               {group.items.map((item, ii) => {
                 const rowId = item._kind === "payment" ? item.id : `exp-${item.id}`;
                 const isOpen = expandedId === rowId;
@@ -6503,27 +6503,27 @@ function HistoryScreen({ expenses, payments, user, targets = [], onBack, onConfi
                 <div
                   role="button"
                   onClick={() => setExpandedId(isOpen ? null : rowId)}
-                  style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 16px", cursor: "pointer", borderBottom: isLastInGroup && !isOpen ? "none" : "1px solid #F2F2F5" }}
+                  style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 16px", cursor: "pointer", borderBottom: isLastInGroup && !isOpen ? "none" : "1px solid rgba(255,255,255,0.07)" }}
                 >
-                  <div style={{ width: 46, height: 46, borderRadius: 16, background: iconBg, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, boxShadow: `0 2px 8px ${iconColor}22` }}>
-                    <Icon path={iconPath} size={20} color={iconColor} />
+                  <div style={{ width: 46, height: 46, borderRadius: 16, background: "rgba(255,255,255,0.18)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                    <Icon path={iconPath} size={20} color="#fff" />
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <p style={{ margin: 0, fontSize: 15, fontWeight: 800, color: "#1A1A2E", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    <p style={{ margin: 0, fontSize: 15, fontWeight: 800, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {isDispute ? `Dispute — ${item.disputeDescription || "charge"}` : `${item.method} Payment`}
                     </p>
                     <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
                       <span style={{ fontSize: 11, fontWeight: 700, color: "#fff", background: amtColor, borderRadius: 6, padding: "1px 7px", textTransform: "capitalize" }}>{statusLabel}</span>
-                      {lbl && <span style={{ fontSize: 11, color: "#BBB", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{lbl}</span>}
+                      {lbl && <span style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{lbl}</span>}
                     </div>
                   </div>
                   <div style={{ textAlign: "right", flexShrink: 0 }}>
                     {!isDispute && (
-                      <p style={{ margin: 0, fontSize: isConfirmed ? 20 : 16, fontWeight: 900, color: amtColor, letterSpacing: -0.5 }}>
+                      <p style={{ margin: 0, fontSize: isConfirmed ? 20 : 16, fontWeight: 900, color: isConfirmed ? "#ECF39E" : "#fff", letterSpacing: -0.5 }}>
                         {isConfirmed ? "+" : "−"}${Number(item.amount || 0).toFixed(2)}
                       </p>
                     )}
-                    <p style={{ margin: isDispute ? 0 : "2px 0 0", fontSize: 11, color: "#BBB" }}>{formatHistoryDate(item.date)}</p>
+                    <p style={{ margin: isDispute ? 0 : "2px 0 0", fontSize: 11, color: "rgba(255,255,255,0.35)" }}>{formatHistoryDate(item.date)}</p>
                   </div>
                 </div>
 
@@ -6617,24 +6617,24 @@ function HistoryScreen({ expenses, payments, user, targets = [], onBack, onConfi
               <div
                 role="button"
                 onClick={() => setExpandedId(isOpen ? null : rowId)}
-                style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 16px", cursor: "pointer", borderBottom: isLastInGroup && !isOpen ? "none" : "1px solid #F2F2F5" }}
+                style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 16px", cursor: "pointer", borderBottom: isLastInGroup && !isOpen ? "none" : "1px solid rgba(255,255,255,0.07)" }}
               >
-                <div style={{ width: 44, height: 44, borderRadius: 14, background: isPaid ? "#E8F5EE" : "#F0EEFF", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                  <Icon path={isPaid ? icons.check : icons.chevronUp} size={20} color={isPaid ? "#2D7A50" : "#7B5EA7"} />
+                <div style={{ width: 44, height: 44, borderRadius: 14, background: isPaid ? "rgba(255,255,255,0.18)" : "rgba(180,140,255,0.18)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <Icon path={isPaid ? icons.check : icons.chevronUp} size={20} color={isPaid ? "#fff" : "#C8A8FF"} />
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <p style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "#1A1A2E", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  <p style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {item.description}
                   </p>
-                  <p style={{ margin: "2px 0 0", fontSize: 12, color: "#AAA", fontWeight: 500 }}>
+                  <p style={{ margin: "2px 0 0", fontSize: 12, color: "rgba(255,255,255,0.45)", fontWeight: 500 }}>
                     {item.category || (item.split === "split" ? "Split 50/50" : "Charge")}
                   </p>
                 </div>
                 <div style={{ textAlign: "right", flexShrink: 0 }}>
-                  <p style={{ margin: 0, fontSize: 15, fontWeight: 800, color: "#1A1A2E" }}>
+                  <p style={{ margin: 0, fontSize: 15, fontWeight: 800, color: isPaid ? "#ECF39E" : "#fff" }}>
                     −${Number(expAmt || 0).toFixed(2)}
                   </p>
-                  <p style={{ margin: "2px 0 0", fontSize: 11, color: "#BBB" }}>{formatHistoryDate(item.date)}</p>
+                  <p style={{ margin: "2px 0 0", fontSize: 11, color: "rgba(255,255,255,0.35)" }}>{formatHistoryDate(item.date)}</p>
                 </div>
               </div>
 
@@ -6644,17 +6644,17 @@ function HistoryScreen({ expenses, payments, user, targets = [], onBack, onConfi
                 transition={{ type: "tween", duration: 0.28, ease: [0.25, 0.46, 0.45, 0.94] }}
                 style={{ overflow: "hidden" }}
               >
-                <div style={{ padding: "0 16px 16px", display: "flex", flexDirection: "column", gap: 10, borderBottom: isLastInGroup ? "none" : "1px solid #F2F2F5" }}>
-                  <div style={{ background: "#F8F8FB", borderRadius: 14, padding: 14, display: "flex", flexDirection: "column", gap: 9 }}>
-                    {hRow("Full amount", `$${Number(item.amount || 0).toFixed(2)}`, false, true)}
-                    {item.split && hRow("Split", splitLabel(item.split), false, true)}
-                    {item.category && hRow("Category", item.category, false, true)}
-                    {item.account && hRow("Charged to", item.account, false, true)}
-                    {item.recurring && item.recurring !== "none" && hRow("Recurring", item.recurring, false, true)}
-                    {(item.dueDate || item.nextDue) && hRow("Due date", formatShortDate(item.dueDate || item.nextDue), false, true)}
-                    {item.referenceNum && hRow("Ref #", item.referenceNum, true, true)}
-                    {item.note && hRow("Note", `"${item.note}"`, false, true)}
-                    {hRow("Status", isPaid ? "Paid ✓" : "Unpaid", false, true)}
+                <div style={{ padding: "0 16px 16px", display: "flex", flexDirection: "column", gap: 10, borderBottom: isLastInGroup ? "none" : "1px solid rgba(255,255,255,0.07)" }}>
+                  <div style={{ background: "rgba(255,255,255,0.06)", borderRadius: 14, padding: 14, display: "flex", flexDirection: "column", gap: 9 }}>
+                    {hRow("Full amount", `$${Number(item.amount || 0).toFixed(2)}`)}
+                    {item.split && hRow("Split", splitLabel(item.split))}
+                    {item.category && hRow("Category", item.category)}
+                    {item.account && hRow("Charged to", item.account)}
+                    {item.recurring && item.recurring !== "none" && hRow("Recurring", item.recurring)}
+                    {(item.dueDate || item.nextDue) && hRow("Due date", formatShortDate(item.dueDate || item.nextDue))}
+                    {item.referenceNum && hRow("Ref #", item.referenceNum, true)}
+                    {item.note && hRow("Note", `"${item.note}"`)}
+                    {hRow("Status", isPaid ? "Paid ✓" : "Unpaid")}
                   </div>
                   {isPaid && user === "emma" && typeof onDeleteExpense === "function" && (
                     <button
