@@ -3882,13 +3882,13 @@ function CamNotificationsPanel({ expenses = [], payments = [], onClose, onNaviga
         exit={{ y: "100%" }}
         transition={{ type: "spring", stiffness: 340, damping: 32 }}
         style={{
-          position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)",
-          width: "100%", maxWidth: 430,
+          position: "fixed", bottom: 0, left: 0, right: 0,
+          width: "100%",
           background: "linear-gradient(170deg, #EAF0F6 0%, #F5F1EB 100%)",
           borderRadius: "26px 26px 0 0",
           zIndex: 801,
           paddingBottom: "max(28px, env(safe-area-inset-bottom))",
-          maxHeight: "82vh", overflowY: "auto",
+          maxHeight: "90dvh", overflowY: "auto",
           boxShadow: "0 -8px 40px rgba(0,0,0,0.18)",
         }}
       >
@@ -7766,29 +7766,36 @@ function AddExpenseModal({ onSave, onClose, user }) {
 
   const splitOptions = user === "cam"
     ? [["cam", "I pay", "#E8A0B0"], ["ella", "Emmanuella pays", "#A6B49E"], ["split", "Split 50/50", "#D5BD96"]]
-    : [["mine", "I pay", "#A6B49E"], ["cam", "Cam pays", "#E8A0B0"], ["split", "Split 50/50", "#D5BD96"]];
+    : [["mine", "I pay", "#A6B49E"], ["cam", "Cameron", "#E8A0B0"], ["split", "Split 50/50", "#D5BD96"]];
+
+  const darkInput = { display: "block", width: "100%", boxSizing: "border-box", padding: "12px 14px", borderRadius: 12, border: "1.5px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.07)", fontSize: 14, fontWeight: 600, color: "#fff", fontFamily: "inherit", outline: "none" };
+  const sectionCard = { borderRadius: 18, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.09)", padding: "16px 14px 14px", display: "flex", flexDirection: "column", gap: 12 };
+  const sectionLabel = (text, accent = "#ECF39E") => (
+    <span style={{ fontSize: 10, fontWeight: 800, color: accent, textTransform: "uppercase", letterSpacing: 1.2 }}>{text}</span>
+  );
 
   return (
     <div style={styles.modalOverlay}>
-      <div style={styles.modal}>
-        <div style={styles.dragHandle} />
+      <div style={{ ...styles.modal, background: "linear-gradient(170deg, #0D1B2A 0%, #1A2B3C 100%)", borderRadius: "28px 28px 0 0" }}>
+        <div style={{ width: 36, height: 4, borderRadius: 2, background: "rgba(255,255,255,0.18)", margin: "0 auto 18px" }} />
 
-        <div style={styles.modalHeader}>
-          <h3 style={styles.modalTitle}>Add Expense</h3>
-          <button style={styles.closeBtn} onClick={onClose}>
-            <Icon path={icons.x} size={18} color="#C0485A" />
+        {/* Header */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
+          <h3 style={{ margin: 0, fontSize: 20, fontWeight: 900, color: "#fff", letterSpacing: -0.4 }}>Add Expense</h3>
+          <button onClick={onClose} style={{ width: 34, height: 34, borderRadius: "50%", background: "rgba(255,255,255,0.1)", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <Icon path={icons.x} size={16} color="rgba(255,255,255,0.7)" />
           </button>
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
 
           {/* ── Templates ── */}
-          <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 2, WebkitOverflowScrolling: "touch", scrollbarWidth: "none", msOverflowStyle: "none" }}>
+          <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 2, WebkitOverflowScrolling: "touch", scrollbarWidth: "none" }}>
             {EXPENSE_TEMPLATES.map((t) => (
               <button
                 key={t.label}
                 type="button"
-                style={{ flexShrink: 0, padding: "7px 14px", borderRadius: 999, border: "1.5px solid #DDD5C5", background: "#EEE9E0", fontSize: 12, fontWeight: 700, color: "#00314B", cursor: "pointer", whiteSpace: "nowrap" }}
+                style={{ flexShrink: 0, padding: "7px 14px", borderRadius: 999, border: "1px solid rgba(255,255,255,0.15)", background: "rgba(255,255,255,0.08)", fontSize: 12, fontWeight: 700, color: "rgba(255,255,255,0.75)", cursor: "pointer", whiteSpace: "nowrap" }}
                 onClick={() => setForm(f => ({ ...f, description: t.description, category: t.category, recurring: t.recurring, split: t.split, ...(t.amount ? { amount: t.amount } : {}) }))}
               >
                 {t.label}
@@ -7796,129 +7803,13 @@ function AddExpenseModal({ onSave, onClose, user }) {
             ))}
           </div>
 
-          {/* ── Group 1: WHAT ── */}
-          <div style={groupCard}>
-            {groupLabel("What", "#A6B7CB")}
-
-            <input
-              style={{ ...styles.input, fontSize: 16, fontWeight: 600 }}
-              placeholder="Description — e.g. Netflix, Wegmans…"
-              value={form.description}
-              onChange={(e) => set("description", e.target.value)}
-            />
-
-            <div style={{ display: "flex", gap: 7, overflowX: "auto", WebkitOverflowScrolling: "touch", scrollbarWidth: "none", msOverflowStyle: "none", paddingBottom: 2, margin: "0 -14px", padding: "0 14px 2px" }}>
-              {CATEGORIES.map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  style={{
-                    flexShrink: 0, padding: "6px 14px", borderRadius: 999, border: "1.5px solid",
-                    background: form.category === c ? "#00314B" : "#EEE9E0",
-                    color: form.category === c ? "#fff" : "#666",
-                    borderColor: form.category === c ? "#00314B" : "#DDD5C5",
-                    fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap",
-                  }}
-                  onClick={() => set("category", c)}
-                >
-                  {c}
-                </button>
-              ))}
-            </div>
-
-            {/* Extra details — inline below category */}
-            <div>
-              <button
-                type="button"
-                onClick={() => setShowNotes(p => !p)}
-                style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", background: showNotes ? "#EAF0EE" : "#F0EDE8", border: "none", borderRadius: 12, padding: "10px 13px", cursor: "pointer" }}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <div style={{ width: 28, height: 28, borderRadius: 8, background: showNotes ? "#4E635E" : "#D0C8BC", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                    <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
-                      <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/>
-                      <line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
-                    </svg>
-                  </div>
-                  <span style={{ fontSize: 13, fontWeight: 700, color: showNotes ? "#00314B" : "#888" }}>{showNotes ? "Hide details" : "Add note, ref # or receipt"}</span>
-                </div>
-                <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke={showNotes ? "#4E635E" : "#BBB"} strokeWidth={2.5} strokeLinecap="round" style={{ transform: showNotes ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s", flexShrink: 0 }}>
-                  <polyline points="6 9 12 15 18 9"/>
-                </svg>
-              </button>
-
-              {showNotes && (
-                <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
-                  {/* Reference number */}
-                  <div style={{ position: "relative" }}>
-                    <div style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", display: "flex", alignItems: "center", pointerEvents: "none" }}>
-                      <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="#D5BD96" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z"/>
-                        <line x1="7" y1="7" x2="7.01" y2="7"/>
-                      </svg>
-                    </div>
-                    <input
-                      autoFocus
-                      placeholder="Reference # — e.g. TXN-4821, Order ID…"
-                      value={form.referenceNum}
-                      onChange={(e) => set("referenceNum", e.target.value)}
-                      style={{ display: "block", width: "100%", boxSizing: "border-box", padding: "11px 14px 11px 34px", borderRadius: 12, border: "1.5px solid #DDD5C5", background: "#F5F1EB", fontSize: 13, fontWeight: 600, color: "#00314B", fontFamily: "inherit", outline: "none" }}
-                    />
-                  </div>
-
-                  {/* Notes */}
-                  <textarea
-                    placeholder="Extra context, links, reminders…"
-                    value={form.note}
-                    onChange={(e) => set("note", e.target.value)}
-                    style={{ display: "block", width: "100%", boxSizing: "border-box", padding: "11px 14px", borderRadius: 12, border: "1.5px solid #DDD5C5", background: "#F5F1EB", fontSize: 13, fontWeight: 500, color: "#00314B", fontFamily: "inherit", outline: "none", resize: "none", minHeight: 72, lineHeight: 1.5 }}
-                  />
-
-                  {/* Receipt upload */}
-                  <input
-                    ref={receiptInputRef}
-                    type="file"
-                    accept="image/*"
-                    capture="environment"
-                    style={{ display: "none" }}
-                    onChange={handleReceiptFile}
-                  />
-                  {form.receiptUrl ? (
-                    <div style={{ position: "relative", borderRadius: 12, overflow: "hidden", border: "1.5px solid #DDD5C5" }}>
-                      <img src={form.receiptUrl} alt="Receipt" style={{ display: "block", width: "100%", maxHeight: 180, objectFit: "cover" }} />
-                      <button
-                        type="button"
-                        onClick={() => set("receiptUrl", "")}
-                        style={{ position: "absolute", top: 6, right: 6, width: 26, height: 26, borderRadius: "50%", background: "rgba(0,0,0,0.55)", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
-                      >
-                        <Icon path={icons.x} size={13} color="#fff" />
-                      </button>
-                    </div>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => receiptInputRef.current?.click()}
-                      style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", borderRadius: 12, border: "1.5px dashed #DDD5C5", background: "#F5F1EB", cursor: "pointer", width: "100%", boxSizing: "border-box" }}
-                    >
-                      <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#A6B7CB" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/>
-                        <circle cx="12" cy="13" r="4"/>
-                      </svg>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: "#A6B7CB" }}>Attach receipt photo</span>
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* ── Group 2: HOW MUCH ── */}
-          <div style={groupCard}>
-            {groupLabel("How Much", "#1B4D6B")}
-            <div style={{ position: "relative", width: "100%" }}>
-              <span style={{ position: "absolute", left: 16, top: "50%", transform: "translateY(-50%)", fontSize: 26, fontWeight: 800, color: "#D5BD96", pointerEvents: "none" }}>$</span>
+          {/* ── Amount Hero ── */}
+          <div style={{ ...sectionCard, alignItems: "center", padding: "20px 14px" }}>
+            {sectionLabel("Amount", "#ECF39E")}
+            <div style={{ position: "relative", width: "100%", marginTop: 4 }}>
+              <span style={{ position: "absolute", left: 18, top: "50%", transform: "translateY(-50%)", fontSize: 32, fontWeight: 900, color: "#ECF39E", pointerEvents: "none", opacity: 0.7 }}>$</span>
               <input
-                style={{ display: "block", width: "100%", boxSizing: "border-box", height: 64, paddingLeft: 44, paddingRight: 14, borderRadius: 12, border: "1.5px solid #DDD5C5", background: "#F5F1EB", outline: "none", fontSize: 34, fontWeight: 800, color: "#00314B", letterSpacing: -0.5, fontFamily: "inherit" }}
+                style={{ display: "block", width: "100%", boxSizing: "border-box", height: 72, paddingLeft: 52, paddingRight: 16, borderRadius: 16, border: "1.5px solid rgba(236,243,158,0.25)", background: "rgba(236,243,158,0.06)", outline: "none", fontSize: 40, fontWeight: 900, color: "#ECF39E", letterSpacing: -1, fontFamily: "inherit" }}
                 type="number"
                 inputMode="decimal"
                 placeholder="0.00"
@@ -7928,10 +7819,94 @@ function AddExpenseModal({ onSave, onClose, user }) {
             </div>
           </div>
 
-          {/* ── Group 3: WHO PAYS ── */}
-          <div style={groupCard}>
-            {groupLabel("Who Pays", "#C0485A")}
+          {/* ── What ── */}
+          <div style={sectionCard}>
+            {sectionLabel("What")}
+            <input
+              style={{ ...darkInput, fontSize: 15, fontWeight: 700 }}
+              placeholder="Description — e.g. Netflix, Wegmans…"
+              value={form.description}
+              onChange={(e) => set("description", e.target.value)}
+            />
+            <div style={{ display: "flex", gap: 7, overflowX: "auto", WebkitOverflowScrolling: "touch", scrollbarWidth: "none", margin: "0 -14px", padding: "0 14px 2px" }}>
+              {CATEGORIES.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  style={{
+                    flexShrink: 0, padding: "6px 14px", borderRadius: 999,
+                    background: form.category === c ? "#415A77" : "rgba(255,255,255,0.07)",
+                    color: form.category === c ? "#ECF39E" : "rgba(255,255,255,0.5)",
+                    border: form.category === c ? "1px solid #415A77" : "1px solid rgba(255,255,255,0.1)",
+                    fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap",
+                    boxShadow: form.category === c ? "0 2px 10px rgba(65,90,119,0.5)" : "none",
+                  }}
+                  onClick={() => set("category", c)}
+                >
+                  {c}
+                </button>
+              ))}
+            </div>
 
+            {/* Notes toggle */}
+            <button
+              type="button"
+              onClick={() => setShowNotes(p => !p)}
+              style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12, padding: "10px 13px", cursor: "pointer" }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ width: 28, height: 28, borderRadius: 8, background: showNotes ? "#415A77" : "rgba(255,255,255,0.1)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/>
+                    <line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
+                  </svg>
+                </div>
+                <span style={{ fontSize: 13, fontWeight: 700, color: showNotes ? "#ECF39E" : "rgba(255,255,255,0.4)" }}>{showNotes ? "Hide details" : "Add note, ref # or receipt"}</span>
+              </div>
+              <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke={showNotes ? "#ECF39E" : "rgba(255,255,255,0.3)"} strokeWidth={2.5} strokeLinecap="round" style={{ transform: showNotes ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s", flexShrink: 0 }}>
+                <polyline points="6 9 12 15 18 9"/>
+              </svg>
+            </button>
+
+            {showNotes && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <input
+                  autoFocus
+                  placeholder="Reference # — e.g. TXN-4821…"
+                  value={form.referenceNum}
+                  onChange={(e) => set("referenceNum", e.target.value)}
+                  style={darkInput}
+                />
+                <textarea
+                  placeholder="Extra context, links, reminders…"
+                  value={form.note}
+                  onChange={(e) => set("note", e.target.value)}
+                  style={{ ...darkInput, resize: "none", minHeight: 72, lineHeight: 1.5 }}
+                />
+                <input ref={receiptInputRef} type="file" accept="image/*" capture="environment" style={{ display: "none" }} onChange={handleReceiptFile} />
+                {form.receiptUrl ? (
+                  <div style={{ position: "relative", borderRadius: 12, overflow: "hidden", border: "1px solid rgba(255,255,255,0.1)" }}>
+                    <img src={form.receiptUrl} alt="Receipt" style={{ display: "block", width: "100%", maxHeight: 180, objectFit: "cover" }} />
+                    <button type="button" onClick={() => set("receiptUrl", "")} style={{ position: "absolute", top: 6, right: 6, width: 26, height: 26, borderRadius: "50%", background: "rgba(0,0,0,0.6)", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <Icon path={icons.x} size={13} color="#fff" />
+                    </button>
+                  </div>
+                ) : (
+                  <button type="button" onClick={() => receiptInputRef.current?.click()} style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", borderRadius: 12, border: "1.5px dashed rgba(255,255,255,0.15)", background: "rgba(255,255,255,0.04)", cursor: "pointer", width: "100%", boxSizing: "border-box" }}>
+                    <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.35)" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/>
+                      <circle cx="12" cy="13" r="4"/>
+                    </svg>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: "rgba(255,255,255,0.35)" }}>Attach receipt photo</span>
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* ── Who Pays ── */}
+          <div style={sectionCard}>
+            {sectionLabel("Who Pays", "#FF8FA3")}
             <div style={{ display: "flex", gap: 8 }}>
               {splitOptions.map(([val, label, color]) => {
                 const isActive = form.split === val;
@@ -7941,13 +7916,13 @@ function AddExpenseModal({ onSave, onClose, user }) {
                     type="button"
                     onClick={() => set("split", val)}
                     style={{
-                      flex: 1, padding: "10px 6px", borderRadius: 14, border: "none",
-                      background: isActive ? color : "#EEE9E0",
-                      color: isActive ? "#fff" : "#888",
+                      flex: 1, padding: "12px 6px", borderRadius: 14,
+                      border: isActive ? `1.5px solid ${color}` : "1.5px solid rgba(255,255,255,0.08)",
+                      background: isActive ? `${color}22` : "rgba(255,255,255,0.05)",
+                      color: isActive ? color : "rgba(255,255,255,0.4)",
                       fontSize: 12, fontWeight: 800, cursor: "pointer",
-                      boxShadow: isActive ? `0 4px 12px ${color}55` : "none",
+                      boxShadow: isActive ? `0 0 16px ${color}33` : "none",
                       transition: "all 0.2s ease",
-                      transform: isActive ? "scale(1.04)" : "scale(1)",
                     }}
                   >
                     {label}
@@ -7955,89 +7930,71 @@ function AddExpenseModal({ onSave, onClose, user }) {
                 );
               })}
             </div>
-
             <div>
-              <label style={{ ...styles.fieldLabel, marginBottom: 5 }}>Charged to</label>
-              <select style={styles.input} value={form.account} onChange={(e) => set("account", e.target.value)}>
-                {["Navy Platinum", "Best Buy Visa", "Debit Card", "Klarna", "Affirm", "Cash", "Zelle"].map((a) => (
-                  <option key={a}>{a}</option>
+              <span style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.35)", textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 6 }}>Charged to</span>
+              <select style={{ ...darkInput, appearance: "none", WebkitAppearance: "none" }} value={form.account} onChange={(e) => set("account", e.target.value)}>
+                {(user === "cam"
+                  ? ["Navy Platinum", "Best Buy Visa", "Debit Card", "Klarna", "Affirm", "Cash", "Zelle"]
+                  : ["Navy Credit Card", "Debit Card", "Affirm", "Klarna"]
+                ).map((a) => (
+                  <option key={a} style={{ background: "#0D1B2A" }}>{a}</option>
                 ))}
               </select>
             </div>
           </div>
 
-          {/* ── Group 4: WHEN ── */}
-          <div style={groupCard}>
-            {groupLabel("When", "#A6B49E", isRecurring ? <span style={styles.newBadge}>RECURRING</span> : null)}
+          {/* ── When ── */}
+          <div style={sectionCard}>
+            {sectionLabel("When", "#90C4E8")}
 
-            {/* Transaction date — defaults to today, expandable to pick another */}
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 {!isToday && <div style={{ width: 7, height: 7, borderRadius: 999, background: "#E05C6E", flexShrink: 0 }} />}
-                <span style={{ fontSize: 14, fontWeight: 700, color: isToday ? "#00314B" : "#E05C6E" }}>{dateDisplay}</span>
+                <span style={{ fontSize: 14, fontWeight: 700, color: isToday ? "#ECF39E" : "#E05C6E" }}>{dateDisplay}</span>
               </div>
-              <button
-                type="button"
-                onClick={() => {
-                  if (showDatePicker && !isToday) set("date", todayStr);
-                  setShowDatePicker(p => !p);
-                }}
-                style={{ fontSize: 12, fontWeight: 700, color: "#A6B7CB", background: "none", border: "none", cursor: "pointer", padding: "4px 0" }}
-              >
+              <button type="button" onClick={() => { if (showDatePicker && !isToday) set("date", todayStr); setShowDatePicker(p => !p); }} style={{ fontSize: 12, fontWeight: 700, color: "rgba(255,255,255,0.4)", background: "none", border: "none", cursor: "pointer", padding: "4px 0" }}>
                 {showDatePicker ? (isToday ? "Done" : "Reset to today") : "Different date"}
               </button>
             </div>
-            {showDatePicker && (
-              <input
-                style={styles.input}
-                type="date"
-                value={form.date}
-                max={todayStr}
-                onChange={(e) => set("date", e.target.value)}
-              />
-            )}
+            {showDatePicker && <input style={darkInput} type="date" value={form.date} max={todayStr} onChange={(e) => set("date", e.target.value)} />}
 
-            {/* Frequency */}
             <div>
-              <label style={styles.fieldLabel}>Frequency</label>
+              <span style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.35)", textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 8 }}>Frequency</span>
               <div style={{ display: "flex", gap: 6 }}>
-                {[["none", "One-time"], ["weekly", "Weekly"], ["biweekly", "Biweekly"], ["monthly", "Monthly"]].map(([val, label]) => (
-                  <button
-                    key={val}
-                    type="button"
-                    style={{ ...styles.freqBtn, ...(form.recurring === val ? styles.freqBtnActive : {}) }}
-                    onClick={() => set("recurring", val)}
-                  >
-                    {label}
-                  </button>
-                ))}
+                {[["none", "One-time"], ["weekly", "Weekly"], ["biweekly", "Biweekly"], ["monthly", "Monthly"]].map(([val, label]) => {
+                  const isActive = form.recurring === val;
+                  return (
+                    <button key={val} type="button" onClick={() => set("recurring", val)}
+                      style={{ flex: 1, padding: "8px 4px", borderRadius: 10, border: isActive ? "1.5px solid #415A77" : "1.5px solid rgba(255,255,255,0.08)", background: isActive ? "#415A77" : "rgba(255,255,255,0.05)", color: isActive ? "#ECF39E" : "rgba(255,255,255,0.4)", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                      {label}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
-            {/* One-time: optional due date */}
             {!isRecurring && (
               <div>
-                <label style={styles.fieldLabel}>Due date (optional)</label>
-                <input style={styles.input} type="date" value={form.dueDate} onChange={(e) => set("dueDate", e.target.value)} />
+                <span style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.35)", textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 6 }}>Due date (optional)</span>
+                <input style={darkInput} type="date" value={form.dueDate} onChange={(e) => set("dueDate", e.target.value)} />
               </div>
             )}
 
-            {/* Recurring: start + end side by side, then auto-advance preview */}
             {isRecurring && (
-              <div style={{ background: "#F0EAE0", borderRadius: 12, padding: "12px 12px 10px", display: "flex", flexDirection: "column", gap: 10 }}>
-                <div style={styles.twoCol}>
+              <div style={{ background: "rgba(255,255,255,0.04)", borderRadius: 12, padding: "12px", display: "flex", flexDirection: "column", gap: 10 }}>
+                <div style={{ display: "flex", gap: 10 }}>
                   <div style={{ flex: 1 }}>
-                    <label style={styles.fieldLabel}>Start date</label>
-                    <input style={styles.input} type="date" value={form.dueDate} onChange={(e) => set("dueDate", e.target.value)} />
+                    <span style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.35)", textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 6 }}>Start date</span>
+                    <input style={darkInput} type="date" value={form.dueDate} onChange={(e) => set("dueDate", e.target.value)} />
                   </div>
                   <div style={{ flex: 1 }}>
-                    <label style={styles.fieldLabel}>End date (optional)</label>
-                    <input style={styles.input} type="date" value={form.endDate} min={form.dueDate || undefined} onChange={(e) => set("endDate", e.target.value)} />
+                    <span style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.35)", textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 6 }}>End date</span>
+                    <input style={darkInput} type="date" value={form.endDate} min={form.dueDate || undefined} onChange={(e) => set("endDate", e.target.value)} />
                   </div>
                 </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 6, paddingTop: 2 }}>
-                  <span style={{ fontSize: 12, color: "#AAA", fontWeight: 500 }}>Auto-advances to</span>
-                  <span style={{ fontSize: 13, fontWeight: 800, color: previewNextDue ? "#1B4D6B" : "#CCC" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <span style={{ fontSize: 12, color: "rgba(255,255,255,0.35)", fontWeight: 500 }}>Auto-advances to</span>
+                  <span style={{ fontSize: 13, fontWeight: 800, color: previewNextDue ? "#ECF39E" : "rgba(255,255,255,0.2)" }}>
                     {previewNextDue ? formatHistoryDate(previewNextDue) : "set start date first"}
                   </span>
                 </div>
@@ -8045,49 +8002,29 @@ function AddExpenseModal({ onSave, onClose, user }) {
             )}
 
             {/* Mandatory toggle */}
-            <button
-              type="button"
-              onClick={() => set("mandatory", !form.mandatory)}
-              style={{
-                display: "flex", alignItems: "center", justifyContent: "space-between",
-                padding: "10px 12px", borderRadius: 12, border: "1.5px solid",
-                borderColor: form.mandatory ? "#E05C6E" : "#DDD5C5",
-                background: form.mandatory ? "#FFF5F6" : "#FAFBFF",
-                cursor: "pointer", width: "100%", textAlign: "left",
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <svg width={15} height={15} viewBox="0 0 24 24" fill={form.mandatory ? "#E05C6E" : "#CCC"}>
+            <button type="button" onClick={() => set("mandatory", !form.mandatory)}
+              style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 14px", borderRadius: 14, border: `1.5px solid ${form.mandatory ? "#E05C6E" : "rgba(255,255,255,0.08)"}`, background: form.mandatory ? "rgba(224,92,110,0.12)" : "rgba(255,255,255,0.04)", cursor: "pointer", width: "100%", textAlign: "left" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <svg width={16} height={16} viewBox="0 0 24 24" fill={form.mandatory ? "#E05C6E" : "rgba(255,255,255,0.25)"}>
                   <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/>
                 </svg>
                 <div>
-                  <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: form.mandatory ? "#E05C6E" : "#00314B" }}>Mandatory</p>
-                  <p style={{ margin: 0, fontSize: 11, color: "#AAA" }}>Cannot be late — alerts Cameron earlier</p>
+                  <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: form.mandatory ? "#E05C6E" : "rgba(255,255,255,0.7)" }}>Mandatory</p>
+                  <p style={{ margin: 0, fontSize: 11, color: "rgba(255,255,255,0.3)" }}>Cannot be late — alerts Cameron earlier</p>
                 </div>
               </div>
-              <div style={{
-                width: 36, height: 20, borderRadius: 999, background: form.mandatory ? "#E05C6E" : "#DDD",
-                position: "relative", transition: "background 0.2s", flexShrink: 0,
-              }}>
-                <div style={{
-                  position: "absolute", top: 2, left: form.mandatory ? 18 : 2,
-                  width: 16, height: 16, borderRadius: "50%", background: "#fff",
-                  transition: "left 0.2s", boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
-                }} />
+              <div style={{ width: 36, height: 20, borderRadius: 999, background: form.mandatory ? "#E05C6E" : "rgba(255,255,255,0.15)", position: "relative", transition: "background 0.2s", flexShrink: 0 }}>
+                <div style={{ position: "absolute", top: 2, left: form.mandatory ? 18 : 2, width: 16, height: 16, borderRadius: "50%", background: "#fff", transition: "left 0.2s", boxShadow: "0 1px 3px rgba(0,0,0,0.3)" }} />
               </div>
             </button>
           </div>
 
           {/* ── Save ── */}
           <button
-            style={{ ...styles.saveBtn, opacity: (!form.description || !form.amount) ? 0.45 : 1 }}
+            style={{ width: "100%", padding: "16px", borderRadius: 16, border: "none", background: (!form.description || !form.amount) ? "rgba(255,255,255,0.08)" : "linear-gradient(135deg, #415A77, #0D1B2A)", color: (!form.description || !form.amount) ? "rgba(255,255,255,0.25)" : "#ECF39E", fontSize: 15, fontWeight: 900, cursor: (!form.description || !form.amount) ? "default" : "pointer", letterSpacing: 0.3, boxShadow: (!form.description || !form.amount) ? "none" : "0 4px 20px rgba(65,90,119,0.5)", transition: "all 0.2s" }}
             onClick={() => {
               if (!form.description || !form.amount) return;
-              const data = {
-                ...form,
-                amount: parseFloat(form.amount),
-                nextDue: form.dueDate || null,
-              };
+              const data = { ...form, amount: parseFloat(form.amount), nextDue: form.dueDate || null };
               if (!data.dueDate) delete data.dueDate;
               if (!data.endDate) delete data.endDate;
               if (!data.note) delete data.note;
