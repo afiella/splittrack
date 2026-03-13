@@ -9,9 +9,7 @@ export async function initNativePush(userId, onNavigate) {
       return;
     }
 
-    await PushNotifications.register();
-
-    // FCM token ready — save to Firestore so Cloud Functions can send to this device
+    // Add listeners BEFORE register() so the token isn't missed on iOS
     await PushNotifications.addListener("registration", async (token) => {
       console.log("Native push: token =", token.value);
       await saveDeviceToken(userId, token.value);
@@ -20,6 +18,8 @@ export async function initNativePush(userId, onNavigate) {
     await PushNotifications.addListener("registrationError", (err) => {
       console.error("Native push: registration error", JSON.stringify(err));
     });
+
+    await PushNotifications.register();
 
     // Notification tapped while app is in foreground
     await PushNotifications.addListener("pushNotificationActionPerformed", (action) => {
