@@ -1094,7 +1094,7 @@ export default function App() {
   if (!firebaseUser) return <LoginScreen />;
 
   return (
-    <div style={{ ...styles.app, paddingTop: (realUser === "emma" && viewAs === "cam") ? 36 : 0 }}>
+    <div style={{ ...styles.app, paddingTop: (realUser === "emma" && viewAs === "cam") ? "calc(env(safe-area-inset-top, 47px) + 36px)" : 0 }}>
       <style>{`
         @keyframes stSpin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
         @keyframes lgSettle{0%{transform:scaleX(1) scaleY(1)}30%{transform:scaleX(1.07) scaleY(0.88)}60%{transform:scaleX(0.97) scaleY(1.04)}80%{transform:scaleX(1.01) scaleY(0.99)}100%{transform:scaleX(1) scaleY(1)}}
@@ -1117,7 +1117,7 @@ export default function App() {
           position: "fixed", top: 0, left: 0, right: 0, zIndex: 9999,
           background: viewAs === "cam" ? "#00314B" : "transparent",
           display: "flex", alignItems: "center", justifyContent: "space-between",
-          padding: viewAs === "cam" ? "8px 16px" : "0",
+          padding: viewAs === "cam" ? "calc(env(safe-area-inset-top, 47px) + 4px) 16px 8px" : "0",
           height: viewAs === "cam" ? "auto" : 0,
           overflow: "hidden",
           transition: "all 0.2s ease",
@@ -1330,29 +1330,75 @@ function LoginScreen() {
   }
 
   return (
-    <div style={styles.loginWrap}>
-      <div style={styles.loginCard}>
-        <div style={styles.loginLogo}>💸</div>
-        <h1 style={styles.loginTitle}>SplitTrack</h1>
-        <p style={styles.loginSubtitle}>Sign in to continue</p>
-        <div style={styles.loginBtns}>
-          <button
-            style={{ ...styles.loginBtn, background: "linear-gradient(135deg, #A6B49E, #4E635E)", opacity: loading ? 0.6 : 1 }}
-            onClick={handleGoogleSignIn}
-            disabled={loading}
-          >
-            <span style={styles.loginBtnIcon}>🔐</span>
-            <span>{loading ? "Signing in…" : "Sign in with Google"}</span>
-            <span style={styles.loginBtnSub}>Secure</span>
-          </button>
+    <div style={{
+      minHeight: "100dvh",
+      background: "#0D2818",
+      display: "flex",
+      flexDirection: "column",
+      padding: "calc(env(safe-area-inset-top, 47px) + 44px) 32px calc(env(safe-area-inset-bottom, 20px) + 44px)",
+      position: "relative",
+      overflow: "hidden",
+      fontFamily: "'DM Sans', system-ui, sans-serif",
+    }}>
+      {/* Decorative blobs */}
+      <div style={{ position: "absolute", top: -120, right: -120, width: 340, height: 340, borderRadius: "50%", background: "rgba(166,180,158,0.07)", pointerEvents: "none" }} />
+      <div style={{ position: "absolute", bottom: 180, left: -100, width: 260, height: 260, borderRadius: "50%", background: "rgba(166,180,158,0.05)", pointerEvents: "none" }} />
+      <div style={{ position: "absolute", top: "38%", right: -60, width: 160, height: 160, borderRadius: "50%", background: "rgba(166,180,158,0.04)", pointerEvents: "none" }} />
+
+      {/* Top icon */}
+      <div style={{ marginBottom: 32 }}>
+        <div style={{ width: 52, height: 52, borderRadius: 18, background: "rgba(166,180,158,0.18)", border: "1px solid rgba(166,180,158,0.25)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <span style={{ fontSize: 26 }}>💸</span>
         </div>
-        {errMsg ? (
-          <p style={{ color: "#C0485A", fontSize: 13, marginTop: 12, wordBreak: "break-word", maxWidth: 280, textAlign: "center" }}>
-            {errMsg}
-          </p>
-        ) : (
-          <p style={styles.loginNote}>After signing in, access level is based on your email.</p>
+      </div>
+
+      {/* Big headline */}
+      <div style={{ flex: 1 }}>
+        <h1 style={{ fontSize: 68, fontWeight: 900, color: "#F5F1EB", margin: 0, lineHeight: 0.95, letterSpacing: -3, textTransform: "uppercase" }}>
+          SPLIT<br />TRACK
+        </h1>
+        <p style={{ color: "rgba(166,180,158,0.75)", fontSize: 15, marginTop: 20, lineHeight: 1.6, maxWidth: 260 }}>
+          Track shared expenses with your partner — simply and beautifully.
+        </p>
+
+        {/* Decorative pill tags */}
+        <div style={{ display: "flex", gap: 8, marginTop: 28, flexWrap: "wrap" }}>
+          {["Bills", "Payments", "Balance"].map(tag => (
+            <span key={tag} style={{ padding: "6px 14px", borderRadius: 999, border: "1px solid rgba(166,180,158,0.22)", color: "rgba(166,180,158,0.6)", fontSize: 12, fontWeight: 600 }}>
+              {tag}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      {/* Bottom CTA */}
+      <div>
+        {errMsg && (
+          <p style={{ color: "#F8C4CD", fontSize: 12, marginBottom: 14, wordBreak: "break-word", lineHeight: 1.5 }}>{errMsg}</p>
         )}
+        <button
+          style={{
+            width: "100%",
+            padding: "18px 0",
+            borderRadius: 18,
+            border: "none",
+            background: "#F5F1EB",
+            color: "#0D2818",
+            fontSize: 16,
+            fontWeight: 800,
+            cursor: "pointer",
+            opacity: loading ? 0.7 : 1,
+            letterSpacing: 0.2,
+            boxShadow: "0 8px 32px rgba(0,0,0,0.3)",
+          }}
+          onClick={handleGoogleSignIn}
+          disabled={loading}
+        >
+          {loading ? "Signing in…" : "Get Started"}
+        </button>
+        <p style={{ textAlign: "center", color: "rgba(255,255,255,0.28)", fontSize: 12, marginTop: 16, lineHeight: 1.5 }}>
+          Sign in with Google · Access based on your email
+        </p>
       </div>
     </div>
   );
@@ -3550,8 +3596,6 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
   const tokens = q ? q.split(/\s+/).map(t => t.replace(/^\$/, "")).filter(Boolean) : [];
   const filtered = tokens.length ? sortedByDate.filter(e => matchesSearch(e, tokens)) : sortedByDate;
 
-  // Show 4 items normally; show all matches when searching
-  const searchedRecent = tokens.length ? filtered : filtered.slice(0, 4);
 
   // Dashboard progress section: plans + one-time targets
   const allTargets = targetSummaries ? Array.from(targetSummaries.values()) : [];
@@ -3560,6 +3604,24 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
 
   planTargets.sort((a, b) => Number(b.remaining || 0) - Number(a.remaining || 0));
   oneTimeTargets.sort((a, b) => Number(b.remaining || 0) - Number(a.remaining || 0));
+
+  function catGroup(e) {
+    const desc = (e.description || "").toLowerCase();
+    if (e.category === "Groceries") return "groceries";
+    const foodKw = ["doordash","uber eats","ubereats","grubhub","7-eleven","restaurant","takeout","chipotle","mcdonald","pizza","starbucks","coffee","sushi","taco","burger","wendys","chick-fil","panera","subway","dunkin","applebee","olive garden"];
+    if (e.category === "Entertainment" || foodKw.some(k => desc.includes(k))) return "eating";
+    if (["Household","Utilities","Insurance"].includes(e.category)) return "home";
+    return "misc";
+  }
+
+  const catTotals = { groceries: { total: 0, count: 0, overdue: false }, eating: { total: 0, count: 0, overdue: false }, home: { total: 0, count: 0, overdue: false }, misc: { total: 0, count: 0, overdue: false } };
+  for (const e of (filtered.length ? filtered : sortedByDate)) {
+    const grp = catGroup(e);
+    const amt = Number(e.amount || 0);
+    catTotals[grp].total += e.split === "split" ? amt / 2 : e.split === "ella" ? 0 : amt;
+    catTotals[grp].count += 1;
+    if (getUrgencyLevel(e) === "overdue") catTotals[grp].overdue = true;
+  }
 
   // Monthly breakdown (simple): use nextDue/dueDate/date to bucket by current month
   const now = new Date();
@@ -3597,11 +3659,13 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
     <div style={styles.screen}>
       {/* Header */}
       <div style={styles.header}>
-        <div>
-          <p style={styles.headerGreet}>Hey {user === "emma" ? "Emmanuella" : "Cameron"} 👋</p>
-          <p style={styles.headerSub}>{new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}</p>
-        </div>
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        {/* Top row: greeting + action buttons */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4 }}>
+          <div>
+            <p style={styles.headerSub}>{new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}</p>
+            <p style={styles.headerGreet}>Hey, {user === "emma" ? "Emmanuella" : "Cameron"} 👋</p>
+          </div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", paddingTop: 2 }}>
           {user === "cam" ? (
             /* Bell notification icon — Cameron only */
             (() => {
@@ -3696,6 +3760,7 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
           )}
         </div>
       </div>
+      </div>
 
       {searchOpen && (
         <div style={styles.searchBar}>
@@ -3731,22 +3796,17 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
 
       {/* Balance Banner — Emma */}
       {user === "emma" && (
-        <>
-          <EmmaBalanceBanner
-            balance={balance}
-            totalOwed={totalOwed}
-            totalPaid={totalPaid}
-            camOwesThisMonth={camOwesThisMonth}
-            emmaPaidThisMonth={emmaPaidThisMonth}
-            expenses={expenses}
-            payments={payments}
-            onAddExpense={onAddExpense}
-            onLogPayment={onLogPayment}
-          />
-          <div style={{ display: "flex", gap: 12, padding: "0 16px", marginTop: 16, marginBottom: 20 }}>
-            <DashboardPendingCard user={user} pendingPayments={pending} onConfirm={onConfirm} onResolveDispute={onResolveDispute} onRejectPayment={onRejectPayment} onDeletePendingPayment={onDeletePendingPayment} targetSummaries={targetSummaries} expenses={expenses} />
-          </div>
-        </>
+        <EmmaBalanceBanner
+          balance={balance}
+          totalOwed={totalOwed}
+          totalPaid={totalPaid}
+          camOwesThisMonth={camOwesThisMonth}
+          emmaPaidThisMonth={emmaPaidThisMonth}
+          expenses={expenses}
+          payments={payments}
+          onAddExpense={onAddExpense}
+          onLogPayment={onLogPayment}
+        />
       )}
 
       {/* Balance Banner — Cameron */}
@@ -3936,261 +3996,228 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
       )}
 
 
-      {/* ── Emma: unified Recent Activity card ── */}
-      {user === "emma" && (
-        <div style={{ margin: "0 16px 28px", background: "#fff", borderRadius: 22, border: "1.5px solid #EDE7DC", boxShadow: "0 2px 16px rgba(0,49,75,0.07)", overflow: "hidden" }}>
+      {/* ── Category Spending Grid ── */}
+      <div style={{ margin: "20px 16px 20px" }}>
 
-          {/* Card header */}
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 16px 8px" }}>
-            <span style={{ fontSize: 15, fontWeight: 900, color: "#0A1E2B", letterSpacing: -0.2 }}>
-              {tokens.length ? `${filtered.length} result${filtered.length !== 1 ? "s" : ""}` : "Recent Activity"}
-            </span>
-            {!tokens.length && (
-              <button style={{ background: "none", border: "none", fontSize: 12, fontWeight: 700, color: "#A6B7CB", cursor: "pointer", padding: 0 }} onClick={() => onNavigate("expenses")}>
-                See all
-              </button>
-            )}
-          </div>
-
-          {/* Recent transactions — always first */}
-          {tokens.length && filtered.length === 0 ? (
-            <div style={{ textAlign: "center", padding: "28px 20px" }}>
-              <p style={{ fontSize: 30, margin: 0 }}>🔍</p>
-              <p style={{ fontWeight: 700, color: "#00314B", fontSize: 14, margin: "10px 0 4px" }}>No results</p>
-              <p style={{ color: "#999", fontSize: 12, margin: 0 }}>Try a different amount, date, or description</p>
-            </div>
-          ) : (
-            <div style={{ paddingBottom: 4 }}>
-              <DashboardRecentChargesList items={searchedRecent} onOpenTarget={onOpenTarget} user={user} searching={tokens.length > 0} />
-            </div>
-          )}
-
-          {/* Plan progress — expandable, below charges */}
-          {!tokens.length && (planTargets.length > 0 || oneTimeTargets.length > 0) && (
-            <div style={{ borderTop: "1px solid #EEE9E0" }}>
-
-              {/* Toggle row */}
-              <button
-                type="button"
-                onClick={() => setPlansOpen(o => !o)}
-                style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", padding: "11px 16px", background: "none", border: "none", cursor: "pointer", textAlign: "left" }}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <div style={{ width: 24, height: 24, borderRadius: 8, background: plansOpen ? "#EDE7DC" : "#EEE9E0", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                    <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="#A6B7CB" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
-                      <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>
-                    </svg>
-                  </div>
-                  <span style={{ fontSize: 13, fontWeight: 800, color: "#00314B" }}>Plan progress</span>
-                  {!plansOpen && (
-                    <span style={{ fontSize: 11, color: "#BBB", fontWeight: 600 }}>
-                      {planTargets.length} plan{planTargets.length !== 1 ? "s" : ""}{oneTimeTargets.length > 0 ? ` · ${oneTimeTargets.length} one-time` : ""}
-                    </span>
-                  )}
-                </div>
-                <svg
-                  width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#D5BD96" strokeWidth={2.5} strokeLinecap="round"
-                  style={{ transform: plansOpen ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.25s ease" }}
-                >
-                  <polyline points="6 9 12 15 18 9"/>
-                </svg>
-              </button>
-
-              {/* Animated content */}
-              <AnimatePresence initial={false}>
-                {plansOpen && (
-                  <motion.div
-                    key="plans-panel"
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: "auto", opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    transition={{ duration: 0.28, ease: [0.4, 0, 0.2, 1] }}
-                    style={{ overflow: "hidden" }}
-                  >
-                    <div style={{ padding: "4px 16px 14px", display: "flex", flexDirection: "column", gap: 12 }}>
-
-                      {/* Plans */}
-                      {planTargets.map((p) => {
-                        const charged = Number(p.charged || 0);
-                        const paid = Number(p.paid || 0);
-                        const remaining = Number(p.remaining || 0);
-                        const pct = charged > 0 ? Math.max(0, Math.min(1, paid / charged)) : 0;
-                        return (
-                          <div key={p.key} onClick={() => onOpenTarget && onOpenTarget(p.key)} style={{ cursor: "pointer" }}>
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
-                              <span style={{ fontSize: 13, fontWeight: 700, color: "#0A1E2B" }}>{p.label}</span>
-                              <span style={{ fontSize: 12, fontWeight: 800, color: pct >= 1 ? "#4E635E" : "#A6B7CB" }}>
-                                {pct >= 1 ? "Fully paid ✓" : `$${remaining.toFixed(2)} left`}
-                              </span>
-                            </div>
-                            <div style={{ height: 5, borderRadius: 999, background: "#EDE7DC", overflow: "hidden" }}>
-                              <div style={{ height: "100%", borderRadius: 999, width: `${pct * 100}%`, background: pct >= 1 ? "linear-gradient(90deg, #A6B49E, #4E635E)" : "linear-gradient(90deg, #D5BD96, #1B4D6B)", transition: "width 0.5s" }} />
-                            </div>
-                            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 3 }}>
-                              <span style={{ fontSize: 10, color: "#BBB", fontWeight: 600 }}>Paid ${paid.toFixed(2)}</span>
-                              <span style={{ fontSize: 10, color: "#BBB", fontWeight: 600 }}>Total ${charged.toFixed(2)}</span>
-                            </div>
-                          </div>
-                        );
-                      })}
-
-                      {/* One-time pills */}
-                      {oneTimeTargets.length > 0 && (
-                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                          {oneTimeTargets.slice(0, 10).map(t => {
-                            const rem = Number(t.remaining || 0);
-                            const isPaid = rem <= 0;
-                            return (
-                              <button
-                                key={t.key} type="button"
-                                onClick={() => onOpenTarget && onOpenTarget(t.key)}
-                                style={{
-                                  display: "flex", alignItems: "center", gap: 5,
-                                  padding: "5px 11px", borderRadius: 999, cursor: "pointer",
-                                  background: isPaid ? "#EBF0E8" : "#EEE9E0",
-                                  border: `1.5px solid ${isPaid ? "#B8CDB5" : "#DDD5C5"}`,
-                                }}
-                              >
-                                {isPaid && <svg width={10} height={10} viewBox="0 0 24 24" fill="#4E635E"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>}
-                                <span style={{ fontSize: 11, fontWeight: 700, color: isPaid ? "#4E635E" : "#00314B", whiteSpace: "nowrap" }}>{t.label}</span>
-                                {!isPaid && <span style={{ fontSize: 11, color: "#A6B7CB", fontWeight: 700 }}>${rem.toFixed(2)}</span>}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      )}
-
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
-          )}
+        {/* Section header */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+          <span style={{ fontSize: 15, fontWeight: 900, color: "#0A1E2B", letterSpacing: -0.2 }}>Spending</span>
+          <button
+            style={{ background: "none", border: "none", fontSize: 12, fontWeight: 700, color: "#A6B7CB", cursor: "pointer", padding: 0 }}
+            onClick={() => onNavigate("expenses")}
+          >
+            See all
+          </button>
         </div>
-      )}
 
-      {/* ── Cameron: unified Recent Activity card (same pattern as Emma) ── */}
-      {user !== "emma" && (
-        <div style={{ margin: "20px 16px 28px", background: "#fff", borderRadius: 22, border: "1.5px solid #EDE7DC", boxShadow: "0 2px 16px rgba(0,49,75,0.07)", overflow: "hidden" }}>
-
-          {/* Card header */}
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 16px 8px" }}>
-            <span style={{ fontSize: 15, fontWeight: 900, color: "#0A1E2B", letterSpacing: -0.2 }}>
-              {tokens.length ? `${filtered.length} result${filtered.length !== 1 ? "s" : ""}` : "Recent Activity"}
-            </span>
-            {!tokens.length && (
-              <button style={{ background: "none", border: "none", fontSize: 12, fontWeight: 700, color: "#A6B7CB", cursor: "pointer", padding: 0 }} onClick={() => onNavigate("expenses")}>
-                View all
-              </button>
-            )}
-          </div>
-
-          {/* Recent charges — always first */}
-          {tokens.length && filtered.length === 0 ? (
-            <div style={{ textAlign: "center", padding: "28px 20px" }}>
-              <p style={{ fontSize: 30, margin: 0 }}>🔍</p>
-              <p style={{ fontWeight: 700, color: "#00314B", fontSize: 14, margin: "10px 0 4px" }}>No results</p>
-              <p style={{ color: "#999", fontSize: 12, margin: 0 }}>Try a different amount, date, or description</p>
-            </div>
-          ) : (
-            <div style={{ paddingBottom: 4 }}>
-              <DashboardRecentChargesList items={searchedRecent} onOpenTarget={onOpenTarget} user={user} searching={tokens.length > 0} />
-            </div>
-          )}
-
-          {/* Plan progress — expandable */}
-          {!tokens.length && (planTargets.length > 0 || oneTimeTargets.length > 0) && (
-            <div style={{ borderTop: "1px solid #EEE9E0" }}>
-              <button
-                type="button"
-                onClick={() => setPlansOpen(o => !o)}
-                style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", padding: "11px 16px", background: "none", border: "none", cursor: "pointer", textAlign: "left" }}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <div style={{ width: 24, height: 24, borderRadius: 8, background: plansOpen ? "#EDE7DC" : "#EEE9E0", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                    <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="#A6B7CB" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
-                      <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>
-                    </svg>
-                  </div>
-                  <span style={{ fontSize: 13, fontWeight: 800, color: "#00314B" }}>Plan progress</span>
-                  {!plansOpen && (
-                    <span style={{ fontSize: 11, color: "#BBB", fontWeight: 600 }}>
-                      {planTargets.length} plan{planTargets.length !== 1 ? "s" : ""}{oneTimeTargets.length > 0 ? ` · ${oneTimeTargets.length} one-time` : ""}
-                    </span>
-                  )}
-                </div>
-                <svg
-                  width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#D5BD96" strokeWidth={2.5} strokeLinecap="round"
-                  style={{ transform: plansOpen ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.25s ease" }}
-                >
-                  <polyline points="6 9 12 15 18 9"/>
+        {/* 2×2 filled category tiles */}
+        {(() => {
+          const TILES = [
+            {
+              id: "groceries",
+              label: "Groceries",
+              bg: "linear-gradient(145deg, #3D5A54, #5E8278)",
+              shadow: "0 4px 12px rgba(61,90,84,0.28)",
+              icon: (c) => (
+                <svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/>
+                  <line x1="3" y1="6" x2="21" y2="6"/>
+                  <path d="M16 10a4 4 0 01-8 0"/>
                 </svg>
-              </button>
-
-              <AnimatePresence initial={false}>
-                {plansOpen && (
+              ),
+            },
+            {
+              id: "eating",
+              label: "Eating Out",
+              bg: "linear-gradient(145deg, #7A5C3A, #A8804E)",
+              shadow: "0 4px 12px rgba(122,92,58,0.28)",
+              icon: (c) => (
+                <svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 002-2V2"/>
+                  <path d="M7 2v20"/>
+                  <path d="M21 15V2a5 5 0 00-5 5v6c0 1.1.9 2 2 2h3zm0 0v7"/>
+                </svg>
+              ),
+            },
+            {
+              id: "home",
+              label: "Home",
+              bg: "linear-gradient(145deg, #00314B, #1B5C80)",
+              shadow: "0 4px 12px rgba(0,49,75,0.30)",
+              icon: (c) => (
+                <svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round">
+                  <path d={icons.home}/>
+                </svg>
+              ),
+            },
+            {
+              id: "misc",
+              label: "Misc",
+              bg: "linear-gradient(145deg, #3A5568, #56788E)",
+              shadow: "0 4px 12px rgba(58,85,104,0.28)",
+              icon: (c) => (
+                <svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="3" width="7" height="7" rx="1.5"/>
+                  <rect x="14" y="3" width="7" height="7" rx="1.5"/>
+                  <rect x="14" y="14" width="7" height="7" rx="1.5"/>
+                  <rect x="3" y="14" width="7" height="7" rx="1.5"/>
+                </svg>
+              ),
+            },
+          ];
+          return (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              {TILES.map(tile => {
+                const data = catTotals[tile.id];
+                const isEmpty = data.count === 0;
+                return (
                   <motion.div
-                    key="cam-plans-panel"
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: "auto", opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    transition={{ duration: 0.28, ease: [0.4, 0, 0.2, 1] }}
-                    style={{ overflow: "hidden" }}
+                    key={tile.id}
+                    onClick={() => onNavigate("expenses")}
+                    whileTap={{ scale: 0.94 }}
+                    transition={{ type: "spring", stiffness: 420, damping: 22 }}
+                    style={{
+                      background: isEmpty ? "#E8E4DF" : tile.bg,
+                      borderRadius: 22,
+                      padding: "18px 16px 16px",
+                      boxShadow: isEmpty ? "none" : tile.shadow,
+                      cursor: "pointer",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 12,
+                      minHeight: 126,
+                      opacity: isEmpty ? 0.5 : 1,
+                    }}
                   >
-                    <div style={{ padding: "4px 16px 14px", display: "flex", flexDirection: "column", gap: 12 }}>
-                      {planTargets.map((p) => {
-                        const charged = Number(p.charged || 0);
-                        const paid = Number(p.paid || 0);
-                        const remaining = Number(p.remaining || 0);
-                        const pct = charged > 0 ? Math.max(0, Math.min(1, paid / charged)) : 0;
-                        return (
-                          <div key={p.key} onClick={() => onOpenTarget && onOpenTarget(p.key)} style={{ cursor: "pointer" }}>
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
-                              <span style={{ fontSize: 13, fontWeight: 700, color: "#0A1E2B" }}>{p.label}</span>
-                              <span style={{ fontSize: 12, fontWeight: 800, color: pct >= 1 ? "#4E635E" : "#A6B7CB" }}>
-                                {pct >= 1 ? "Fully paid ✓" : `$${remaining.toFixed(2)} left`}
-                              </span>
-                            </div>
-                            <div style={{ height: 5, borderRadius: 999, background: "#EDE7DC", overflow: "hidden" }}>
-                              <div style={{ height: "100%", borderRadius: 999, width: `${pct * 100}%`, background: pct >= 1 ? "linear-gradient(90deg, #A6B49E, #4E635E)" : "linear-gradient(90deg, #D5BD96, #1B4D6B)", transition: "width 0.5s" }} />
-                            </div>
-                            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 3 }}>
-                              <span style={{ fontSize: 10, color: "#BBB", fontWeight: 600 }}>Paid ${paid.toFixed(2)}</span>
-                              <span style={{ fontSize: 10, color: "#BBB", fontWeight: 600 }}>Total ${charged.toFixed(2)}</span>
-                            </div>
-                          </div>
-                        );
-                      })}
-                      {oneTimeTargets.length > 0 && (
-                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                          {oneTimeTargets.slice(0, 10).map(t => {
-                            const rem = Number(t.remaining || 0);
-                            const isPaid = rem <= 0;
-                            return (
-                              <button
-                                key={t.key} type="button"
-                                onClick={() => onOpenTarget && onOpenTarget(t.key)}
-                                style={{
-                                  display: "flex", alignItems: "center", gap: 5,
-                                  padding: "5px 11px", borderRadius: 999, cursor: "pointer",
-                                  background: isPaid ? "#EBF0E8" : "#EEE9E0",
-                                  border: `1.5px solid ${isPaid ? "#B8CDB5" : "#DDD5C5"}`,
-                                }}
-                              >
-                                {isPaid && <svg width={10} height={10} viewBox="0 0 24 24" fill="#4E635E"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>}
-                                <span style={{ fontSize: 11, fontWeight: 700, color: isPaid ? "#4E635E" : "#00314B", whiteSpace: "nowrap" }}>{t.label}</span>
-                                {!isPaid && <span style={{ fontSize: 11, color: "#A6B7CB", fontWeight: 700 }}>${rem.toFixed(2)}</span>}
-                              </button>
-                            );
-                          })}
-                        </div>
+                    {/* Icon bubble */}
+                    <div style={{
+                      width: 42, height: 42, borderRadius: 14,
+                      background: isEmpty ? "rgba(0,0,0,0.06)" : "rgba(255,255,255,0.18)",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                    }}>
+                      {tile.icon(isEmpty ? "rgba(0,0,0,0.25)" : "rgba(255,255,255,0.9)")}
+                    </div>
+
+                    {/* Label + amount */}
+                    <div>
+                      <p style={{ margin: 0, fontSize: 10, fontWeight: 700, color: isEmpty ? "rgba(0,0,0,0.3)" : "rgba(255,255,255,0.65)", letterSpacing: 0.7, textTransform: "uppercase" }}>
+                        {tile.label}
+                      </p>
+                      <p style={{ margin: "4px 0 0", fontSize: 18, fontWeight: 900, color: isEmpty ? "rgba(0,0,0,0.2)" : "#fff", letterSpacing: -0.5 }}>
+                        {isEmpty ? "—" : `$${data.total.toFixed(2)}`}
+                      </p>
+                      {!isEmpty && (
+                        <p style={{ margin: "2px 0 0", fontSize: 10, color: "rgba(255,255,255,0.5)", fontWeight: 600 }}>
+                          {data.count} item{data.count !== 1 ? "s" : ""}
+                        </p>
                       )}
                     </div>
                   </motion.div>
-                )}
-              </AnimatePresence>
+                );
+              })}
             </div>
-          )}
+          );
+        })()}
+
+        {/* Plan progress — expandable section below grid */}
+        {!tokens.length && (planTargets.length > 0 || oneTimeTargets.length > 0) && (
+          <div style={{ marginTop: 16, background: "#fff", borderRadius: 22, border: "1.5px solid #EDE7DC", boxShadow: "0 2px 16px rgba(0,49,75,0.07)", overflow: "hidden" }}>
+            <button
+              type="button"
+              onClick={() => setPlansOpen(o => !o)}
+              style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", padding: "13px 16px", background: "none", border: "none", cursor: "pointer", textAlign: "left" }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ width: 28, height: 28, borderRadius: 10, background: plansOpen ? "#EDE7DC" : "#EEE9E0", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="#A6B7CB" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>
+                  </svg>
+                </div>
+                <span style={{ fontSize: 13, fontWeight: 800, color: "#00314B" }}>Plan progress</span>
+                {!plansOpen && (
+                  <span style={{ fontSize: 11, color: "#BBB", fontWeight: 600 }}>
+                    {planTargets.length} plan{planTargets.length !== 1 ? "s" : ""}{oneTimeTargets.length > 0 ? ` · ${oneTimeTargets.length} one-time` : ""}
+                  </span>
+                )}
+              </div>
+              <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#D5BD96" strokeWidth={2.5} strokeLinecap="round" style={{ transform: plansOpen ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.25s ease" }}>
+                <polyline points="6 9 12 15 18 9"/>
+              </svg>
+            </button>
+            <AnimatePresence initial={false}>
+              {plansOpen && (
+                <motion.div
+                  key="plans-panel"
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: "auto", opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.28, ease: [0.4, 0, 0.2, 1] }}
+                  style={{ overflow: "hidden" }}
+                >
+                  <div style={{ padding: "4px 16px 14px", display: "flex", flexDirection: "column", gap: 12 }}>
+                    {planTargets.map((p) => {
+                      const charged = Number(p.charged || 0);
+                      const paid = Number(p.paid || 0);
+                      const remaining = Number(p.remaining || 0);
+                      const pct = charged > 0 ? Math.max(0, Math.min(1, paid / charged)) : 0;
+                      return (
+                        <div key={p.key} onClick={() => onOpenTarget && onOpenTarget(p.key)} style={{ cursor: "pointer" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
+                            <span style={{ fontSize: 13, fontWeight: 700, color: "#0A1E2B" }}>{p.label}</span>
+                            <span style={{ fontSize: 12, fontWeight: 800, color: pct >= 1 ? "#4E635E" : "#A6B7CB" }}>
+                              {pct >= 1 ? "Fully paid ✓" : `$${remaining.toFixed(2)} left`}
+                            </span>
+                          </div>
+                          <div style={{ height: 5, borderRadius: 999, background: "#EDE7DC", overflow: "hidden" }}>
+                            <div style={{ height: "100%", borderRadius: 999, width: `${pct * 100}%`, background: pct >= 1 ? "linear-gradient(90deg, #A6B49E, #4E635E)" : "linear-gradient(90deg, #D5BD96, #1B4D6B)", transition: "width 0.5s" }} />
+                          </div>
+                          <div style={{ display: "flex", justifyContent: "space-between", marginTop: 3 }}>
+                            <span style={{ fontSize: 10, color: "#BBB", fontWeight: 600 }}>Paid ${paid.toFixed(2)}</span>
+                            <span style={{ fontSize: 10, color: "#BBB", fontWeight: 600 }}>Total ${charged.toFixed(2)}</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {oneTimeTargets.length > 0 && (
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                        {oneTimeTargets.slice(0, 10).map(t => {
+                          const rem = Number(t.remaining || 0);
+                          const isPaid = rem <= 0;
+                          return (
+                            <button
+                              key={t.key} type="button"
+                              onClick={() => onOpenTarget && onOpenTarget(t.key)}
+                              style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 11px", borderRadius: 999, cursor: "pointer", background: isPaid ? "#EBF0E8" : "#EEE9E0", border: `1.5px solid ${isPaid ? "#B8CDB5" : "#DDD5C5"}` }}
+                            >
+                              {isPaid && <svg width={10} height={10} viewBox="0 0 24 24" fill="#4E635E"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>}
+                              <span style={{ fontSize: 11, fontWeight: 700, color: isPaid ? "#4E635E" : "#00314B", whiteSpace: "nowrap" }}>{t.label}</span>
+                              {!isPaid && <span style={{ fontSize: 11, color: "#A6B7CB", fontWeight: 700 }}>${rem.toFixed(2)}</span>}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        )}
+      </div>
+
+      {/* Pending Payments — bottom strip (Emma only) */}
+      {user === "emma" && (
+        <div style={{ margin: "4px 16px 24px" }}>
+          <DashboardPendingCard
+            user={user}
+            pendingPayments={pending}
+            onConfirm={onConfirm}
+            onResolveDispute={onResolveDispute}
+            onRejectPayment={onRejectPayment}
+            onDeletePendingPayment={onDeletePendingPayment}
+            targetSummaries={targetSummaries}
+            expenses={expenses}
+          />
         </div>
       )}
 
@@ -4599,7 +4626,7 @@ function ExpensesScreen({
       position: "sticky",
       top: 0,
       zIndex: 30,
-      padding: "48px 16px 12px",
+      padding: "calc(env(safe-area-inset-top, 47px) + 12px) 16px 12px",
       background: "linear-gradient(160deg, rgba(248,244,255,0.98), rgba(248,244,255,0.90))",
       backdropFilter: "blur(10px)",
     },
@@ -5016,7 +5043,27 @@ function ExpensesScreen({
 // ── HISTORY SCREEN ────────────────────────────────────────────────────
 function HistoryScreen({ expenses, payments, user, targets = [], onBack, onConfirm, onDeleteConfirmedPayment, onDeleteExpense }) {
   const [expandedId, setExpandedId] = useState(null);
-  const [filter, setFilter] = useState("all"); // "all" | "payments" | "charges"
+  const [filter, setFilter] = useState("all");
+  const tabRef = useRef(null);
+  const [pillStyle, setPillStyle] = useState({ left: 0, width: 0 });
+
+  const tabs = [
+    { id: "all",      label: "All" },
+    { id: "payments", label: "Payments" },
+    { id: "charges",  label: "Charges" },
+    { id: "disputes", label: "Disputes" },
+  ];
+
+  useEffect(() => {
+    if (!tabRef.current) return;
+    const container = tabRef.current;
+    const idx = tabs.findIndex(t => t.id === filter);
+    const btn = container.children[idx + 1]; // +1 to skip the pill div
+    if (!btn) return;
+    const cRect = container.getBoundingClientRect();
+    const bRect = btn.getBoundingClientRect();
+    setPillStyle({ left: bRect.left - cRect.left, width: bRect.width });
+  }, [filter]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const all = [
     ...payments.map((p) => ({ ...p, _kind: "payment" })),
@@ -5027,8 +5074,9 @@ function HistoryScreen({ expenses, payments, user, targets = [], onBack, onConfi
   ].sort((a, b) => new Date(b.date) - new Date(a.date));
 
   const filtered = all.filter((item) => {
-    if (filter === "payments") return item._kind === "payment";
+    if (filter === "payments") return item._kind === "payment" && item.type !== "dispute";
     if (filter === "charges") return item._kind === "expense";
+    if (filter === "disputes") return item._kind === "payment" && item.type === "dispute";
     return true;
   });
 
@@ -5063,7 +5111,7 @@ function HistoryScreen({ expenses, payments, user, targets = [], onBack, onConfi
   return (
     <div style={{ ...styles.screen, background: "#F5F6FA" }}>
       {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", padding: "16px 16px 8px", background: "#F5F6FA" }}>
+      <div style={{ display: "flex", alignItems: "center", padding: "calc(env(safe-area-inset-top, 47px) + 16px) 16px 8px", background: "#F5F6FA" }}>
         <button
           type="button"
           onClick={onBack}
@@ -5076,30 +5124,52 @@ function HistoryScreen({ expenses, payments, user, targets = [], onBack, onConfi
         <div style={{ width: 36 }} />
       </div>
 
-      {/* Filter chips */}
-      <div style={{ display: "flex", gap: 8, padding: "10px 16px 14px", overflowX: "auto" }}>
-        {[["all", "All"], ["payments", "Payments"], ["charges", "Charges"]].map(([val, label]) => (
-          <button
-            key={val}
-            type="button"
-            onClick={() => setFilter(val)}
+      {/* Sliding pill toggle */}
+      <div style={{ padding: "10px 16px 14px" }}>
+        <div
+          ref={tabRef}
+          style={{ position: "relative", display: "flex", background: "rgba(26,26,46,0.07)", borderRadius: 14, padding: 4 }}
+        >
+          {/* Sliding pill */}
+          <div
             style={{
-              padding: "8px 18px",
-              borderRadius: 999,
-              border: "none",
-              background: filter === val ? "#1A3A2E" : "#fff",
-              color: filter === val ? "#fff" : "#555",
-              fontSize: 13,
-              fontWeight: 700,
-              cursor: "pointer",
-              whiteSpace: "nowrap",
-              boxShadow: filter === val ? "none" : "0 1px 4px rgba(0,0,0,0.07)",
-              transition: "all 0.15s ease",
+              position: "absolute",
+              top: 4,
+              height: "calc(100% - 8px)",
+              left: pillStyle.width ? pillStyle.left : 4,
+              width: pillStyle.width || "25%",
+              background: "linear-gradient(135deg, #00314B, #1B4D6B)",
+              borderRadius: 10,
+              transition: "left 0.38s cubic-bezier(0.34,1.56,0.64,1), width 0.38s cubic-bezier(0.34,1.56,0.64,1)",
+              boxShadow: "0 2px 8px rgba(0,49,75,0.22)",
+              pointerEvents: "none",
             }}
-          >
-            {label}
-          </button>
-        ))}
+          />
+          {tabs.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => { setFilter(t.id); setExpandedId(null); }}
+              style={{
+                flex: 1,
+                padding: "9px 4px",
+                border: "none",
+                background: "transparent",
+                color: filter === t.id ? "#fff" : "#888",
+                fontSize: 12,
+                fontWeight: 700,
+                cursor: "pointer",
+                borderRadius: 10,
+                position: "relative",
+                zIndex: 1,
+                transition: "color 0.25s ease",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Transaction list */}
@@ -5115,15 +5185,17 @@ function HistoryScreen({ expenses, payments, user, targets = [], onBack, onConfi
           if (item._kind === "payment") {
             const isConfirmed = item.confirmed;
             const isRejected = item.rejected && !item.confirmed;
+            const isDispute = item.type === "dispute";
             const lbl = paymentTargetLabel(item);
             const rExp = relatedExpense(item);
 
-            // Icon: green down arrow = confirmed, red X = rejected, yellow clock = pending
-            const iconBg = isConfirmed ? "#E8F5EE" : isRejected ? "#FFF0F0" : "#FFF8E8";
-            const iconColor = isConfirmed ? "#2D7A50" : isRejected ? "#E05C6E" : "#C8A020";
-            const iconPath = isRejected ? icons.x : isConfirmed ? icons.chevronDown : icons.clock;
-            const amtColor = isConfirmed ? "#2D7A50" : isRejected ? "#E05C6E" : "#C8A020";
-            const statusLabel = isConfirmed ? "confirmed" : isRejected ? "returned" : "pending";
+            const iconBg = isDispute ? "#FFF0F4" : isConfirmed ? "#E8F5EE" : isRejected ? "#FFF0F0" : "#FFF8E8";
+            const iconColor = isDispute ? "#C0485A" : isConfirmed ? "#2D7A50" : isRejected ? "#E05C6E" : "#C8A020";
+            const iconPath = isDispute ? icons.flag : isRejected ? icons.x : isConfirmed ? icons.chevronDown : icons.clock;
+            const amtColor = isDispute ? "#C0485A" : isConfirmed ? "#2D7A50" : isRejected ? "#E05C6E" : "#C8A020";
+            const statusLabel = isDispute
+              ? (item.resolution === "accepted" ? "resolved" : item.resolution === "denied" ? "declined" : "disputed")
+              : isConfirmed ? "confirmed" : isRejected ? "returned" : "pending";
 
             return (
               <div key={rowId}>
@@ -5137,31 +5209,55 @@ function HistoryScreen({ expenses, payments, user, targets = [], onBack, onConfi
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <p style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "#1A1A2E", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {item.method} Payment
+                      {isDispute ? `Dispute — ${item.disputeDescription || "charge"}` : `${item.method} Payment`}
                     </p>
-                    <p style={{ margin: "2px 0 0", fontSize: 12, color: "#AAA", fontWeight: 500 }}>{statusLabel}</p>
+                    <p style={{ margin: "2px 0 0", fontSize: 12, color: amtColor, fontWeight: 600, textTransform: "capitalize" }}>{statusLabel}</p>
                   </div>
                   <div style={{ textAlign: "right", flexShrink: 0 }}>
-                    <p style={{ margin: 0, fontSize: 15, fontWeight: 800, color: amtColor }}>
-                      {isConfirmed ? "+" : "−"}${Number(item.amount || 0).toFixed(2)}
-                    </p>
-                    <p style={{ margin: "2px 0 0", fontSize: 11, color: "#BBB" }}>{formatHistoryDate(item.date)}</p>
+                    {!isDispute && (
+                      <p style={{ margin: 0, fontSize: 15, fontWeight: 800, color: amtColor }}>
+                        {isConfirmed ? "+" : "−"}${Number(item.amount || 0).toFixed(2)}
+                      </p>
+                    )}
+                    <p style={{ margin: isDispute ? 0 : "2px 0 0", fontSize: 11, color: "#BBB" }}>{formatHistoryDate(item.date)}</p>
                   </div>
                 </div>
 
                 {isOpen && (
                   <div style={{ padding: "0 16px 16px", display: "flex", flexDirection: "column", gap: 10, borderBottom: isLast ? "none" : "1px solid #F2F2F5" }}>
-                    <div style={{ background: "#F8F8FB", borderRadius: 14, padding: 14, display: "flex", flexDirection: "column", gap: 9 }}>
-                      {hRow("Amount", `$${Number(item.amount || 0).toFixed(2)}`)}
-                      {hRow("Method", item.method)}
-                      {hRow("Date", formatPaymentDateTime(item))}
-                      {lbl && hRow("Applied to", lbl)}
-                      {item.note && hRow("Note", `"${item.note}"`)}
-                      {isRejected && item.rejectionReason && (
-                        <div style={{ paddingTop: 8, borderTop: "1px solid #EEE" }}>
-                          <p style={{ margin: "0 0 3px", fontSize: 10, fontWeight: 800, color: "#E07A20", textTransform: "uppercase", letterSpacing: 0.5 }}>Emmanuella's note</p>
-                          <p style={{ margin: 0, fontSize: 12, color: "#555", fontStyle: "italic" }}>"{item.rejectionReason}"</p>
-                        </div>
+                    <div style={{ background: isDispute ? "#FFF7F8" : "#F8F8FB", borderRadius: 14, padding: 14, display: "flex", flexDirection: "column", gap: 9 }}>
+                      {isDispute ? (
+                        <>
+                          {item.disputeDescription && hRow("Charge", item.disputeDescription)}
+                          {item.disputeReason && (
+                            <div style={{ paddingTop: item.disputeDescription ? 6 : 0, borderTop: item.disputeDescription ? "1px solid #F0E0E4" : "none" }}>
+                              <p style={{ margin: "0 0 3px", fontSize: 10, fontWeight: 800, color: "#C0485A", textTransform: "uppercase", letterSpacing: 0.5 }}>Reason</p>
+                              <p style={{ margin: 0, fontSize: 12, color: "#555", lineHeight: 1.5 }}>"{item.disputeReason}"</p>
+                            </div>
+                          )}
+                          {hRow("Date", formatHistoryDate(item.date))}
+                          {hRow("Status", statusLabel.charAt(0).toUpperCase() + statusLabel.slice(1))}
+                          {item.resolution === "denied" && item.declineReason && (
+                            <div style={{ paddingTop: 6, borderTop: "1px solid #F0E0E4" }}>
+                              <p style={{ margin: "0 0 3px", fontSize: 10, fontWeight: 800, color: "#E07A20", textTransform: "uppercase", letterSpacing: 0.5 }}>Response</p>
+                              <p style={{ margin: 0, fontSize: 12, color: "#555", fontStyle: "italic" }}>"{item.declineReason}"</p>
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          {hRow("Amount", `$${Number(item.amount || 0).toFixed(2)}`)}
+                          {hRow("Method", item.method)}
+                          {hRow("Date", formatPaymentDateTime(item))}
+                          {lbl && hRow("Applied to", lbl)}
+                          {item.note && hRow("Note", `"${item.note}"`)}
+                          {isRejected && item.rejectionReason && (
+                            <div style={{ paddingTop: 8, borderTop: "1px solid #EEE" }}>
+                              <p style={{ margin: "0 0 3px", fontSize: 10, fontWeight: 800, color: "#E07A20", textTransform: "uppercase", letterSpacing: 0.5 }}>Emmanuella's note</p>
+                              <p style={{ margin: 0, fontSize: 12, color: "#555", fontStyle: "italic" }}>"{item.rejectionReason}"</p>
+                            </div>
+                          )}
+                        </>
                       )}
                     </div>
                     {rExp && (
@@ -7379,7 +7475,7 @@ typeFilterChipActive: {
     position: "sticky",
     top: 0,
     zIndex: 60,
-    padding: "46px 16px 10px",
+    padding: "calc(env(safe-area-inset-top, 47px) + 10px) 16px 10px",
     background: "linear-gradient(180deg, rgba(248,244,255,0.98), rgba(248,244,255,0.70), rgba(248,244,255,0))",
     backdropFilter: "blur(8px)",
   },
@@ -7437,7 +7533,7 @@ typeFilterChipActive: {
   loginNote: { fontSize: 11, color: "#AAA", margin: 0 },
 
   // Header
-  header: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "52px 20px 16px", background: "linear-gradient(160deg, #EDE4F5, #EBF6F4)" },
+  header: { background: "#fff", padding: "calc(env(safe-area-inset-top, 47px) + 14px) 20px 0", borderBottom: "1px solid #F0EAE0" },
 iconBtn: {
   width: 42,
   height: 42,
@@ -7465,8 +7561,8 @@ iconBtn: {
   searchEmptySub: { margin: "6px 0 0", fontSize: 12, color: "#888" },
   searchEmptyCenter: { textAlign: "center", padding: "60px 20px" },
   searchEmptyEmoji: { fontSize: 48, marginBottom: 12 },
-  headerGreet: { fontSize: 22, fontWeight: 800, color: "#00314B", margin: 0 },
-  headerSub: { fontSize: 12, color: "#888", margin: "2px 0 0" },
+  headerGreet: { fontSize: 28, fontWeight: 900, color: "#00314B", margin: 0, letterSpacing: -0.5 },
+  headerSub: { fontSize: 12, color: "#AAA", margin: "0 0 14px", fontWeight: 600 },
   logoutBtn: { fontSize: 12, color: "#888", background: "rgba(255,255,255,0.7)", border: "none", borderRadius: 20, padding: "6px 14px", cursor: "pointer" },
 
   // Balance Card
@@ -7478,7 +7574,7 @@ iconBtn: {
   balanceStatLabel: { fontSize: 11, opacity: 0.6 },
   balanceStatVal: { fontSize: 18, fontWeight: 700 },
   balanceDivider: { width: 1, background: "rgba(255,255,255,0.2)", margin: "0 20px" },
-  urgentBanner: { margin: "0 16px 20px", background: "linear-gradient(135deg, #FFF0F0, #FFF5EC)", borderRadius: 16, padding: "16px 18px", border: "1.5px solid #E8A0B0", display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer", boxShadow: "0 4px 16px rgba(224,92,110,0.12)" },
+  urgentBanner: { margin: "16px 16px 0", background: "linear-gradient(135deg, #FFF0F0, #FFF5EC)", borderRadius: 16, padding: "16px 18px", border: "1.5px solid #E8A0B0", display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer", boxShadow: "0 4px 16px rgba(224,92,110,0.12)" },
   urgentBannerTitle: { fontSize: 14, fontWeight: 800, color: "#E05C6E", margin: 0 },
   urgentBannerSub: { fontSize: 11, color: "#C06070", margin: "2px 0 0" },
 
@@ -7525,7 +7621,7 @@ iconBtn: {
   splitBadge: { borderRadius: 6, padding: "1px 6px", marginLeft: 4, fontSize: 10 },
 
   // Sub screens
-  subHeader: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "52px 16px 16px" },
+  subHeader: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "calc(env(safe-area-inset-top, 47px) + 16px) 16px 16px" },
   subTitle: { fontSize: 20, fontWeight: 800, color: "#00314B", margin: 0 },
   backBtn: { background: "#fff", border: "none", borderRadius: 12, width: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", boxShadow: "0 2px 8px rgba(0,0,0,0.08)" },
   addSmall: { background: "#A6B49E", border: "none", borderRadius: 12, width: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" },
@@ -7626,7 +7722,7 @@ iconBtn: {
   navBtn: { flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 3, background: "none", border: "none", cursor: "pointer", padding: "6px 0" },
   navBtnActive: {},
 
-  notification: { position: "fixed", top: 16, left: "50%", transform: "translateX(-50%)", padding: "12px 24px", borderRadius: 16, fontSize: 14, fontWeight: 700, zIndex: 999, boxShadow: "0 4px 20px rgba(0,0,0,0.15)", whiteSpace: "nowrap" },
+  notification: { position: "fixed", top: "calc(env(safe-area-inset-top, 47px) + 12px)", left: "50%", transform: "translateX(-50%)", padding: "12px 24px", borderRadius: 16, fontSize: 14, fontWeight: 700, zIndex: 999, boxShadow: "0 4px 20px rgba(0,0,0,0.15)", whiteSpace: "nowrap" },
 };
 // ── TARGET DETAILS SCREEN ────────────────────────────────────────────
 
