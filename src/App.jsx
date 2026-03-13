@@ -219,6 +219,84 @@ function formatHistoryDate(isoOrDate) {
   return `${mon} · ${day} · ${yr}`;
 }
 
+// ── PAYMENT STREAK ────────────────────────────────────────────────────
+function calcPaymentStreak(payments) {
+  const confirmed = (payments || []).filter(p => p?.confirmed && p.date);
+  if (!confirmed.length) return 0;
+  const months = new Set(confirmed.map(p => String(p.date).slice(0, 7)));
+
+  const now = new Date();
+  let yr = now.getFullYear();
+  let mo = now.getMonth() + 1; // 1-indexed
+
+  let streak = 0;
+  for (let i = 0; i < 24; i++) {
+    const key = `${yr}-${String(mo).padStart(2, "0")}`;
+    if (months.has(key)) {
+      streak++;
+    } else if (i === 0) {
+      // Current month may not have payment yet — skip without breaking streak
+    } else {
+      break;
+    }
+    mo--;
+    if (mo === 0) { mo = 12; yr--; }
+  }
+  return streak;
+}
+
+// ── BALANCE FORECAST ──────────────────────────────────────────────────
+function calcBalanceForecast(balance, payments) {
+  if (balance <= 0) return null;
+  const confirmed = (payments || []).filter(p => p?.confirmed && p.date);
+  if (!confirmed.length) return null;
+
+  const now = new Date();
+  const cutoff = new Date(now.getFullYear(), now.getMonth() - 3, 1).toISOString().slice(0, 10);
+  const recent = confirmed.filter(p => p.date >= cutoff);
+  if (!recent.length) return null;
+
+  const totalRecent = recent.reduce((s, p) => s + Number(p.amount || 0), 0);
+  const avgMonthly = totalRecent / 3;
+  if (avgMonthly <= 0) return null;
+
+  const monthsToGo = Math.ceil(balance / avgMonthly);
+  const clearDate = new Date(now.getFullYear(), now.getMonth() + monthsToGo, 1);
+  return {
+    months: monthsToGo,
+    date: clearDate.toLocaleString("en-US", { month: "long", year: "numeric" }),
+    avgMonthly,
+  };
+}
+
+// ── SPARKLINE DATA ────────────────────────────────────────────────────
+function getSparklineData(expenses, payments, numMonths = 6) {
+  const now = new Date();
+  return Array.from({ length: numMonths }, (_, i) => {
+    const d = new Date(now.getFullYear(), now.getMonth() - (numMonths - 1 - i), 1);
+    const yr = d.getFullYear();
+    const mo = d.getMonth() + 1;
+    const label = d.toLocaleString("en-US", { month: "short" });
+    // Last day of this month for comparison
+    const endISO = `${yr}-${String(mo).padStart(2, "0")}-31`;
+
+    const charged = (expenses || [])
+      .filter(e => (e.date || "") <= endISO)
+      .reduce((s, e) => {
+        const amt = Number(e.amount || 0);
+        if (e.split === "cam") return s + amt;
+        if (e.split === "split") return s + amt / 2;
+        return s;
+      }, 0);
+
+    const paid = (payments || [])
+      .filter(p => p?.confirmed && (p.date || "") <= endISO)
+      .reduce((s, p) => s + Number(p.amount || 0), 0);
+
+    return { label, balance: Math.max(0, charged - paid) };
+  });
+}
+
 function formatPaymentDateTime(p) {
   const ts = p.createdAt;
   let d;
@@ -712,6 +790,60 @@ function PTRIndicator({ pullY, refreshing }) {
   );
 }
 
+function OfflineIndicator() {
+  return (
+    <motion.div
+      initial={{ y: -60 }} animate={{ y: 0 }} exit={{ y: -60 }}
+      transition={{ type: "spring", stiffness: 340, damping: 28 }}
+      style={{
+        position: "fixed", top: 0, left: "50%", transform: "translateX(-50%)",
+        width: "100%", maxWidth: 430, zIndex: 9998,
+        padding: "calc(env(safe-area-inset-top, 47px) + 6px) 16px 10px",
+        background: "rgba(30,30,30,0.92)", backdropFilter: "blur(16px)",
+        WebkitBackdropFilter: "blur(16px)",
+        display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+      }}
+    >
+      <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#E05C6E", flexShrink: 0 }} />
+      <span style={{ fontSize: 13, fontWeight: 700, color: "#fff" }}>No internet connection</span>
+    </motion.div>
+  );
+}
+
+function UndoToast({ entries, onUndo }) {
+  if (!entries.length) return null;
+  const top = entries[entries.length - 1];
+  return (
+    <motion.div
+      key={top.id}
+      initial={{ y: 80, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 80, opacity: 0 }}
+      transition={{ type: "spring", stiffness: 380, damping: 30 }}
+      style={{
+        position: "fixed", bottom: "calc(env(safe-area-inset-bottom, 20px) + 76px)",
+        left: "50%", transform: "translateX(-50%)",
+        width: "calc(100% - 32px)", maxWidth: 398, zIndex: 9997,
+        background: "rgba(22,22,28,0.93)", backdropFilter: "blur(20px)",
+        WebkitBackdropFilter: "blur(20px)",
+        borderRadius: 16, padding: "12px 14px",
+        display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
+        boxShadow: "0 8px 32px rgba(0,0,0,0.3)",
+      }}
+    >
+      <span style={{ fontSize: 13, fontWeight: 600, color: "rgba(255,255,255,0.9)", flex: 1 }}>{top.label}</span>
+      <button
+        type="button"
+        onClick={() => onUndo(top.id)}
+        style={{
+          background: "rgba(255,255,255,0.15)", border: "none", borderRadius: 10,
+          padding: "6px 14px", fontSize: 13, fontWeight: 800, color: "#fff", cursor: "pointer", flexShrink: 0,
+        }}
+      >
+        Undo
+      </button>
+    </motion.div>
+  );
+}
+
 // ── MAIN APP ──────────────────────────────────────────────────────────
 export default function App() {
   const [firebaseUser, setFirebaseUser] = useState(null);
@@ -727,7 +859,9 @@ export default function App() {
   const [modal, setModal] = useState(null); // "addExpense" | "logPayment" | "confirmPayment" | "camQuickPay"
   const [editingExpense, setEditingExpense] = useState(null);
   const [disputingExpense, setDisputingExpense] = useState(null);
-  
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [undoQueue, setUndoQueue] = useState([]); // [{ id, label, restore, commitFn, timer }]
+
   const [paymentDraftKey, setPaymentDraftKey] = useState("general");
   const [paymentDraftAmount, setPaymentDraftAmount] = useState(null);
   useEffect(() => {
@@ -800,6 +934,33 @@ export default function App() {
     document.addEventListener("visibilitychange", onVisible);
     return () => document.removeEventListener("visibilitychange", onVisible);
   }, []);
+
+  // ── Online / offline detection ──────────────────────────────────────
+  useEffect(() => {
+    const on = () => setIsOnline(true);
+    const off = () => setIsOnline(false);
+    window.addEventListener("online", on);
+    window.addEventListener("offline", off);
+    return () => { window.removeEventListener("online", on); window.removeEventListener("offline", off); };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Undo helpers ─────────────────────────────────────────────────────
+  function pushUndo({ label, restore, commitFn }) {
+    const id = Date.now();
+    const timer = setTimeout(async () => {
+      setUndoQueue(q => q.filter(u => u.id !== id));
+      try { await commitFn(); } catch (err) { console.error("Undo commit failed:", err); }
+    }, 4000);
+    setUndoQueue(q => [...q, { id, label, restore, timer }]);
+  }
+
+  function triggerUndo(id) {
+    setUndoQueue(q => {
+      const entry = q.find(u => u.id === id);
+      if (entry) { clearTimeout(entry.timer); entry.restore(); }
+      return q.filter(u => u.id !== id);
+    });
+  }
 
   const planSummaries = calcPlanSummaries(expenses, payments);
   const targetSummaries = calcTargetSummaries(expenses, payments);
@@ -936,14 +1097,18 @@ export default function App() {
     const payment = payments.find((p) => p.id === id);
     if (!payment || payment.confirmed) return;
     setPayments((prev) => prev.filter((p) => p.id !== id));
-    try {
-      await deletePaymentInDb(id);
-      notify("Payment removed.");
-    } catch (err) {
-      console.error("Failed to delete pending payment:", err);
-      setPayments((prev) => [payment, ...prev]);
-      notify("Couldn't remove payment.", "error");
-    }
+    pushUndo({
+      label: `Removed $${Number(payment.amount || 0).toFixed(2)} payment`,
+      restore: () => setPayments((prev) => [payment, ...prev.filter(p => p.id !== id)]),
+      commitFn: async () => {
+        try { await deletePaymentInDb(id); }
+        catch (err) {
+          console.error("Failed to delete pending payment:", err);
+          setPayments((prev) => [payment, ...prev.filter(p => p.id !== id)]);
+          notify("Couldn't remove payment.", "error");
+        }
+      },
+    });
   }
 
   async function handleDeleteConfirmedPayment(id) {
@@ -952,10 +1117,6 @@ export default function App() {
     const payment = payments.find((p) => p.id === id);
     if (!payment || !payment.confirmed) return;
 
-    const ok = window.confirm("Delete this confirmed payment? This cannot be undone.");
-    if (!ok) return;
-
-    // Optimistic UI: remove immediately
     const removed = payment;
     setPayments((prev) => prev.filter((p) => p.id !== id));
 
@@ -975,21 +1136,24 @@ export default function App() {
       }
     }
 
-    try {
-      await deletePaymentInDb(id);
-      if (revertExpense) {
-        await updateExpenseInDb(revertExpense.id, { status: "unpaid", paidAt: null });
-      }
-      notify("Payment deleted.");
-    } catch (err) {
-      console.error("Failed to delete payment:", err);
-      // Roll back
-      setPayments((prev) => [removed, ...prev]);
-      if (revertExpense) {
-        setExpenses((prev) => prev.map((e) => e.id === revertExpense.id ? revertExpense : e));
-      }
-      notify("Couldn't delete payment. Check Firestore rules.", "error");
-    }
+    pushUndo({
+      label: `Deleted $${Number(removed.amount || 0).toFixed(2)} payment`,
+      restore: () => {
+        setPayments((prev) => [removed, ...prev.filter(p => p.id !== id)]);
+        if (revertExpense) setExpenses((prev) => prev.map((e) => e.id === revertExpense.id ? revertExpense : e));
+      },
+      commitFn: async () => {
+        try {
+          await deletePaymentInDb(id);
+          if (revertExpense) await updateExpenseInDb(revertExpense.id, { status: "unpaid", paidAt: null });
+        } catch (err) {
+          console.error("Failed to delete payment:", err);
+          setPayments((prev) => [removed, ...prev.filter(p => p.id !== id)]);
+          if (revertExpense) setExpenses((prev) => prev.map((e) => e.id === revertExpense.id ? revertExpense : e));
+          notify("Couldn't delete payment.", "error");
+        }
+      },
+    });
   }
 
   async function handleResolveDispute(id, resolution, declineReason) {
@@ -1129,41 +1293,21 @@ export default function App() {
 
   async function handleDeleteExpense(id) {
     if (user !== "emma") return;
-
-    const ok = window.confirm("Delete this expense? This cannot be undone.");
-    if (!ok) return;
-
-    // Optimistic UI: mark as deleting (keep row briefly so spinner is visible)
     const removed = expenses.find((e) => e.id === id) || null;
-    setExpenses((prev) => prev.map((e) => (e.id === id ? { ...e, _deleting: true } : e)));
-
-    // Remove after a short delay so the in-row spinner can render
-    const startedAt = Date.now();
-    const removeAfter = () => {
-      setExpenses((prev) => prev.filter((e) => e.id !== id));
-    };
-    const wait = Math.max(0, 400 - (Date.now() - startedAt));
-    if (wait > 0) setTimeout(removeAfter, wait);
-    else removeAfter();
-
-    try {
-      await deleteExpenseInDb(id);
-      notify("Expense deleted.");
-      // Firestore listener will keep things synced.
-    } catch (err) {
-      console.error("Failed to delete expense:", err);
-      // Roll back if it fails
-      if (removed) {
-        setExpenses((prev) => {
-          const exists = prev.some((e) => e.id === id);
-          if (exists) {
-            return prev.map((e) => (e.id === id ? { ...removed } : e));
-          }
-          return [removed, ...prev];
-        });
-      }
-      notify("Couldn't delete expense. Check Firestore rules.", "error");
-    }
+    if (!removed) return;
+    setExpenses((prev) => prev.filter((e) => e.id !== id));
+    pushUndo({
+      label: `Deleted "${removed.description}"`,
+      restore: () => setExpenses((prev) => [removed, ...prev.filter(e => e.id !== id)]),
+      commitFn: async () => {
+        try { await deleteExpenseInDb(id); }
+        catch (err) {
+          console.error("Failed to delete expense:", err);
+          setExpenses((prev) => [removed, ...prev.filter(e => e.id !== id)]);
+          notify("Couldn't delete expense.", "error");
+        }
+      },
+    });
   }
 
   async function handleEditExpense(id, updates) {
@@ -1195,6 +1339,8 @@ export default function App() {
         .lg-nav-pill::after{content:'';position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,0.18),transparent);background-size:200% 100%;animation:lgShimmer .6s ease forwards .05s}
       `}</style>
       <PTRIndicator pullY={pullY} refreshing={refreshing} />
+      <AnimatePresence>{!isOnline && <OfflineIndicator />}</AnimatePresence>
+      <AnimatePresence><UndoToast entries={undoQueue} onUndo={triggerUndo} /></AnimatePresence>
       <AnimatePresence>
         {updateAvailable && <UpdateBanner onTap={() => window.location.reload()} />}
       </AnimatePresence>
@@ -2327,6 +2473,104 @@ function FullCalendarSheet({ expenses, onClose }) {
           Close
         </button>
       </motion.div>
+    </motion.div>
+  );
+}
+
+// ── SPARKLINE CHART ───────────────────────────────────────────────────
+function SparklineChart({ data, width = 200, height = 48 }) {
+  if (!data || data.length < 2) return null;
+  const values = data.map(d => d.balance);
+  const maxVal = Math.max(...values, 1);
+  const PAD = 4;
+  const pts = values.map((v, i) => [
+    PAD + (i / (values.length - 1)) * (width - 2 * PAD),
+    height - PAD - (v / maxVal) * (height - 2 * PAD),
+  ]);
+  const linePath = pts.map((p, i) => `${i === 0 ? "M" : "L"}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(" ");
+  const areaPath = `${linePath} L${pts[pts.length - 1][0].toFixed(1)},${height} L${pts[0][0].toFixed(1)},${height} Z`;
+
+  return (
+    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} style={{ display: "block", overflow: "visible" }}>
+      <defs>
+        <linearGradient id="sparkGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="rgba(255,255,255,0.25)" />
+          <stop offset="100%" stopColor="rgba(255,255,255,0)" />
+        </linearGradient>
+      </defs>
+      <path d={areaPath} fill="url(#sparkGrad)" />
+      <path d={linePath} fill="none" stroke="rgba(255,255,255,0.75)" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx={pts[pts.length - 1][0]} cy={pts[pts.length - 1][1]} r={3.5} fill="#fff" />
+    </svg>
+  );
+}
+
+// ── INSIGHTS STRIP ────────────────────────────────────────────────────
+function InsightsStrip({ payments = [], expenses = [], balance = 0 }) {
+  const streak = calcPaymentStreak(payments);
+  const forecast = calcBalanceForecast(balance, payments);
+  const sparkData = getSparklineData(expenses, payments, 6);
+
+  if (streak === 0 && !forecast) return null;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.28, delay: 0.08, ease: "easeOut" }}
+      style={{ margin: "12px 16px 0", display: "flex", gap: 10 }}
+    >
+      {/* Streak card */}
+      {streak > 0 && (
+        <div style={{
+          flex: 1, borderRadius: 18, overflow: "hidden",
+          background: "linear-gradient(135deg, #1B5C80 0%, #00314B 100%)",
+          boxShadow: "0 6px 20px rgba(0,49,75,0.22)",
+          padding: "14px 14px 12px",
+          display: "flex", flexDirection: "column", gap: 6,
+          minWidth: 0,
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <span style={{ fontSize: 18 }}>🔥</span>
+            <span style={{ fontSize: 10, fontWeight: 800, color: "rgba(255,255,255,0.6)", letterSpacing: 0.8, textTransform: "uppercase" }}>Payment streak</span>
+          </div>
+          <div>
+            <span style={{ fontSize: 28, fontWeight: 900, color: "#fff", letterSpacing: -1 }}>{streak}</span>
+            <span style={{ fontSize: 12, fontWeight: 700, color: "rgba(255,255,255,0.55)", marginLeft: 4 }}>
+              {streak === 1 ? "month" : "months"}
+            </span>
+          </div>
+          <span style={{ fontSize: 10, color: "rgba(255,255,255,0.45)", fontWeight: 600 }}>
+            {streak >= 3 ? "Consistent! Keep it going" : streak >= 2 ? "Nice work" : "Good start!"}
+          </span>
+        </div>
+      )}
+
+      {/* Forecast + sparkline card */}
+      {forecast && (
+        <div style={{
+          flex: streak > 0 ? 1.6 : 1, borderRadius: 18, overflow: "hidden",
+          background: "linear-gradient(135deg, #4E635E 0%, #2D5A4A 100%)",
+          boxShadow: "0 6px 20px rgba(78,99,94,0.25)",
+          padding: "14px 14px 12px",
+          display: "flex", flexDirection: "column", gap: 4,
+          minWidth: 0, position: "relative",
+        }}>
+          <span style={{ fontSize: 10, fontWeight: 800, color: "rgba(255,255,255,0.6)", letterSpacing: 0.8, textTransform: "uppercase" }}>
+            Balance clears
+          </span>
+          <div>
+            <span style={{ fontSize: 18, fontWeight: 900, color: "#d4f5d6", letterSpacing: -0.5 }}>{forecast.date}</span>
+          </div>
+          <span style={{ fontSize: 10, color: "rgba(255,255,255,0.45)", fontWeight: 600 }}>
+            avg ${forecast.avgMonthly.toFixed(0)}/mo · {forecast.months} mo{forecast.months !== 1 ? "s" : ""} to go
+          </span>
+          {/* Sparkline overlay */}
+          <div style={{ position: "absolute", bottom: 10, right: 10, opacity: 0.7 }}>
+            <SparklineChart data={sparkData} width={90} height={36} />
+          </div>
+        </div>
+      )}
     </motion.div>
   );
 }
@@ -4036,6 +4280,9 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
 
 
 
+      {/* Insights strip — streak, forecast, sparkline */}
+      <InsightsStrip payments={payments} expenses={expenses} balance={balance} />
+
       {/* Rejected payments card — Cameron only */}
       {user === "cam" && (
         <CamRejectedCard
@@ -4719,8 +4966,13 @@ function UrgentScreen({ expenses, allExpenses = [], user, onBack, onMarkPaid, on
                 {renderNote(e.note)}
               </div>
             )}
-            {!e.referenceNum && !e.note && (
+            {!e.referenceNum && !e.note && !e.receiptUrl && (
               <p style={{ fontSize: 12, color: "#BBB", margin: "0 0 8px", fontStyle: "italic" }}>No notes or reference number.</p>
+            )}
+            {e.receiptUrl && (
+              <div style={{ marginBottom: 8, borderRadius: 10, overflow: "hidden", border: "1.5px solid #EDE7DC" }}>
+                <img src={e.receiptUrl} alt="Receipt" style={{ display: "block", width: "100%", maxHeight: 200, objectFit: "cover" }} />
+              </div>
             )}
             {isCam && typeof onLogPaymentForKey === "function" && (
               <button
@@ -6637,6 +6889,13 @@ function ExpandableExpenseRow({ expense: e, user, onDelete, onEdit, onMarkPaid, 
             )}
           </div>
 
+          {e.receiptUrl && (
+            <div style={{ marginTop: 10, borderRadius: 12, overflow: "hidden", border: "1.5px solid #EDE7DC" }}>
+              <div style={{ fontSize: 10, fontWeight: 800, color: "#A6B7CB", textTransform: "uppercase", letterSpacing: 0.6, padding: "8px 10px 4px" }}>Receipt</div>
+              <img src={e.receiptUrl} alt="Receipt" style={{ display: "block", width: "100%", maxHeight: 220, objectFit: "cover" }} />
+            </div>
+          )}
+
           {typeof onEdit === "function" && user !== "cam" && (
             <button
               type="button"
@@ -6841,9 +7100,30 @@ function AddExpenseModal({ onSave, onClose, user }) {
     mandatory: false,
     note: "",
     referenceNum: "",
+    receiptUrl: "",
   });
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showNotes, setShowNotes] = useState(false);
+  const receiptInputRef = useRef(null);
+
+  function handleReceiptFile(ev) {
+    const file = ev.target.files?.[0];
+    if (!file) return;
+    const canvas = document.createElement("canvas");
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      const MAX = 800;
+      const scale = Math.min(1, MAX / Math.max(img.width, img.height));
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+      const dataUrl = canvas.toDataURL("image/jpeg", 0.72);
+      set("receiptUrl", dataUrl);
+      URL.revokeObjectURL(url);
+    };
+    img.src = url;
+  }
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const previewNextDue =
     form.recurring && form.recurring !== "none" && form.dueDate
@@ -6977,6 +7257,40 @@ function AddExpenseModal({ onSave, onClose, user }) {
                     onChange={(e) => set("note", e.target.value)}
                     style={{ display: "block", width: "100%", boxSizing: "border-box", padding: "11px 14px", borderRadius: 12, border: "1.5px solid #DDD5C5", background: "#F5F1EB", fontSize: 13, fontWeight: 500, color: "#00314B", fontFamily: "inherit", outline: "none", resize: "none", minHeight: 72, lineHeight: 1.5 }}
                   />
+
+                  {/* Receipt upload */}
+                  <input
+                    ref={receiptInputRef}
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    style={{ display: "none" }}
+                    onChange={handleReceiptFile}
+                  />
+                  {form.receiptUrl ? (
+                    <div style={{ position: "relative", borderRadius: 12, overflow: "hidden", border: "1.5px solid #DDD5C5" }}>
+                      <img src={form.receiptUrl} alt="Receipt" style={{ display: "block", width: "100%", maxHeight: 180, objectFit: "cover" }} />
+                      <button
+                        type="button"
+                        onClick={() => set("receiptUrl", "")}
+                        style={{ position: "absolute", top: 6, right: 6, width: 26, height: 26, borderRadius: "50%", background: "rgba(0,0,0,0.55)", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+                      >
+                        <Icon path={icons.x} size={13} color="#fff" />
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => receiptInputRef.current?.click()}
+                      style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", borderRadius: 12, border: "1.5px dashed #DDD5C5", background: "#F5F1EB", cursor: "pointer", width: "100%", boxSizing: "border-box" }}
+                    >
+                      <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#A6B7CB" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/>
+                        <circle cx="12" cy="13" r="4"/>
+                      </svg>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: "#A6B7CB" }}>Attach receipt photo</span>
+                    </button>
+                  )}
                 </div>
               )}
             </div>
@@ -7147,6 +7461,7 @@ function AddExpenseModal({ onSave, onClose, user }) {
               if (!data.endDate) delete data.endDate;
               if (!data.note) delete data.note;
               if (!data.referenceNum) delete data.referenceNum;
+              if (!data.receiptUrl) delete data.receiptUrl;
               onSave(data);
             }}
             type="button"

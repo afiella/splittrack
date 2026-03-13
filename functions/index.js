@@ -112,6 +112,137 @@ exports.onPaymentUpdated = onDocumentUpdated("payments/{id}", async (event) => {
   }
 });
 
+// ── Recurring expense auto-renewal ──────────────────────────────────────
+// When a recurring expense is marked paid, advance nextDue and reset to unpaid
+exports.onRecurringExpensePaid = onDocumentUpdated("expenses/{id}", async (event) => {
+  const before = event.data?.before?.data();
+  const after = event.data?.after?.data();
+  if (!before || !after) return;
+
+  // Only fire when status transitions to "paid"
+  if (before.status === "paid" || after.status !== "paid") return;
+  // Only for recurring expenses
+  if (!after.recurring || after.recurring === "none") return;
+
+  try {
+    const baseDateStr = after.nextDue || after.dueDate;
+    if (!baseDateStr) return;
+
+    const base = new Date(baseDateStr + "T00:00:00");
+
+    let next;
+    switch (after.recurring) {
+      case "weekly":
+        next = new Date(base);
+        next.setDate(next.getDate() + 7);
+        break;
+      case "biweekly":
+        next = new Date(base);
+        next.setDate(next.getDate() + 14);
+        break;
+      case "monthly":
+        next = new Date(base);
+        next.setMonth(next.getMonth() + 1);
+        break;
+      case "quarterly":
+        next = new Date(base);
+        next.setMonth(next.getMonth() + 3);
+        break;
+      case "yearly":
+        next = new Date(base);
+        next.setFullYear(next.getFullYear() + 1);
+        break;
+      default:
+        return;
+    }
+
+    const pad = (n) => String(n).padStart(2, "0");
+    const nextDueStr = `${next.getFullYear()}-${pad(next.getMonth() + 1)}-${pad(next.getDate())}`;
+
+    await getFirestore().doc("expenses/" + event.params.id).update({
+      status: "unpaid",
+      nextDue: nextDueStr,
+    });
+
+    const desc = after.description || "Expense";
+    const monthNames = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    const formattedDate = `${monthNames[next.getMonth()]} ${next.getDate()}`;
+    await sendPush("cam", "Expense Renewed", `${desc} — next due ${formattedDate}`);
+  } catch (err) {
+    console.error("onRecurringExpensePaid error:", err.message);
+  }
+});
+
+// ── Monthly summary notification ─────────────────────────────────────────
+// Runs on the 1st of every month at 9 AM
+exports.monthlySummary = onSchedule("0 9 1 * *", async () => {
+  const now = new Date();
+
+  // Previous month bounds
+  const prevMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const prevMonthEnd   = new Date(now.getFullYear(), now.getMonth(), 1); // exclusive
+
+  const [expSnap, pmtSnap] = await Promise.all([
+    db.collection("expenses").get(),
+    db.collection("payments").get(),
+  ]);
+
+  const expenses = expSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+  const payments = pmtSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+  // totalReceived: confirmed payments with confirmedAt in the previous month
+  let totalReceived = 0;
+  for (const pmt of payments) {
+    if (!pmt.confirmed || !pmt.confirmedAt) continue;
+    const confirmedAt = pmt.confirmedAt.toDate ? pmt.confirmedAt.toDate() : new Date(pmt.confirmedAt);
+    if (confirmedAt >= prevMonthStart && confirmedAt < prevMonthEnd) {
+      totalReceived += Number(pmt.amount || 0);
+    }
+  }
+
+  // totalCharged: expenses created in the previous month
+  let totalCharged = 0;
+  for (const exp of expenses) {
+    if (!exp.createdAt) continue;
+    const createdAt = exp.createdAt.toDate ? exp.createdAt.toDate() : new Date(exp.createdAt);
+    if (createdAt >= prevMonthStart && createdAt < prevMonthEnd) {
+      totalCharged += Number(exp.amount || 0);
+    }
+  }
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  // unpaidCount: Cameron owes, not paid
+  let unpaidCount = 0;
+  // overdueCount: not paid and past due
+  let overdueCount = 0;
+  for (const exp of expenses) {
+    if (exp.status === "paid") continue;
+    const camOwes = exp.split === "cam" || exp.split === "split";
+    if (camOwes) unpaidCount++;
+
+    const dueDateStr = exp.nextDue || exp.dueDate;
+    if (dueDateStr) {
+      const due = new Date(dueDateStr + "T00:00:00");
+      if (due < today) overdueCount++;
+    }
+  }
+
+  await Promise.all([
+    sendPush(
+      "cam",
+      "Monthly Summary",
+      `Last month: ${fmt(totalReceived)} paid · ${unpaidCount} still open`
+    ),
+    sendPush(
+      "emma",
+      "Monthly Summary",
+      `Received ${fmt(totalReceived)} · ${overdueCount} overdue · ${fmt(totalCharged)} charged`
+    ),
+  ]);
+});
+
 // ── Daily due-date reminders → Cameron ──────────────────────────────────
 // Runs every day at 9:00 AM Eastern
 exports.dailyDueReminder = onSchedule("every day 09:00", async () => {
