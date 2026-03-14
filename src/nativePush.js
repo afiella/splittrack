@@ -1,5 +1,5 @@
 import { PushNotifications } from "@capacitor/push-notifications";
-import { saveDeviceToken } from "./data";
+import { saveNativeToken } from "./data";
 
 export async function initNativePush(userId, onNavigate) {
   try {
@@ -12,7 +12,7 @@ export async function initNativePush(userId, onNavigate) {
     // Add listeners BEFORE register() so the token isn't missed on iOS
     await PushNotifications.addListener("registration", async (token) => {
       console.log("Native push: token =", token.value);
-      await saveDeviceToken(userId, token.value);
+      await saveNativeToken(userId, token.value);
     });
 
     await PushNotifications.addListener("registrationError", (err) => {
@@ -21,7 +21,7 @@ export async function initNativePush(userId, onNavigate) {
 
     await PushNotifications.register();
 
-    // Notification tapped while app is in foreground
+    // Notification tapped while app is in foreground or background
     await PushNotifications.addListener("pushNotificationActionPerformed", (action) => {
       const screen = action.notification?.data?.screen;
       if (screen && onNavigate) onNavigate(screen);

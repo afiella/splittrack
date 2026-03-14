@@ -73,14 +73,28 @@ async function updateExpense(id, updates) {
 
 export { updateExpense };
 
-// Device token (FCM) — stored at deviceTokens/{userId}
-export async function saveDeviceToken(userId, token) {
-  await updateDoc(doc(db, "deviceTokens", userId), { fcmToken: token, updatedAt: serverTimestamp() })
+// Device tokens — stored at deviceTokens/{userId}
+// webToken: FCM web push token (from PWA / homescreen)
+// nativeToken: FCM token from Capacitor APNs (iOS native app)
+async function upsertTokenDoc(userId, fields) {
+  await updateDoc(doc(db, "deviceTokens", userId), { ...fields, updatedAt: serverTimestamp() })
     .catch(async () => {
-      // Document might not exist yet — use setDoc
       const { setDoc } = await import("firebase/firestore");
-      await setDoc(doc(db, "deviceTokens", userId), { fcmToken: token, updatedAt: serverTimestamp() });
+      await setDoc(doc(db, "deviceTokens", userId), { ...fields, updatedAt: serverTimestamp() });
     });
+}
+
+export async function saveDeviceToken(userId, token) {
+  // Legacy — kept so existing callers don't break; treated as web token
+  await upsertTokenDoc(userId, { webToken: token });
+}
+
+export async function saveWebToken(userId, token) {
+  await upsertTokenDoc(userId, { webToken: token });
+}
+
+export async function saveNativeToken(userId, token) {
+  await upsertTokenDoc(userId, { nativeToken: token });
 }
 
 // Write: set nextDue and reset status to unpaid

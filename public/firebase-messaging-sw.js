@@ -1,11 +1,9 @@
 // firebase-messaging-sw.js
-// This service worker handles background push notifications for the SplitTrack PWA.
-// It must live at the root of the site so it can intercept all push events.
+// Handles background push notifications for the SplitTrack PWA.
 
 importScripts("https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js");
 importScripts("https://www.gstatic.com/firebasejs/10.14.1/firebase-messaging-compat.js");
 
-// Keep this in sync with src/firebase.js — service workers can't use ES modules or Vite env vars
 firebase.initializeApp({
   apiKey:            "AIzaSyBv65oob-_p_jWu7yXeXatbLUwYMrBOP5E",
   authDomain:        "splittrack-b2fc4.firebaseapp.com",
@@ -17,21 +15,25 @@ firebase.initializeApp({
 
 const messaging = firebase.messaging();
 
-// Background push handler — shows the notification when the app is closed or in background
+// Background push handler.
+// Cloud functions now send data-only messages to web tokens (no "notification" field),
+// so FCM does NOT auto-display — this handler is the single place that shows a notification.
 messaging.onBackgroundMessage((payload) => {
-  const { title, body } = payload.notification || {};
+  // Title/body come from data field (data-only message format)
+  const title = payload.data?.title || payload.notification?.title;
+  const body  = payload.data?.body  || payload.notification?.body;
   if (!title) return;
 
   self.registration.showNotification(title, {
     body: body || "",
-    icon: "/icons/icon-192.png",   // add a 192x192 app icon here if you have one
-    badge: "/icons/badge-72.png",  // optional monochrome badge icon
+    icon: "/icons/icon-192.png",
+    badge: "/icons/badge-72.png",
     data: payload.data || {},
     vibrate: [200, 100, 200],
   });
 });
 
-// Notification tap — opens the app and posts the target screen to navigate to
+// Notification tap — focus app and navigate to the target screen
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   const screen = event.notification.data?.screen || "dashboard";
@@ -46,7 +48,6 @@ self.addEventListener("notificationclick", (event) => {
           return;
         }
       }
-      // App is closed — open it; App.jsx will read the message on load
       return clients.openWindow(url + "?screen=" + screen);
     })
   );

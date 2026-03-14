@@ -4318,7 +4318,74 @@ function UserProfileModal({ user, onClose, onLogout }) {
   const [reminders, setReminders] = useState(() => {
     try { return JSON.parse(localStorage.getItem(remindersKey) || "{}"); } catch { return {}; }
   });
+  const [notifStep, setNotifStep] = useState("idle"); // tracks where we are
+  const [notifMsg, setNotifMsg] = useState("");
   const fileRef = useRef(null);
+
+  async function handleRegisterNotifications() {
+    setNotifStep("working");
+    setNotifMsg("Checking platform…");
+    try {
+      const { Capacitor } = await import("@capacitor/core");
+      const isNative = Capacitor.isNativePlatform();
+      setNotifMsg(isNative ? "Native platform detected…" : "Web platform detected…");
+
+      if (isNative) {
+        const { PushNotifications } = await import("@capacitor/push-notifications");
+        const { saveNativeToken } = await import("./data");
+
+        setNotifMsg("Requesting permission…");
+        const perm = await PushNotifications.requestPermissions();
+        if (perm.receive !== "granted") {
+          setNotifStep("denied");
+          setNotifMsg("Blocked — go to Settings → SplitTrack → Notifications → enable");
+          return;
+        }
+
+        setNotifMsg("Permission granted, registering with APNs…");
+        await PushNotifications.removeAllListeners();
+
+        // Set a timeout so we know if registration never fires
+        const timeout = setTimeout(() => {
+          setNotifStep("error");
+          setNotifMsg("APNs timed out — check Xcode entitlements or try again");
+        }, 15000);
+
+        await PushNotifications.addListener("registration", async (token) => {
+          clearTimeout(timeout);
+          setNotifMsg("Got token, saving to Firestore…");
+          try {
+            await saveNativeToken(user, token.value);
+            setNotifStep("success");
+            setNotifMsg("Done — token saved: " + token.value.slice(0, 20) + "…");
+          } catch (err) {
+            setNotifStep("error");
+            setNotifMsg("Firestore write failed: " + err.message);
+          }
+        });
+
+        await PushNotifications.addListener("registrationError", (err) => {
+          clearTimeout(timeout);
+          setNotifStep("error");
+          setNotifMsg("APNs error: " + JSON.stringify(err));
+        });
+
+        await PushNotifications.register();
+        setNotifMsg("Waiting for APNs token…");
+
+      } else {
+        // Web / PWA path
+        setNotifMsg("Registering web push token…");
+        const { initPushNotifications } = await import("./pushNotifications");
+        await initPushNotifications(user);
+        setNotifStep("success");
+        setNotifMsg("Web push token saved");
+      }
+    } catch (err) {
+      setNotifStep("error");
+      setNotifMsg("Error: " + err.message);
+    }
+  }
 
   function handlePhotoChange(e) {
     const file = e.target.files?.[0];
@@ -4455,6 +4522,43 @@ function UserProfileModal({ user, onClose, onLogout }) {
             </p>
           </div>
         )}
+
+        {/* Notifications section */}
+        <div style={{ margin: "0 16px 16px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+            <Icon path={icons.bell} size={16} color="#00314B" />
+            <span style={{ fontSize: 13, fontWeight: 900, color: "#00314B", textTransform: "uppercase", letterSpacing: 0.8 }}>Notifications</span>
+          </div>
+          <div style={{ background: "#fff", borderRadius: 18, overflow: "hidden", boxShadow: "0 4px 18px rgba(0,49,75,0.10), 0 1px 4px rgba(0,0,0,0.06)" }}>
+            <button
+              onPointerDown={notifStep === "working" ? undefined : handleRegisterNotifications}
+              style={{ width: "100%", padding: "14px 16px", background: "none", border: "none", cursor: notifStep === "working" ? "default" : "pointer", display: "flex", alignItems: "center", gap: 12 }}
+            >
+              <div style={{ width: 34, height: 34, borderRadius: 10, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
+                background: notifStep === "success" ? "#EDF7EF" : notifStep === "denied" || notifStep === "error" ? "#FEF0F0" : notifStep === "working" ? "#FFF8EC" : "#E8F4F8"
+              }}>
+                <Icon path={icons.bell} size={17}
+                  color={notifStep === "success" ? "#3B7A57" : notifStep === "denied" || notifStep === "error" ? "#C0485A" : notifStep === "working" ? "#B87020" : "#1B5C80"}
+                />
+              </div>
+              <div style={{ flex: 1, textAlign: "left" }}>
+                <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: "#00314B" }}>
+                  {notifStep === "idle" ? "Enable push notifications"
+                    : notifStep === "success" ? "Notifications registered"
+                    : notifStep === "denied" ? "Permission denied"
+                    : notifStep === "error" ? "Failed — tap to retry"
+                    : "Registering…"}
+                </p>
+                <p style={{ margin: "2px 0 0", fontSize: 11, color: notifStep === "error" || notifStep === "denied" ? "#C0485A" : "#999", lineHeight: 1.4 }}>
+                  {notifMsg || "Tap to register this device"}
+                </p>
+              </div>
+              {(notifStep === "idle" || notifStep === "error") && (
+                <Icon path={icons.forward} size={16} color="#CCC" />
+              )}
+            </button>
+          </div>
+        </div>
 
         {/* Account section */}
         <div style={{ margin: "0 16px 16px" }}>
