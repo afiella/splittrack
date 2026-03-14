@@ -667,7 +667,9 @@ const icons = {
   bell:        "M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9",
   camera:      "M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9zm13 3a4 4 0 11-8 0 4 4 0 018 0z",
   user:        "M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z",
-  settings:    "M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z",
+  logout:      "M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1",
+  calendar:    "M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z",
+  chartBar:    "M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z",
 };
 
 function Icon({ path, size = 20, color = "currentColor" }) {
@@ -860,6 +862,7 @@ export default function App() {
   const [payments, setPayments] = useState([]);
   const [notification, setNotification] = useState(null);
   const [modal, setModal] = useState(null); // "addExpense" | "logPayment" | "confirmPayment" | "camQuickPay"
+  const [profileOpen, setProfileOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState(null);
   const [disputingExpense, setDisputingExpense] = useState(null);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
@@ -1437,6 +1440,17 @@ export default function App() {
         />
       )}
 
+      <AnimatePresence>
+        {profileOpen && (
+          <UserProfileModal
+            key="user-profile-modal"
+            user={user}
+            onClose={() => setProfileOpen(false)}
+            onLogout={async () => { await signOut(auth); setScreen("dashboard"); setProfileOpen(false); }}
+          />
+        )}
+      </AnimatePresence>
+
       {/* Screen */}
       {screen === "dashboard" && (
         <DashboardScreen
@@ -1468,6 +1482,7 @@ export default function App() {
           }}
           onDisputeExpense={(exp) => setDisputingExpense(exp)}
           onLogout={async () => { await signOut(auth); setScreen("dashboard"); }}
+          onOpenProfile={() => setProfileOpen(true)}
           onSwitchView={realUser === "emma" ? () => setViewAs(v => v === "cam" ? null : "cam") : null}
           viewingAsCam={viewAs === "cam"}
         />
@@ -4289,11 +4304,11 @@ function NotifEnableBanner({ user, notifPermission, setNotifPermission, setToken
 // ── DASHBOARD ─────────────────────────────────────────────────────────
 // ── USER PROFILE MODAL ────────────────────────────────────────────────
 const EMMA_REMINDERS = [
-  { key: "newExpense",   label: "New expense added",    sub: "When a charge is logged to Cameron",      icon: "💳" },
-  { key: "paymentLogged",label: "Payment logged",       sub: "When Cameron submits a payment",          icon: "📨" },
-  { key: "overdueAlert", label: "Overdue alerts",       sub: "When an expense passes its due date",     icon: "⚠️" },
-  { key: "dailyReminder",label: "Daily due reminders",  sub: "Reminders 1–2 days before due dates",     icon: "📅" },
-  { key: "monthlySummary",label: "Monthly summary",     sub: "Digest on the 1st of each month",        icon: "📊" },
+  { key: "newExpense",    label: "New expense added",    sub: "When a charge is logged to Cameron",  iconKey: "wallet",    iconBg: "#E8F4F8", iconColor: "#1B5C80" },
+  { key: "paymentLogged", label: "Payment logged",       sub: "When Cameron submits a payment",      iconKey: "check",     iconBg: "#EDF7EF", iconColor: "#3B7A57" },
+  { key: "overdueAlert",  label: "Overdue alerts",       sub: "When an expense passes its due date", iconKey: "alert",     iconBg: "#FEF0F0", iconColor: "#C0485A" },
+  { key: "dailyReminder", label: "Daily due reminders",  sub: "Reminders 1–2 days before due dates", iconKey: "calendar",  iconBg: "#F3F0FB", iconColor: "#5B3B8C" },
+  { key: "monthlySummary",label: "Monthly summary",      sub: "Digest on the 1st of each month",    iconKey: "chartBar",  iconBg: "#F0F4F8", iconColor: "#00314B" },
 ];
 
 function UserProfileModal({ user, onClose, onLogout }) {
@@ -4337,15 +4352,13 @@ function UserProfileModal({ user, onClose, onLogout }) {
     : "linear-gradient(135deg, #E8A0B0 0%, #C0485A 100%)";
 
   return (
-    <AnimatePresence>
+    <>
       <motion.div
-        key="profile-backdrop"
         initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
         style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 900 }}
-        onClick={onClose}
+        onPointerDown={onClose}
       />
       <motion.div
-        key="profile-sheet"
         initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
         transition={{ type: "spring", stiffness: 340, damping: 32 }}
         style={{
@@ -4371,23 +4384,24 @@ function UserProfileModal({ user, onClose, onLogout }) {
 
         {/* Avatar + name */}
         <div style={{ textAlign: "center", padding: "24px 20px 20px" }}>
-          <div style={{ position: "relative", display: "inline-block" }}>
+          <button
+            onPointerDown={() => fileRef.current?.click()}
+            style={{ position: "relative", display: "inline-block", background: "none", border: "none", padding: 0, cursor: "pointer" }}
+          >
             {avatarUrl ? (
-              <img src={avatarUrl} alt="Profile" style={{ width: 88, height: 88, borderRadius: "50%", objectFit: "cover", border: "3px solid #fff", boxShadow: "0 4px 16px rgba(0,49,75,0.18)" }} />
+              <img src={avatarUrl} alt="Profile" style={{ width: 88, height: 88, borderRadius: "50%", objectFit: "cover", border: "3px solid #fff", boxShadow: "0 4px 16px rgba(0,49,75,0.18)", display: "block" }} />
             ) : (
               <div style={{ width: 88, height: 88, borderRadius: "50%", background: avatarGradient, display: "flex", alignItems: "center", justifyContent: "center", border: "3px solid #fff", boxShadow: "0 4px 16px rgba(0,49,75,0.18)" }}>
                 <span style={{ fontSize: 34, fontWeight: 900, color: "#fff" }}>{isEmma ? "E" : "C"}</span>
               </div>
             )}
-            {/* Camera button */}
-            <button
-              onClick={() => fileRef.current?.click()}
-              style={{ position: "absolute", bottom: 2, right: 2, width: 28, height: 28, borderRadius: "50%", border: "2px solid #fff", background: "#00314B", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 2px 8px rgba(0,0,0,0.2)" }}
-            >
+            {/* Camera overlay */}
+            <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 32, borderRadius: "0 0 44px 44px", background: "rgba(0,0,0,0.38)", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
               <Icon path={icons.camera} size={14} color="#fff" />
-            </button>
+              <span style={{ fontSize: 10, fontWeight: 700, color: "#fff", letterSpacing: 0.2 }}>Edit</span>
+            </div>
             <input ref={fileRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handlePhotoChange} />
-          </div>
+          </button>
 
           <h2 style={{ margin: "14px 0 2px", fontSize: 22, fontWeight: 900, color: "#00314B", letterSpacing: -0.5 }}>
             {isEmma ? "Emmanuella" : "Cameron"}
@@ -4419,17 +4433,18 @@ function UserProfileModal({ user, onClose, onLogout }) {
                   <div
                     key={r.key}
                     style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 16px", borderBottom: i < EMMA_REMINDERS.length - 1 ? "1px solid rgba(0,49,75,0.06)" : "none", cursor: "pointer" }}
-                    onClick={() => toggleReminder(r.key)}
+                    onPointerDown={() => toggleReminder(r.key)}
                   >
-                    <span style={{ fontSize: 20, flexShrink: 0, width: 28 }}>{r.icon}</span>
+                    {/* Icon container */}
+                    <div style={{ width: 34, height: 34, borderRadius: 10, background: r.iconBg, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                      <Icon path={icons[r.iconKey]} size={17} color={r.iconColor} />
+                    </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: "#00314B" }}>{r.label}</p>
                       <p style={{ margin: "2px 0 0", fontSize: 11, color: "#999" }}>{r.sub}</p>
                     </div>
                     {/* Toggle */}
-                    <div
-                      style={{ width: 44, height: 26, borderRadius: 13, background: isOn ? "#00314B" : "#D5C9BC", position: "relative", transition: "background 0.2s", flexShrink: 0 }}
-                    >
+                    <div style={{ width: 44, height: 26, borderRadius: 13, background: isOn ? "#00314B" : "#D5C9BC", position: "relative", transition: "background 0.2s", flexShrink: 0 }}>
                       <div style={{ position: "absolute", top: 3, left: isOn ? 21 : 3, width: 20, height: 20, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 4px rgba(0,0,0,0.2)", transition: "left 0.2s cubic-bezier(.34,1.56,.64,1)" }} />
                     </div>
                   </div>
@@ -4450,20 +4465,22 @@ function UserProfileModal({ user, onClose, onLogout }) {
           </div>
           <div style={{ background: "#fff", borderRadius: 18, overflow: "hidden", boxShadow: "0 4px 18px rgba(0,49,75,0.10), 0 1px 4px rgba(0,0,0,0.06)" }}>
             <button
-              onClick={onLogout}
-              style={{ width: "100%", padding: "16px", background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 12, color: "#C0485A" }}
+              onPointerDown={onLogout}
+              style={{ width: "100%", padding: "14px 16px", background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 12 }}
             >
-              <span style={{ fontSize: 18 }}>🚪</span>
-              <span style={{ fontSize: 14, fontWeight: 700 }}>Sign out</span>
+              <div style={{ width: 34, height: 34, borderRadius: 10, background: "#FEF0F0", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <Icon path={icons.logout} size={17} color="#C0485A" />
+              </div>
+              <span style={{ fontSize: 14, fontWeight: 700, color: "#C0485A" }}>Sign out</span>
             </button>
           </div>
         </div>
       </motion.div>
-    </AnimatePresence>
+    </>
   );
 }
 
-function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, payments, syncingPayments, urgentCount, targetSummaries, onOpenTarget, onAddExpense, onLogPayment, onQuickPay, onConfirm, onResolveDispute, onRejectPayment, onDeletePendingPayment, onDismissRejectedPayment, onNavigate, onLogout, onSwitchView, viewingAsCam, onLogPaymentForKey, onDisputeExpense }) {
+function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, payments, syncingPayments, urgentCount, targetSummaries, onOpenTarget, onAddExpense, onLogPayment, onQuickPay, onConfirm, onResolveDispute, onRejectPayment, onDeletePendingPayment, onDismissRejectedPayment, onNavigate, onLogout, onOpenProfile, onSwitchView, viewingAsCam, onLogPaymentForKey, onDisputeExpense }) {
   const pending = payments.filter((p) => !p.confirmed && !p.rejected);
   // Cam dashboard urgent banner improvement: Step 3
   const urgentList = (expenses || []).filter((e) => getUrgencyLevel(e) !== null);
@@ -4477,7 +4494,6 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
     typeof Notification !== "undefined" ? Notification.permission : "granted"
   );
   const [tokenSaved, setTokenSaved] = useState(() => localStorage.getItem("fcmTokenSaved") === user);
-  const [profileOpen, setProfileOpen] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState(() => localStorage.getItem(`avatar_${user}`) || null);
 
   const sortedByDate = (expenses || [])
@@ -4602,7 +4618,7 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
           {/* Avatar circle */}
           <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8 }}>
             <button
-              onClick={() => setProfileOpen(true)}
+              onPointerDown={() => onOpenProfile?.()}
               style={{ width: 46, height: 46, borderRadius: "50%", border: "2px solid rgba(255,255,255,0.7)", padding: 0, cursor: "pointer", overflow: "hidden", flexShrink: 0, boxShadow: "0 4px 14px rgba(0,49,75,0.22)", background: "transparent" }}
               aria-label="Profile"
             >
@@ -5385,19 +5401,6 @@ function CategoryAnalyticsSheet({ catId, expenses, catGroup, onClose }) {
         </div>
       </motion.div>
 
-      {/* User Profile Modal */}
-      <AnimatePresence>
-        {profileOpen && (
-          <UserProfileModal
-            user={user}
-            onClose={() => {
-              setProfileOpen(false);
-              setAvatarUrl(localStorage.getItem(`avatar_${user}`) || null);
-            }}
-            onLogout={onLogout}
-          />
-        )}
-      </AnimatePresence>
     </>
   );
 }
