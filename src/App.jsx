@@ -4384,9 +4384,8 @@ function UserProfileModal({ user, onClose, onLogout }) {
 
         {/* Avatar + name */}
         <div style={{ textAlign: "center", padding: "24px 20px 20px" }}>
-          <button
-            onPointerDown={() => fileRef.current?.click()}
-            style={{ position: "relative", display: "inline-block", background: "none", border: "none", padding: 0, cursor: "pointer" }}
+          <label
+            style={{ position: "relative", display: "inline-block", cursor: "pointer" }}
           >
             {avatarUrl ? (
               <img src={avatarUrl} alt="Profile" style={{ width: 88, height: 88, borderRadius: "50%", objectFit: "cover", border: "3px solid #fff", boxShadow: "0 4px 16px rgba(0,49,75,0.18)", display: "block" }} />
@@ -4401,7 +4400,7 @@ function UserProfileModal({ user, onClose, onLogout }) {
               <span style={{ fontSize: 10, fontWeight: 700, color: "#fff", letterSpacing: 0.2 }}>Edit</span>
             </div>
             <input ref={fileRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handlePhotoChange} />
-          </button>
+          </label>
 
           <h2 style={{ margin: "14px 0 2px", fontSize: 22, fontWeight: 900, color: "#00314B", letterSpacing: -0.5 }}>
             {isEmma ? "Emmanuella" : "Cameron"}
