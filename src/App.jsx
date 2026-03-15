@@ -3871,6 +3871,18 @@ function CamNotificationsPanel({ expenses = [], payments = [], onClose, onNaviga
 
   const [dismissed, setDismissed] = useState(new Set());
   function dismiss(key) { setDismissed((prev) => new Set([...prev, key])); }
+  function clearAll() {
+    setDismissed(new Set([
+      ...upcoming.map((e) => `u-${e.id}`),
+      ...pending.map((p, i) => `p-${p.id || i}`),
+      ...returned.map((p, i) => `r-${p.id || i}`),
+      ...recentlyConfirmed.map((p, i) => `c-${p.id || i}`),
+      ...recentCharges.map((e) => `ch-${e.id}`),
+      ...editedExpenses.map((e) => `ed-${e.id}`),
+      ...pendingDisputes.map((p, i) => `pd-${p.id || i}`),
+      ...resolvedDisputes.map((p, i) => `d-${p.id || i}`),
+    ]));
+  }
 
   function relTime(dateStr) {
     if (!dateStr) return "";
@@ -3952,10 +3964,18 @@ function CamNotificationsPanel({ expenses = [], payments = [], onClose, onNaviga
         {/* Header */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 18px 10px" }}>
           <p style={{ margin: 0, fontSize: 20, fontWeight: 900, color: "#F0F0F0", letterSpacing: -0.5 }}>Notifications</p>
-          <button onClick={onClose} type="button"
-            style={{ background: "rgba(255,255,255,0.08)", border: "none", borderRadius: "50%", width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", padding: 0 }}>
-            <Icon path={icons.x} size={16} color="rgba(255,255,255,0.65)" />
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {hasAny && (
+              <button onClick={clearAll} type="button"
+                style={{ background: "none", border: "none", cursor: "pointer", padding: "6px 4px", fontSize: 12, fontWeight: 700, color: "rgba(255,255,255,0.38)", letterSpacing: 0.1 }}>
+                Clear all
+              </button>
+            )}
+            <button onClick={onClose} type="button"
+              style={{ background: "rgba(255,255,255,0.08)", border: "none", borderRadius: "50%", width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", padding: 0 }}>
+              <Icon path={icons.x} size={16} color="rgba(255,255,255,0.65)" />
+            </button>
+          </div>
         </div>
 
         {/* Summary banner */}
@@ -4248,6 +4268,16 @@ function EmmaNotificationsPanel({ expenses = [], payments = [], onClose }) {
 
   const [dismissed, setDismissed] = useState(new Set());
   function dismiss(key) { setDismissed((prev) => new Set([...prev, key])); }
+  function clearAll() {
+    setDismissed(new Set([
+      ...toConfirm.map((p, i) => `ec-${p.id || i}`),
+      ...toReview.map((p, i) => `er-${p.id || i}`),
+      ...camOverdue.map((e) => `eo-${e.id}`),
+      ...recentConfirmed.map((p, i) => `ecc-${p.id || i}`),
+      ...recentExpenses.map((e) => `eexp-${e.id}`),
+      ...resolvedDisputes.map((p, i) => `erd-${p.id || i}`),
+    ]));
+  }
 
   function relTime(dateStr) {
     if (!dateStr) return "";
@@ -4333,10 +4363,18 @@ function EmmaNotificationsPanel({ expenses = [], payments = [], onClose }) {
         {/* Header */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 18px 10px" }}>
           <p style={{ margin: 0, fontSize: 20, fontWeight: 900, color: "#F0F0F0", letterSpacing: -0.5 }}>Notifications</p>
-          <button onClick={onClose} type="button"
-            style={{ background: "rgba(255,255,255,0.08)", border: "none", borderRadius: "50%", width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", padding: 0 }}>
-            <Icon path={icons.x} size={16} color="rgba(255,255,255,0.65)" />
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {hasAny && (
+              <button onClick={clearAll} type="button"
+                style={{ background: "none", border: "none", cursor: "pointer", padding: "6px 4px", fontSize: 12, fontWeight: 700, color: "rgba(255,255,255,0.38)", letterSpacing: 0.1 }}>
+                Clear all
+              </button>
+            )}
+            <button onClick={onClose} type="button"
+              style={{ background: "rgba(255,255,255,0.08)", border: "none", borderRadius: "50%", width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", padding: 0 }}>
+              <Icon path={icons.x} size={16} color="rgba(255,255,255,0.65)" />
+            </button>
+          </div>
         </div>
 
         {/* Summary banner */}
