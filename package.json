@@ -11,7 +11,9 @@
   },
   "dependencies": {
     "@capacitor-firebase/authentication": "^8.1.0",
+    "@capacitor-firebase/messaging": "^8.1.0",
     "@capacitor/browser": "^8.0.2",
+    "@capacitor/camera": "^8.0.2",
     "@capacitor/cli": "^8.2.0",
     "@capacitor/core": "^8.2.0",
     "@capacitor/ios": "^8.2.0",

@@ -1,6 +1,6 @@
 {
-  "name": "SplitTrack",
-  "short_name": "SplitTrack",
+  "name": "Splitna",
+  "short_name": "Splitna",
   "description": "Shared expense tracker",
   "start_url": "/",
   "display": "standalone",

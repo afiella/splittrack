@@ -1,12 +1,89 @@
 const { onDocumentCreated, onDocumentUpdated } = require("firebase-functions/v2/firestore");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
+const { defineSecret } = require("firebase-functions/params");
 const { initializeApp } = require("firebase-admin/app");
 const { getFirestore } = require("firebase-admin/firestore");
 const { getMessaging } = require("firebase-admin/messaging");
+const crypto = require("crypto");
+const http2  = require("http2");
 
 initializeApp();
 
 const db = getFirestore();
+
+const apnsKey = defineSecret("APNS_PRIVATE_KEY");
+
+// ── APNs direct sender ───────────────────────────────────────────────────
+
+const APNS_KEY_ID  = "HJF56CX254";
+const APNS_TEAM_ID = "58JUTXDX58";
+const APNS_BUNDLE  = "com.splittrack.app";
+// Development (sandbox) endpoint — matches aps-environment = development in entitlements
+const APNS_HOST    = "https://api.development.push.apple.com";
+
+// Cache JWT for up to 55 minutes (tokens valid 1 hour)
+let _jwtCache = { token: null, exp: 0 };
+
+function makeApnsJwt(privateKeyPem) {
+  const now = Math.floor(Date.now() / 1000);
+  if (_jwtCache.token && _jwtCache.exp > now + 300) return _jwtCache.token;
+
+  const header  = Buffer.from(JSON.stringify({ alg: "ES256", kid: APNS_KEY_ID })).toString("base64url");
+  const payload = Buffer.from(JSON.stringify({ iss: APNS_TEAM_ID, iat: now })).toString("base64url");
+  const input   = `${header}.${payload}`;
+
+  const sign = crypto.createSign("SHA256");
+  sign.update(input);
+  const sig = sign.sign({ key: privateKeyPem, dsaEncoding: "ieee-p1363" }).toString("base64url");
+
+  const jwt = `${input}.${sig}`;
+  _jwtCache = { token: jwt, exp: now + 3300 };
+  return jwt;
+}
+
+function sendAPNs(deviceToken, title, body, data, privateKeyPem) {
+  return new Promise((resolve, reject) => {
+    const jwt = makeApnsJwt(privateKeyPem);
+
+    const bodyObj = {
+      aps: { alert: { title, body }, sound: "default", badge: 1 },
+      ...Object.fromEntries(Object.entries(data).map(([k, v]) => [k, String(v)])),
+    };
+    const bodyStr = JSON.stringify(bodyObj);
+
+    const client = http2.connect(APNS_HOST);
+    client.on("error", (err) => { reject(err); });
+
+    const req = client.request({
+      ":method": "POST",
+      ":path": `/3/device/${deviceToken}`,
+      "authorization": `bearer ${jwt}`,
+      "apns-topic": APNS_BUNDLE,
+      "apns-push-type": "alert",
+      "apns-priority": "10",
+      "content-type": "application/json",
+      "content-length": Buffer.byteLength(bodyStr),
+    });
+
+    let status;
+    req.on("response", (headers) => { status = headers[":status"]; });
+
+    let responseBody = "";
+    req.on("data", (chunk) => { responseBody += chunk; });
+    req.on("end", () => {
+      client.close();
+      if (status === 200) {
+        resolve();
+      } else {
+        reject(new Error(`APNs ${status}: ${responseBody}`));
+      }
+    });
+    req.on("error", (err) => { client.close(); reject(err); });
+
+    req.write(bodyStr);
+    req.end();
+  });
+}
 
 // ── Helpers ─────────────────────────────────────────────────────────────
 
@@ -16,40 +93,31 @@ async function getTokens(userId) {
   const data = snap.data() || {};
   return {
     nativeToken: data.nativeToken || null,
-    // webToken falls back to legacy fcmToken field
     webToken: data.webToken || data.fcmToken || null,
   };
 }
 
 async function sendPush(userId, title, body, data = {}) {
   const { nativeToken, webToken } = await getTokens(userId);
+  const privateKeyPem = apnsKey.value();
 
   const stringData = Object.fromEntries(
     Object.entries(data).map(([k, v]) => [k, String(v)])
   );
 
-  // Native (APNs) token — send with notification field so iOS displays it
+  // Native token — send directly via APNs HTTP/2
   if (nativeToken) {
-    console.log(`sendPush: native "${title}" → ${userId}`);
+    console.log(`sendPush: APNs "${title}" → ${userId}`);
     try {
-      await getMessaging().send({
-        token: nativeToken,
-        notification: { title, body },
-        data: stringData,
-        apns: {
-          payload: { aps: { sound: "default", badge: 1 } },
-        },
-      });
-      return; // delivered natively — skip web to avoid duplicate
+      await sendAPNs(nativeToken, title, body, stringData, privateKeyPem);
+      return;
     } catch (err) {
-      console.error(`sendPush: native failed for ${userId}:`, err.message);
+      console.error(`sendPush: APNs failed for ${userId}:`, err.message);
       // fall through to web token
     }
   }
 
-  // Web push token — data-only so FCM does NOT auto-display a notification.
-  // The service worker's onBackgroundMessage reads title/body from data and
-  // calls showNotification itself — one notification, no duplicates.
+  // Web push token — data-only FCM message, service worker shows it
   if (webToken) {
     console.log(`sendPush: web "${title}" → ${userId}`);
     try {
@@ -71,10 +139,12 @@ function fmt(amount) {
   return `$${Number(amount || 0).toFixed(2)}`;
 }
 
+// ── Shared secret config for all triggers ────────────────────────────────
+const fnOpts = { secrets: [apnsKey] };
+
 // ── Triggers ────────────────────────────────────────────────────────────
 
-// New expense added → notify Cameron
-exports.onExpenseCreated = onDocumentCreated("expenses/{id}", async (event) => {
+exports.onExpenseCreated = onDocumentCreated({ document: "expenses/{id}", ...fnOpts }, async (event) => {
   const exp = event.data?.data();
   if (!exp) return;
   const desc = exp.description || "New charge";
@@ -86,8 +156,7 @@ exports.onExpenseCreated = onDocumentCreated("expenses/{id}", async (event) => {
   });
 });
 
-// New payment created
-exports.onPaymentCreated = onDocumentCreated("payments/{id}", async (event) => {
+exports.onPaymentCreated = onDocumentCreated({ document: "payments/{id}", ...fnOpts }, async (event) => {
   const pmt = event.data?.data();
   if (!pmt) return;
 
@@ -104,8 +173,7 @@ exports.onPaymentCreated = onDocumentCreated("payments/{id}", async (event) => {
   }
 });
 
-// Payment updated (confirmed, rejected, dispute resolved)
-exports.onPaymentUpdated = onDocumentUpdated("payments/{id}", async (event) => {
+exports.onPaymentUpdated = onDocumentUpdated({ document: "payments/{id}", ...fnOpts }, async (event) => {
   const before = event.data?.before?.data();
   const after  = event.data?.after?.data();
   if (!before || !after) return;
@@ -136,8 +204,7 @@ exports.onPaymentUpdated = onDocumentUpdated("payments/{id}", async (event) => {
   }
 });
 
-// ── Recurring expense auto-renewal ──────────────────────────────────────
-exports.onRecurringExpensePaid = onDocumentUpdated("expenses/{id}", async (event) => {
+exports.onRecurringExpensePaid = onDocumentUpdated({ document: "expenses/{id}", ...fnOpts }, async (event) => {
   const before = event.data?.before?.data();
   const after  = event.data?.after?.data();
   if (!before || !after) return;
@@ -176,8 +243,7 @@ exports.onRecurringExpensePaid = onDocumentUpdated("expenses/{id}", async (event
   }
 });
 
-// ── Monthly summary — 1st of every month at 9 AM ─────────────────────────
-exports.monthlySummary = onSchedule("0 9 1 * *", async () => {
+exports.monthlySummary = onSchedule({ schedule: "0 9 1 * *", ...fnOpts }, async () => {
   const now = new Date();
   const prevMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
   const prevMonthEnd   = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -221,8 +287,7 @@ exports.monthlySummary = onSchedule("0 9 1 * *", async () => {
   ]);
 });
 
-// ── Daily due-date reminders → Cameron ──────────────────────────────────
-exports.dailyDueReminder = onSchedule("every day 09:00", async () => {
+exports.dailyDueReminder = onSchedule({ schedule: "every day 09:00", ...fnOpts }, async () => {
   const today = new Date(); today.setHours(0, 0, 0, 0);
 
   function daysBetween(isoDate) {
@@ -254,4 +319,3 @@ exports.dailyDueReminder = onSchedule("every day 09:00", async () => {
     }
   }
 });
-

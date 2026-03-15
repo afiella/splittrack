@@ -863,6 +863,8 @@ export default function App() {
   const [notification, setNotification] = useState(null);
   const [modal, setModal] = useState(null); // "addExpense" | "logPayment" | "confirmPayment" | "camQuickPay"
   const [profileOpen, setProfileOpen] = useState(false);
+  const [avatarUrl, setAvatarUrl] = useState(null);
+  useEffect(() => { if (user) setAvatarUrl(localStorage.getItem(`avatar_${user}`) || null); }, [user]);
   const [editingExpense, setEditingExpense] = useState(null);
   const [disputingExpense, setDisputingExpense] = useState(null);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
@@ -1445,7 +1447,7 @@ export default function App() {
           <UserProfileModal
             key="user-profile-modal"
             user={user}
-            onClose={() => setProfileOpen(false)}
+            onClose={() => { setProfileOpen(false); setAvatarUrl(localStorage.getItem(`avatar_${user}`) || null); }}
             onLogout={async () => { await signOut(auth); setScreen("dashboard"); setProfileOpen(false); }}
           />
         )}
@@ -1485,6 +1487,7 @@ export default function App() {
           onOpenProfile={() => setProfileOpen(true)}
           onSwitchView={realUser === "emma" ? () => setViewAs(v => v === "cam" ? null : "cam") : null}
           viewingAsCam={viewAs === "cam"}
+          avatarUrl={avatarUrl}
         />
       )}
       {screen === "target" && (
@@ -3334,13 +3337,27 @@ function CamQuickPayModal({ expenses = [], targetSummaries, onSubmit, onClose })
   const [uploading, setUploading] = useState(false);
   const proofInputRef = useRef(null);
 
-  function handleProofPick(e) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setProofFile(file);
-    const reader = new FileReader();
-    reader.onload = ev => setProofPreview(ev.target.result);
-    reader.readAsDataURL(file);
+  async function handleProofPick(e) {
+    if (e?.target?.files) {
+      const file = e.target.files[0];
+      if (!file) return;
+      setProofFile(file);
+      const reader = new FileReader();
+      reader.onload = ev => setProofPreview(ev.target.result);
+      reader.readAsDataURL(file);
+      return;
+    }
+    try {
+      const { Capacitor } = await import("@capacitor/core");
+      if (Capacitor.isNativePlatform()) {
+        const { Camera, CameraResultType, CameraSource } = await import("@capacitor/camera");
+        const photo = await Camera.getPhoto({ resultType: CameraResultType.DataUrl, source: CameraSource.Prompt, quality: 72, width: 800 });
+        setProofPreview(photo.dataUrl);
+        setProofFile(photo.dataUrl);
+        return;
+      }
+    } catch (err) { console.error("Camera error:", err); }
+    proofInputRef.current?.click();
   }
 
   async function handleConfirm() {
@@ -3699,7 +3716,6 @@ function CamQuickPayModal({ expenses = [], targetSummaries, onSubmit, onClose })
             <AnimatePresence>
               {proofOpen && (
                 <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }} style={{ overflow: "hidden", marginBottom: 12 }}>
-                  <input ref={proofInputRef} type="file" accept="image/*" capture="environment" style={{ display: "none" }} onChange={handleProofPick} />
                   {proofPreview ? (
                     <div style={{ position: "relative" }}>
                       <img src={proofPreview} alt="proof" style={{ width: "100%", borderRadius: 14, maxHeight: 200, objectFit: "cover", display: "block" }} />
@@ -3709,8 +3725,8 @@ function CamQuickPayModal({ expenses = [], targetSummaries, onSubmit, onClose })
                       </button>
                     </div>
                   ) : (
-                    <button type="button" onClick={() => proofInputRef.current?.click()}
-                      style={{ width: "100%", padding: "20px", borderRadius: 14, border: "2px dashed #C5D5C0", background: "#F5F9F5", display: "flex", flexDirection: "column", alignItems: "center", gap: 8, cursor: "pointer" }}>
+                    <button type="button" onClick={handleProofPick} style={{ width: "100%", padding: "20px", borderRadius: 14, border: "2px dashed #C5D5C0", background: "#F5F9F5", display: "flex", flexDirection: "column", alignItems: "center", gap: 8, cursor: "pointer", boxSizing: "border-box" }}>
+                      <input ref={proofInputRef} type="file" accept="image/*" style={{ position: "absolute", width: 1, height: 1, opacity: 0, overflow: "hidden", zIndex: -1 }} onChange={handleProofPick} />
                       <svg width={28} height={28} viewBox="0 0 24 24" fill="none" stroke="#A6B49E" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
                         <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
                       </svg>
@@ -3777,6 +3793,8 @@ function CamNotificationsPanel({ expenses = [], payments = [], onClose, onNaviga
     .sort((a, b) => new Date(b.date) - new Date(a.date));
 
   // 5. Recent new charges — use createdAt if available, fall back to date
+  //    Exclude items already shown in "Due Soon" to avoid duplicates
+  const upcomingIds = new Set(upcoming.map((e) => e.id));
   function expCreatedDaysAgo(e) {
     if (e.createdAt) {
       const ts = e.createdAt.toDate ? e.createdAt.toDate() : new Date(e.createdAt);
@@ -3787,7 +3805,8 @@ function CamNotificationsPanel({ expenses = [], payments = [], onClose, onNaviga
   const recentCharges = (expenses || [])
     .filter((e) => {
       if (!(e.split === "cam" || e.split === "split")) return false;
-      return expCreatedDaysAgo(e) <= 21;
+      if (upcomingIds.has(e.id)) return false;
+      return expCreatedDaysAgo(e) <= 30;
     })
     .sort((a, b) => {
       const ta = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.date);
@@ -3804,27 +3823,21 @@ function CamNotificationsPanel({ expenses = [], payments = [], onClose, onNaviga
     })
     .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
 
-  // 7. All resolved disputes (accepted OR declined, last 30 days)
+  // 7. Disputes awaiting Emma's response (Cameron filed, not yet reviewed)
+  const pendingDisputes = (payments || [])
+    .filter((p) => p.type === "dispute" && !p.confirmed && !p.rejected)
+    .sort((a, b) => new Date(b.date) - new Date(a.date));
+
+  // 8. All resolved disputes (accepted OR declined, last 30 days)
   const resolvedDisputes = (payments || [])
     .filter((p) => p.type === "dispute" && p.confirmed && p.disputeStatus && daysAgo(p.date) <= 30)
     .sort((a, b) => new Date(b.date) - new Date(a.date));
 
-  // ── Smart card data ────────────────────────────────────────────────
-  // Current balance (what Cameron owes)
-  const camBalance = (expenses || [])
-    .filter((e) => e.status !== "paid" && (e.split === "cam" || e.split === "split"))
-    .reduce((s, e) => s + (e.split === "cam" ? Number(e.amount || 0) : Number(e.amount || 0) / 2), 0)
-    - (payments || []).filter((p) => p.confirmed).reduce((s, p) => s + Number(p.amount || 0), 0);
+  const hasAny = upcoming.length > 0 || pending.length > 0 || returned.length > 0 ||
+    recentlyConfirmed.length > 0 || recentCharges.length > 0 ||
+    editedExpenses.length > 0 || pendingDisputes.length > 0 || resolvedDisputes.length > 0;
 
-  // Last confirmed payment
-  const lastPayment = (payments || [])
-    .filter((p) => p.confirmed && p.type !== "dispute")
-    .sort((a, b) => new Date(b.date) - new Date(a.date))[0] || null;
-
-  // Payment streak
-  const streak = calcPaymentStreak(payments);
-
-  // This month's total due
+  // Summary banner data
   const nowDate = new Date();
   const monthKey = `${nowDate.getFullYear()}-${String(nowDate.getMonth() + 1).padStart(2, "0")}`;
   const monthDue = (expenses || [])
@@ -3835,15 +3848,9 @@ function CamNotificationsPanel({ expenses = [], payments = [], onClose, onNaviga
       return String(iso || "").startsWith(monthKey);
     })
     .reduce((s, e) => s + (e.split === "cam" ? Number(e.amount || 0) : Number(e.amount || 0) / 2), 0);
-
-  // Has Cameron paid anything this month?
-  const paidThisMonth = (payments || [])
-    .filter((p) => !p.confirmed && String(p.date || "").startsWith(monthKey)).length > 0
-    || (payments || []).filter((p) => p.confirmed && String(p.date || "").startsWith(monthKey)).length > 0;
-
-  const hasAny = upcoming.length > 0 || pending.length > 0 || returned.length > 0 ||
-    recentlyConfirmed.length > 0 || recentCharges.length > 0 ||
-    editedExpenses.length > 0 || resolvedDisputes.length > 0;
+  const lastPayment = (payments || [])
+    .filter((p) => p.confirmed && p.type !== "dispute")
+    .sort((a, b) => new Date(b.date) - new Date(a.date))[0] || null;
 
   function camAmt(e) {
     const amt = Number(e.amount || 0);
@@ -3862,38 +3869,66 @@ function CamNotificationsPanel({ expenses = [], payments = [], onClose, onNaviga
     return `Due in ${diff}d`;
   }
 
+  const [dismissed, setDismissed] = useState(new Set());
+  function dismiss(key) { setDismissed((prev) => new Set([...prev, key])); }
+
+  function relTime(dateStr) {
+    if (!dateStr) return "";
+    const d = dateStr.includes("T") ? new Date(dateStr) : new Date(dateStr + "T12:00:00");
+    const diffMs = Date.now() - d.getTime();
+    const mins = Math.floor(diffMs / 60000);
+    if (mins < 60) return `${mins}m`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs}h`;
+    const days = Math.floor(hrs / 24);
+    if (days < 7) return `${days}d`;
+    return d.toLocaleDateString("en-US", { month: "short", day: "numeric" }).toUpperCase();
+  }
+
   function SectionLabel({ children }) {
     return (
-      <p style={{ fontSize: 11, fontWeight: 800, color: "#A6B7CB", textTransform: "uppercase", letterSpacing: 1, margin: "16px 0 8px 2px" }}>
+      <p style={{ fontSize: 11, fontWeight: 700, color: "#6B7280", textTransform: "uppercase", letterSpacing: 1.5, margin: "20px 0 2px 18px" }}>
         {children}
       </p>
     );
   }
 
-  function NotifCard({ bg, border, left, title, sub, right, note, onClick }) {
+  function NotifRow({ itemKey, accentColor, bold, sub, time }) {
     return (
-      <div
-        onClick={onClick}
-        style={{ background: bg, borderRadius: 16, padding: "13px 14px", marginBottom: 8, border: `1.5px solid ${border}`, cursor: onClick ? "pointer" : "default", display: "flex", alignItems: "center", gap: 12 }}
+      <motion.div
+        key={itemKey}
+        layout
+        drag="x"
+        dragConstraints={{ left: -320, right: 8 }}
+        dragElastic={{ left: 0.3, right: 0.05 }}
+        onDragEnd={(_, info) => { if (info.offset.x < -72) dismiss(itemKey); }}
+        initial={{ opacity: 1, x: 0 }}
+        exit={{ opacity: 0, x: -320, height: 0, paddingTop: 0, paddingBottom: 0, transition: { duration: 0.28, ease: "easeIn" } }}
+        style={{ overflow: "hidden", cursor: "grab", touchAction: "pan-y", userSelect: "none" }}
       >
-        {left && (
-          <div style={{ width: 36, height: 36, borderRadius: 12, background: "rgba(0,0,0,0.06)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-            {left}
+        <div style={{ display: "flex", alignItems: "center", padding: "13px 10px 13px 16px", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+          <div style={{ width: 3, alignSelf: "stretch", borderRadius: 2, background: accentColor, flexShrink: 0, marginRight: 14 }} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <p style={{ margin: 0, fontSize: 13.5, fontWeight: 700, color: "#EAEAEA", lineHeight: 1.45 }}>{bold}</p>
+            <p style={{ margin: "3px 0 0", fontSize: 12, color: "#9CA3AF", lineHeight: 1.45 }}>{sub}</p>
           </div>
-        )}
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: "#0A1E2B", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{title}</p>
-          <p style={{ margin: "2px 0 0", fontSize: 11, fontWeight: 600, color: "#888", lineHeight: 1.4 }}>{sub}</p>
-          {note && <p style={{ margin: "5px 0 0", fontSize: 11, color: "#999", fontStyle: "italic", lineHeight: 1.4 }}>"{note}"</p>}
+          {time && <span style={{ fontSize: 12, color: "#6B7280", flexShrink: 0, marginLeft: 8 }}>{time}</span>}
+          <button
+            type="button"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => { e.stopPropagation(); dismiss(itemKey); }}
+            style={{ background: "none", border: "none", cursor: "pointer", padding: "6px 6px 6px 10px", flexShrink: 0, lineHeight: 0, opacity: 0.45 }}
+          >
+            <Icon path={icons.x} size={13} color="#9CA3AF" />
+          </button>
         </div>
-        {right && <span style={{ fontSize: 15, fontWeight: 900, flexShrink: 0, marginLeft: 4 }}>{right}</span>}
-      </div>
+      </motion.div>
     );
   }
 
   return (
     <>
-      <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 800 }} />
+      <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 800 }} />
       <motion.div
         initial={{ y: "100%" }}
         animate={{ y: 0 }}
@@ -3901,352 +3936,566 @@ function CamNotificationsPanel({ expenses = [], payments = [], onClose, onNaviga
         transition={{ type: "spring", stiffness: 340, damping: 32 }}
         style={{
           position: "fixed", bottom: 0, left: 0, right: 0,
-          width: "100%",
-          background: "linear-gradient(170deg, #EAF0F6 0%, #F5F1EB 100%)",
-          borderRadius: "26px 26px 0 0",
+          background: "#1C1E24",
+          borderRadius: "24px 24px 0 0",
           zIndex: 801,
           paddingBottom: "max(28px, env(safe-area-inset-bottom))",
           maxHeight: "90dvh", overflowY: "auto",
-          boxShadow: "0 -8px 40px rgba(0,0,0,0.18)",
+          boxShadow: "0 -8px 48px rgba(0,0,0,0.5)",
         }}
       >
         {/* Handle */}
-        <div style={{ display: "flex", justifyContent: "center", paddingTop: 10, paddingBottom: 0 }}>
-          <div style={{ width: 38, height: 4, borderRadius: 2, background: "#D5C9BC" }} />
+        <div style={{ display: "flex", justifyContent: "center", paddingTop: 12, paddingBottom: 2 }}>
+          <div style={{ width: 36, height: 4, borderRadius: 2, background: "rgba(255,255,255,0.12)" }} />
         </div>
 
-        {/* ── Hero header with large bell ── */}
-        <div style={{ position: "relative", padding: "16px 18px 0", overflow: "hidden" }}>
-          {/* Big decorative bell — background */}
-          <div style={{ position: "absolute", right: -8, top: -14, opacity: 0.06, pointerEvents: "none" }}>
-            <svg width={130} height={130} viewBox="0 0 24 24" fill="#00314B">
-              <path d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
-            </svg>
+        {/* Header */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 18px 10px" }}>
+          <p style={{ margin: 0, fontSize: 20, fontWeight: 900, color: "#F0F0F0", letterSpacing: -0.5 }}>Notifications</p>
+          <button onClick={onClose} type="button"
+            style={{ background: "rgba(255,255,255,0.08)", border: "none", borderRadius: "50%", width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", padding: 0 }}>
+            <Icon path={icons.x} size={16} color="rgba(255,255,255,0.65)" />
+          </button>
+        </div>
+
+        {/* Summary banner */}
+        <div style={{ margin: "0 16px 4px", borderRadius: 16, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", padding: "12px 16px", display: "flex", gap: 0 }}>
+          <div style={{ flex: 1, borderRight: "1px solid rgba(255,255,255,0.08)", paddingRight: 14 }}>
+            <p style={{ margin: 0, fontSize: 10, fontWeight: 700, color: "#6B7280", textTransform: "uppercase", letterSpacing: 0.9 }}>Due this month</p>
+            <p style={{ margin: "4px 0 0", fontSize: 18, fontWeight: 900, color: monthDue > 0 ? "#F87171" : "#34D399", letterSpacing: -0.5 }}>
+              {monthDue > 0 ? `$${monthDue.toFixed(2)}` : "All clear"}
+            </p>
           </div>
-
-          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              {/* Bell icon circle */}
-              <div style={{
-                width: 52, height: 52, borderRadius: 18, flexShrink: 0,
-                background: "linear-gradient(145deg, #002B42 0%, #1B5C80 100%)",
-                boxShadow: "0 8px 24px rgba(0,49,75,0.3), inset 0 1px 0 rgba(255,255,255,0.15)",
-                display: "flex", alignItems: "center", justifyContent: "center",
-              }}>
-                <Icon path={icons.bell} size={24} color="#fff" />
-              </div>
-              <div>
-                <p style={{ margin: 0, fontSize: 20, fontWeight: 900, color: "#0A1E2B", letterSpacing: -0.6 }}>Notifications</p>
-                <p style={{ margin: "2px 0 0", fontSize: 12, color: "#A6B7CB", fontWeight: 600 }}>
-                  {hasAny
-                    ? [
-                        upcoming.length > 0 && `${upcoming.length} due`,
-                        pending.length > 0 && `${pending.length} pending`,
-                        returned.length > 0 && `${returned.length} returned`,
-                      ].filter(Boolean).join(" · ") || "Recent activity"
-                    : "You're all caught up"}
+          <div style={{ flex: 1, paddingLeft: 14 }}>
+            <p style={{ margin: 0, fontSize: 10, fontWeight: 700, color: "#6B7280", textTransform: "uppercase", letterSpacing: 0.9 }}>Last payment</p>
+            {lastPayment ? (
+              <>
+                <p style={{ margin: "4px 0 0", fontSize: 15, fontWeight: 900, color: "#EAEAEA" }}>${Number(lastPayment.amount || 0).toFixed(2)}</p>
+                <p style={{ margin: "1px 0 0", fontSize: 11, color: "#9CA3AF" }}>
+                  {lastPayment.method || "—"} · {formatShortDate(lastPayment.date)}
+                  {lastPayment.note ? ` · "${lastPayment.note}"` : ""}
                 </p>
-              </div>
-            </div>
-            <button onClick={onClose} type="button"
-              style={{ background: "#EEE9E3", border: "none", borderRadius: "50%", width: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0, marginTop: 2, padding: 0, lineHeight: 0 }}>
-              <Icon path={icons.x} size={18} color="#3A3A3A" />
-            </button>
-          </div>
-
-          {/* ── Smart summary card ── */}
-          <div style={{
-            marginTop: 14, borderRadius: 20, overflow: "hidden",
-            background: "linear-gradient(145deg, #002B42 0%, #1A5470 100%)",
-            boxShadow: "0 8px 24px rgba(0,49,75,0.28), inset 0 1px 0 rgba(255,255,255,0.1)",
-            padding: "14px 16px 16px",
-          }}>
-            {/* Balance row */}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 10 }}>
-              <div>
-                <p style={{ margin: 0, fontSize: 10, fontWeight: 800, color: "rgba(255,255,255,0.5)", textTransform: "uppercase", letterSpacing: 1 }}>Current Balance</p>
-                <p style={{ margin: "3px 0 0", fontSize: 28, fontWeight: 900, color: "#fff", letterSpacing: -1 }}>
-                  ${Math.max(0, camBalance).toFixed(2)}
-                </p>
-              </div>
-              {streak > 0 && (
-                <div style={{ textAlign: "right" }}>
-                  <p style={{ margin: 0, fontSize: 10, fontWeight: 800, color: "rgba(255,255,255,0.5)", textTransform: "uppercase", letterSpacing: 1 }}>Streak</p>
-                  <p style={{ margin: "3px 0 0", fontSize: 20, fontWeight: 900, color: "#FFD66B", letterSpacing: -0.5 }}>
-                    🔥 {streak}mo
-                  </p>
-                </div>
-              )}
-            </div>
-
-            {/* Divider */}
-            <div style={{ height: 1, background: "rgba(255,255,255,0.1)", marginBottom: 10 }} />
-
-            {/* Stats row */}
-            <div style={{ display: "flex", gap: 0 }}>
-              <div style={{ flex: 1, textAlign: "center" }}>
-                <p style={{ margin: 0, fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.45)", textTransform: "uppercase", letterSpacing: 0.7 }}>Due this month</p>
-                <p style={{ margin: "3px 0 0", fontSize: 15, fontWeight: 900, color: monthDue > 0 ? "#FFB4BD" : "#B8F5D0" }}>
-                  {monthDue > 0 ? `$${monthDue.toFixed(2)}` : "All clear"}
-                </p>
-              </div>
-              <div style={{ width: 1, background: "rgba(255,255,255,0.1)" }} />
-              <div style={{ flex: 1, textAlign: "center" }}>
-                <p style={{ margin: 0, fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.45)", textTransform: "uppercase", letterSpacing: 0.7 }}>Last payment</p>
-                <p style={{ margin: "3px 0 0", fontSize: 15, fontWeight: 900, color: "rgba(255,255,255,0.85)" }}>
-                  {lastPayment ? formatShortDate(lastPayment.date) : "None yet"}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* ── Smart nudge cards ── */}
-          <div style={{ display: "flex", gap: 10, marginTop: 10, marginBottom: 2 }}>
-            {/* No payment this month nudge */}
-            {!paidThisMonth && monthDue > 0 && (
-              <div style={{
-                flex: 1, borderRadius: 16, padding: "12px 14px",
-                background: "linear-gradient(135deg, #3D1A1A 0%, #5C2020 100%)",
-                boxShadow: "0 4px 14px rgba(192,25,46,0.2)",
-                border: "1px solid rgba(255,100,100,0.2)",
-              }}>
-                <p style={{ margin: "0 0 2px", fontSize: 11, fontWeight: 900, color: "#FFB4BD" }}>No payment yet</p>
-                <p style={{ margin: 0, fontSize: 10, color: "rgba(255,255,255,0.5)", fontWeight: 600, lineHeight: 1.4 }}>
-                  {new Date().toLocaleString("en-US", { month: "long" })} hasn't been logged yet
-                </p>
-              </div>
-            )}
-            {/* Streak milestone */}
-            {streak >= 3 && (
-              <div style={{
-                flex: 1, borderRadius: 16, padding: "12px 14px",
-                background: "linear-gradient(135deg, #3A2800 0%, #5C4200 100%)",
-                boxShadow: "0 4px 14px rgba(200,160,32,0.2)",
-                border: "1px solid rgba(255,214,107,0.2)",
-              }}>
-                <p style={{ margin: "0 0 2px", fontSize: 11, fontWeight: 900, color: "#FFD66B" }}>
-                  {streak >= 6 ? "On fire! 🔥" : streak >= 4 ? "Great streak! 💪" : "Keep it up! ✨"}
-                </p>
-                <p style={{ margin: 0, fontSize: 10, color: "rgba(255,255,255,0.5)", fontWeight: 600, lineHeight: 1.4 }}>
-                  {streak} months in a row
-                </p>
-              </div>
+              </>
+            ) : (
+              <p style={{ margin: "4px 0 0", fontSize: 15, fontWeight: 900, color: "#6B7280" }}>None yet</p>
             )}
           </div>
         </div>
 
-        <div style={{ padding: "4px 16px 8px" }}>
+        {/* Empty state */}
+        {!hasAny && (
+          <div style={{ padding: "40px 18px 20px", textAlign: "center" }}>
+            <p style={{ fontSize: 14, fontWeight: 800, color: "#9CA3AF", margin: "0 0 4px" }}>Nothing new right now</p>
+            <p style={{ fontSize: 12, color: "#6B7280", margin: 0 }}>No upcoming charges or pending activity.</p>
+          </div>
+        )}
 
-          {!hasAny && (
-            <div style={{ padding: "28px 0 16px", textAlign: "center" }}>
-              <p style={{ fontSize: 14, fontWeight: 800, color: "#00314B", margin: "0 0 4px" }}>Nothing new right now</p>
-              <p style={{ fontSize: 12, color: "#AAA", margin: 0 }}>No upcoming charges or pending activity.</p>
-            </div>
-          )}
-
-          {/* ── 1. Overdue / Upcoming ── */}
-          {upcoming.length > 0 && (
-            <>
-              <SectionLabel>Due Soon</SectionLabel>
-              {upcoming.map((e) => {
+        {/* 1. Overdue / Upcoming */}
+        {upcoming.filter((e) => !dismissed.has(`u-${e.id}`)).length > 0 && (
+          <>
+            <SectionLabel>Due Soon</SectionLabel>
+            <AnimatePresence>
+              {upcoming.filter((e) => !dismissed.has(`u-${e.id}`)).map((e) => {
                 const overdue = getUrgencyLevel(e) === "overdue";
                 const isMandatory = e.mandatory;
-                const accent = isMandatory && overdue ? "#C0192E" : overdue ? "#E05C6E" : isMandatory ? "#C0192E" : "#1B5C80";
-                const bg = overdue ? "#FFF0F2" : isMandatory ? "#FFF5F6" : "#fff";
-                const border = overdue ? "#F8C4CD" : isMandatory ? "#F8A0B0" : "#EDE7DC";
+                const accent = isMandatory && overdue ? "#EF4444" : overdue ? "#F87171" : isMandatory ? "#EF4444" : "#60A5FA";
+                const subText = isMandatory && overdue
+                  ? `Mandatory — Overdue · $${camAmt(e).toFixed(2)}`
+                  : `${dueLabel(e)} · $${camAmt(e).toFixed(2)}${isMandatory ? " · Mandatory" : ""}`;
                 return (
-                  <NotifCard
-                    key={e.id}
-                    bg={bg} border={border}
-                    onClick={() => { onNavigate("urgent"); onClose(); }}
-                    left={
-                      <Icon path={overdue ? icons.fire : icons.clock} size={18} color={accent} />
-                    }
-                    title={e.description}
-                    sub={isMandatory && overdue ? "⚠ MANDATORY — Overdue" : isMandatory ? `Mandatory · ${dueLabel(e)}` : dueLabel(e)}
-                    right={<span style={{ color: accent }}>${camAmt(e).toFixed(2)}</span>}
+                  <NotifRow
+                    key={`u-${e.id}`}
+                    itemKey={`u-${e.id}`}
+                    accentColor={accent}
+                    bold={<>Emmanuella added <em>"{e.description}"</em></>}
+                    sub={subText}
+                    time={relTime(e.nextDue || e.dueDate)}
                   />
                 );
               })}
-            </>
-          )}
+            </AnimatePresence>
+          </>
+        )}
 
-          {/* ── 2. Pending confirmation ── */}
-          {pending.length > 0 && (
-            <>
-              <SectionLabel>Awaiting Confirmation</SectionLabel>
-              {pending.map((p, i) => (
-                <NotifCard
-                  key={p.id || i}
-                  bg="#FFFBF0" border="#F5E6B0"
-                  left={<Icon path={icons.clock} size={18} color="#C48A00" />}
-                  title={`Payment via ${p.method || "—"}`}
-                  sub={`${formatShortDate(p.date)} · Waiting for Emmanuella`}
-                  right={<span style={{ color: "#C48A00" }}>${Number(p.amount || 0).toFixed(2)}</span>}
-                  note={p.note}
+        {/* 2. Pending confirmation */}
+        {pending.filter((p, i) => !dismissed.has(`p-${p.id || i}`)).length > 0 && (
+          <>
+            <SectionLabel>Awaiting Confirmation</SectionLabel>
+            <AnimatePresence>
+              {pending.filter((p, i) => !dismissed.has(`p-${p.id || i}`)).map((p, i) => (
+                <NotifRow
+                  key={`p-${p.id || i}`}
+                  itemKey={`p-${p.id || i}`}
+                  accentColor="#FBBF24"
+                  bold={<>Your payment via <em>{p.method || "—"}</em> is pending</>}
+                  sub={`$${Number(p.amount || 0).toFixed(2)} · Waiting for Emmanuella${p.note ? ` · "${p.note}"` : ""}`}
+                  time={relTime(p.date)}
                 />
               ))}
-            </>
-          )}
+            </AnimatePresence>
+          </>
+        )}
 
-          {/* ── 3. Returned payments ── */}
-          {returned.length > 0 && (
-            <>
-              <SectionLabel>Returned by Emmanuella</SectionLabel>
-              {returned.map((p, i) => (
-                <div key={p.id || i} style={{ background: "#FFF5F0", borderRadius: 16, padding: "13px 14px", marginBottom: 8, border: "1.5px solid #F5C4A0" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                    <div style={{ width: 36, height: 36, borderRadius: 12, background: "#FFF0E0", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                      <Icon path={icons.alert} size={18} color="#E07A20" />
-                    </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: "#0A1E2B" }}>
-                        Payment returned · <span style={{ color: "#E07A20" }}>${Number(p.amount || 0).toFixed(2)}</span>
-                      </p>
-                      <p style={{ margin: "2px 0 0", fontSize: 11, color: "#888", fontWeight: 600 }}>via {p.method || "—"} · {formatShortDate(p.date)}</p>
-                    </div>
-                  </div>
-                  {p.rejectionReason && (
-                    <div style={{ marginTop: 8, background: "#FFF0E0", borderRadius: 10, padding: "8px 10px", border: "1px solid #F5C4A0" }}>
-                      <p style={{ margin: "0 0 2px", fontSize: 10, fontWeight: 800, color: "#E07A20", textTransform: "uppercase", letterSpacing: 0.5 }}>Emmanuella's note</p>
-                      <p style={{ margin: 0, fontSize: 12, color: "#555", lineHeight: 1.5, fontStyle: "italic" }}>"{p.rejectionReason}"</p>
-                    </div>
-                  )}
-                  {p.rejectionSuggestionKey && (
-                    <p style={{ margin: "6px 0 0", fontSize: 11, color: "#1B5C80", fontWeight: 700 }}>
-                      → Apply to: {p.rejectionSuggestionKey.replace("grp:", "").replace("exp:", "")}
-                    </p>
-                  )}
-                </div>
-              ))}
-            </>
-          )}
-
-          {/* ── 4. Recently confirmed ── */}
-          {recentlyConfirmed.length > 0 && (
-            <>
-              <SectionLabel>Payment Confirmed</SectionLabel>
-              {recentlyConfirmed.map((p, i) => (
-                <NotifCard
-                  key={p.id || i}
-                  bg="#F0FBF4" border="#B8D9C5"
-                  left={<Icon path={icons.check} size={18} color="#2D7A50" />}
-                  title="Payment confirmed ✓"
-                  sub={`via ${p.method || "—"} · ${formatShortDate(p.date)}`}
-                  right={<span style={{ color: "#2D7A50" }}>${Number(p.amount || 0).toFixed(2)}</span>}
-                  note={p.note}
+        {/* 3. Returned payments */}
+        {returned.filter((p, i) => !dismissed.has(`r-${p.id || i}`)).length > 0 && (
+          <>
+            <SectionLabel>Returned</SectionLabel>
+            <AnimatePresence>
+              {returned.filter((p, i) => !dismissed.has(`r-${p.id || i}`)).map((p, i) => (
+                <NotifRow
+                  key={`r-${p.id || i}`}
+                  itemKey={`r-${p.id || i}`}
+                  accentColor="#F97316"
+                  bold="Emmanuella returned your payment"
+                  sub={`$${Number(p.amount || 0).toFixed(2)} via ${p.method || "—"}${p.rejectionReason ? ` · "${p.rejectionReason}"` : ""}`}
+                  time={relTime(p.date)}
                 />
               ))}
-            </>
-          )}
+            </AnimatePresence>
+          </>
+        )}
 
-          {/* ── 5. Recent new charges ── */}
-          {recentCharges.length > 0 && (
-            <>
-              <SectionLabel>Expense Added</SectionLabel>
-              {recentCharges.map((e) => {
-                const addedDate = e.createdAt?.toDate
-                  ? e.createdAt.toDate().toLocaleDateString("en-US", { month: "short", day: "numeric" })
-                  : formatShortDate(e.date);
+        {/* 4. Recently confirmed */}
+        {recentlyConfirmed.filter((p, i) => !dismissed.has(`c-${p.id || i}`)).length > 0 && (
+          <>
+            <SectionLabel>Confirmed</SectionLabel>
+            <AnimatePresence>
+              {recentlyConfirmed.filter((p, i) => !dismissed.has(`c-${p.id || i}`)).map((p, i) => (
+                <NotifRow
+                  key={`c-${p.id || i}`}
+                  itemKey={`c-${p.id || i}`}
+                  accentColor="#34D399"
+                  bold="Emmanuella confirmed your payment ✓"
+                  sub={`$${Number(p.amount || 0).toFixed(2)} via ${p.method || "—"}${p.note ? ` · "${p.note}"` : ""}`}
+                  time={relTime(p.date)}
+                />
+              ))}
+            </AnimatePresence>
+          </>
+        )}
+
+        {/* 5. Recent new charges */}
+        {recentCharges.filter((e) => !dismissed.has(`ch-${e.id}`)).length > 0 && (
+          <>
+            <SectionLabel>Recently Added</SectionLabel>
+            <AnimatePresence>
+              {recentCharges.filter((e) => !dismissed.has(`ch-${e.id}`)).map((e) => {
+                const ts = e.createdAt?.toDate ? e.createdAt.toDate().toISOString() : (e.date + "T12:00:00");
+                const isPaid = e.status === "paid";
                 return (
-                  <NotifCard
-                    key={e.id}
-                    bg="#fff" border="#EDE7DC"
-                    onClick={() => { onNavigate("expenses"); onClose(); }}
-                    left={<Icon path={icons.plus} size={18} color="#1B5C80" />}
-                    title={e.description}
-                    sub={`${e.split === "split" ? "Split 50/50" : "Cam pays"} · added ${addedDate}`}
-                    right={<span style={{ color: "#00314B" }}>${camAmt(e).toFixed(2)}</span>}
+                  <NotifRow
+                    key={`ch-${e.id}`}
+                    itemKey={`ch-${e.id}`}
+                    accentColor="#818CF8"
+                    bold={<>Emmanuella added <em>"{e.description}"</em></>}
+                    sub={`${e.split === "split" ? "Split 50/50" : "Cam pays"} · $${camAmt(e).toFixed(2)}${isPaid ? " · Paid" : ""}`}
+                    time={relTime(ts.slice(0, 10))}
                   />
                 );
               })}
-            </>
-          )}
+            </AnimatePresence>
+          </>
+        )}
 
-          {/* ── 6. Amount edited ── */}
-          {editedExpenses.length > 0 && (
-            <>
-              <SectionLabel>Amount Updated</SectionLabel>
-              {editedExpenses.map((e) => {
+        {/* 6. Amount edited */}
+        {editedExpenses.filter((e) => !dismissed.has(`ed-${e.id}`)).length > 0 && (
+          <>
+            <SectionLabel>Amount Updated</SectionLabel>
+            <AnimatePresence>
+              {editedExpenses.filter((e) => !dismissed.has(`ed-${e.id}`)).map((e) => {
                 const wasAmt = Number(e.previousAmount || 0);
                 const nowAmt = Number(e.amount || 0);
                 const diff = nowAmt - wasAmt;
-                const diffColor = diff > 0 ? "#E05C6E" : "#2D7A50";
                 const diffLabel = diff > 0 ? `+$${diff.toFixed(2)}` : `-$${Math.abs(diff).toFixed(2)}`;
                 return (
-                  <div key={e.id} style={{ background: "#fff", borderRadius: 16, padding: "13px 14px", marginBottom: 8, border: "1.5px solid #EDE7DC" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                      <div style={{ width: 36, height: 36, borderRadius: 12, background: "#F0F4FA", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                        <Icon path={icons.edit} size={18} color="#1B5C80" />
-                      </div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: "#0A1E2B", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                          {e.description}
-                        </p>
-                        <p style={{ margin: "2px 0 0", fontSize: 11, color: "#888", fontWeight: 600 }}>
-                          Amount updated · {formatShortDate(e.updatedAt)}
-                        </p>
-                      </div>
-                      <div style={{ textAlign: "right", flexShrink: 0 }}>
-                        <p style={{ margin: 0, fontSize: 14, fontWeight: 900, color: "#00314B" }}>${camAmt(e).toFixed(2)}</p>
-                        <p style={{ margin: 0, fontSize: 11, fontWeight: 700, color: diffColor }}>
-                          {diffLabel} · was ${(e.split === "split" ? wasAmt / 2 : wasAmt).toFixed(2)}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
+                  <NotifRow
+                    key={`ed-${e.id}`}
+                    itemKey={`ed-${e.id}`}
+                    accentColor="#60A5FA"
+                    bold={<>Emmanuella updated <em>"{e.description}"</em></>}
+                    sub={`$${camAmt(e).toFixed(2)} (${diffLabel} · was $${(e.split === "split" ? wasAmt / 2 : wasAmt).toFixed(2)})`}
+                    time={relTime(e.updatedAt)}
+                  />
                 );
               })}
-            </>
-          )}
+            </AnimatePresence>
+          </>
+        )}
 
-          {/* ── 7. Resolved disputes (accepted + declined) ── */}
-          {resolvedDisputes.length > 0 && (
-            <>
-              <SectionLabel>Dispute Response</SectionLabel>
-              {resolvedDisputes.map((p, i) => {
+        {/* 7. Pending disputes — filed by Cameron, awaiting Emma's review */}
+        {pendingDisputes.filter((p, i) => !dismissed.has(`pd-${p.id || i}`)).length > 0 && (
+          <>
+            <SectionLabel>Dispute Pending</SectionLabel>
+            <AnimatePresence>
+              {pendingDisputes.filter((p, i) => !dismissed.has(`pd-${p.id || i}`)).map((p, i) => (
+                <NotifRow
+                  key={`pd-${p.id || i}`}
+                  itemKey={`pd-${p.id || i}`}
+                  accentColor="#A78BFA"
+                  bold={<>You disputed <em>"{p.disputeDescription || "a charge"}"</em></>}
+                  sub={`$${Number(p.amount || 0).toFixed(2)} · Waiting for Emmanuella to review`}
+                  time={relTime(p.date)}
+                />
+              ))}
+            </AnimatePresence>
+          </>
+        )}
+
+        {/* 8. Resolved disputes */}
+        {resolvedDisputes.filter((p, i) => !dismissed.has(`d-${p.id || i}`)).length > 0 && (
+          <>
+            <SectionLabel>Dispute Response</SectionLabel>
+            <AnimatePresence>
+              {resolvedDisputes.filter((p, i) => !dismissed.has(`d-${p.id || i}`)).map((p, i) => {
                 const accepted = p.disputeStatus === "accepted";
-                const bg = accepted ? "#F0FBF4" : "#FFF8F0";
-                const border = accepted ? "#B8D9C5" : "#F5DABA";
-                const iconColor = accepted ? "#2D7A50" : "#C48A00";
-                const iconPath = accepted ? icons.check : icons.flag;
-                const iconBg = accepted ? "#E0F5EA" : "#FFF0E0";
                 return (
-                  <div key={p.id || i} style={{ background: bg, borderRadius: 16, padding: "13px 14px", marginBottom: 8, border: `1.5px solid ${border}` }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: (!accepted && p.declineReason) ? 8 : 0 }}>
-                      <div style={{ width: 36, height: 36, borderRadius: 12, background: iconBg, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                        <Icon path={iconPath} size={18} color={iconColor} />
-                      </div>
-                      <div style={{ flex: 1 }}>
-                        <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: "#0A1E2B" }}>
-                          Dispute {accepted ? "accepted ✓" : "declined"}
-                        </p>
-                        <p style={{ margin: "2px 0 0", fontSize: 11, color: iconColor, fontWeight: 600 }}>
-                          {p.disputeDescription || "charge"} · {formatShortDate(p.date)}
-                        </p>
-                        {accepted && (
-                          <p style={{ margin: "3px 0 0", fontSize: 11, color: "#2D7A50", fontWeight: 600 }}>
-                            Emmanuella reviewed and accepted your dispute.
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                    {!accepted && p.declineReason && (
-                      <div style={{ background: "#FFF3E0", border: "1px solid #F5DABA", borderRadius: 10, padding: "8px 10px" }}>
-                        <p style={{ margin: "0 0 2px", fontSize: 10, fontWeight: 800, color: "#C48A00", textTransform: "uppercase", letterSpacing: 0.5 }}>Emmanuella's response</p>
-                        <p style={{ margin: 0, fontSize: 12, color: "#555", lineHeight: 1.5 }}>"{p.declineReason}"</p>
-                      </div>
-                    )}
-                    {!accepted && !p.declineReason && (
-                      <p style={{ margin: 0, fontSize: 12, color: "#999", fontStyle: "italic" }}>The charge stands — no additional reason given.</p>
-                    )}
-                  </div>
+                  <NotifRow
+                    key={`d-${p.id || i}`}
+                    itemKey={`d-${p.id || i}`}
+                    accentColor={accepted ? "#34D399" : "#F87171"}
+                    bold={accepted
+                      ? <>Dispute accepted — <em>"{p.disputeDescription || "charge"}"</em> removed</>
+                      : <>Dispute declined — <em>"{p.disputeDescription || "charge"}"</em> stands</>
+                    }
+                    sub={accepted
+                      ? "Emmanuella accepted your dispute"
+                      : p.declineReason ? `"${p.declineReason}"` : "No reason given"
+                    }
+                    time={relTime(p.date)}
+                  />
                 );
               })}
-            </>
-          )}
+            </AnimatePresence>
+          </>
+        )}
 
+        <div style={{ height: 12 }} />
+      </motion.div>
+    </>
+  );
+}
+
+// ── EMMA NOTIFICATIONS PANEL ──────────────────────────────────────────
+function EmmaNotificationsPanel({ expenses = [], payments = [], onClose }) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  function daysAgo(dateStr) {
+    if (!dateStr) return 9999;
+    return Math.ceil((today - new Date(dateStr + "T12:00:00")) / 86400000);
+  }
+
+  // 1. Payments Cameron sent, awaiting Emma's confirmation
+  const toConfirm = (payments || [])
+    .filter((p) => !p.confirmed && !p.rejected && p.type !== "dispute")
+    .sort((a, b) => new Date(b.date) - new Date(a.date));
+
+  // 2. Disputes Cameron filed, awaiting Emma's review
+  const toReview = (payments || [])
+    .filter((p) => p.type === "dispute" && !p.confirmed && !p.rejected)
+    .sort((a, b) => new Date(b.date) - new Date(a.date));
+
+  // 3. Cameron's overdue charges (so Emma knows he's behind)
+  const camOverdue = (expenses || [])
+    .filter((e) => {
+      if (e.status === "paid") return false;
+      if (!(e.split === "cam" || e.split === "split")) return false;
+      return getUrgencyLevel(e) === "overdue";
+    })
+    .sort((a, b) => new Date(a.nextDue || a.dueDate) - new Date(b.nextDue || b.dueDate));
+
+  // 4. Recently confirmed payments (last 30 days, for her records)
+  const recentConfirmed = (payments || [])
+    .filter((p) => p.confirmed && p.type !== "dispute" && daysAgo(p.date) <= 30)
+    .sort((a, b) => new Date(b.date) - new Date(a.date));
+
+  // 5. Expenses added recently (last 14 days)
+  const recentExpenses = (expenses || [])
+    .filter((e) => {
+      if (!(e.split === "cam" || e.split === "split")) return false;
+      const ts = e.createdAt?.toDate ? e.createdAt.toDate() : new Date((e.date || "") + "T12:00:00");
+      return Math.ceil((today - ts) / 86400000) <= 14;
+    })
+    .sort((a, b) => {
+      const ta = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.date);
+      const tb = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.date);
+      return tb - ta;
+    });
+
+  // 6. Resolved disputes Emma handled (last 30 days)
+  const resolvedDisputes = (payments || [])
+    .filter((p) => p.type === "dispute" && p.confirmed && p.disputeStatus && daysAgo(p.date) <= 30)
+    .sort((a, b) => new Date(b.date) - new Date(a.date));
+
+  const hasAny = toConfirm.length > 0 || toReview.length > 0 || camOverdue.length > 0 ||
+    recentConfirmed.length > 0 || recentExpenses.length > 0 || resolvedDisputes.length > 0;
+
+  // Summary banner data
+  const nowDate = new Date();
+  const monthKey = `${nowDate.getFullYear()}-${String(nowDate.getMonth() + 1).padStart(2, "0")}`;
+  const totalOwed = (expenses || [])
+    .filter((e) => e.status !== "paid" && (e.split === "cam" || e.split === "split"))
+    .reduce((s, e) => s + (e.split === "cam" ? Number(e.amount || 0) : Number(e.amount || 0) / 2), 0)
+    - (payments || []).filter((p) => p.confirmed).reduce((s, p) => s + Number(p.amount || 0), 0);
+  const pendingTotal = toConfirm.reduce((s, p) => s + Number(p.amount || 0), 0);
+  const monthDue = (expenses || [])
+    .filter((e) => {
+      if (e.status === "paid") return false;
+      if (!(e.split === "cam" || e.split === "split")) return false;
+      return String(e.nextDue || e.dueDate || e.date || "").startsWith(monthKey);
+    })
+    .reduce((s, e) => s + (e.split === "cam" ? Number(e.amount || 0) : Number(e.amount || 0) / 2), 0);
+
+  const [dismissed, setDismissed] = useState(new Set());
+  function dismiss(key) { setDismissed((prev) => new Set([...prev, key])); }
+
+  function relTime(dateStr) {
+    if (!dateStr) return "";
+    const d = dateStr.includes("T") ? new Date(dateStr) : new Date(dateStr + "T12:00:00");
+    const diffMs = Date.now() - d.getTime();
+    const mins = Math.floor(diffMs / 60000);
+    if (mins < 60) return `${mins}m`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs}h`;
+    const days = Math.floor(hrs / 24);
+    if (days < 7) return `${days}d`;
+    return d.toLocaleDateString("en-US", { month: "short", day: "numeric" }).toUpperCase();
+  }
+
+  function camAmt(e) {
+    return e.split === "cam" ? Number(e.amount || 0) : Number(e.amount || 0) / 2;
+  }
+
+  function SectionLabel({ children }) {
+    return (
+      <p style={{ fontSize: 11, fontWeight: 700, color: "#6B7280", textTransform: "uppercase", letterSpacing: 1.5, margin: "20px 0 2px 18px" }}>
+        {children}
+      </p>
+    );
+  }
+
+  function NotifRow({ itemKey, accentColor, bold, sub, time }) {
+    return (
+      <motion.div
+        key={itemKey}
+        layout
+        drag="x"
+        dragConstraints={{ left: -320, right: 8 }}
+        dragElastic={{ left: 0.3, right: 0.05 }}
+        onDragEnd={(_, info) => { if (info.offset.x < -72) dismiss(itemKey); }}
+        initial={{ opacity: 1, x: 0 }}
+        exit={{ opacity: 0, x: -320, height: 0, paddingTop: 0, paddingBottom: 0, transition: { duration: 0.28, ease: "easeIn" } }}
+        style={{ overflow: "hidden", cursor: "grab", touchAction: "pan-y", userSelect: "none" }}
+      >
+        <div style={{ display: "flex", alignItems: "center", padding: "13px 10px 13px 16px", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+          <div style={{ width: 3, alignSelf: "stretch", borderRadius: 2, background: accentColor, flexShrink: 0, marginRight: 14 }} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <p style={{ margin: 0, fontSize: 13.5, fontWeight: 700, color: "#EAEAEA", lineHeight: 1.45 }}>{bold}</p>
+            <p style={{ margin: "3px 0 0", fontSize: 12, color: "#9CA3AF", lineHeight: 1.45 }}>{sub}</p>
+          </div>
+          {time && <span style={{ fontSize: 12, color: "#6B7280", flexShrink: 0, marginLeft: 8 }}>{time}</span>}
+          <button
+            type="button"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => { e.stopPropagation(); dismiss(itemKey); }}
+            style={{ background: "none", border: "none", cursor: "pointer", padding: "6px 6px 6px 10px", flexShrink: 0, lineHeight: 0, opacity: 0.45 }}
+          >
+            <Icon path={icons.x} size={13} color="#9CA3AF" />
+          </button>
         </div>
+      </motion.div>
+    );
+  }
+
+  return (
+    <>
+      <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 800 }} />
+      <motion.div
+        initial={{ y: "100%" }}
+        animate={{ y: 0 }}
+        exit={{ y: "100%" }}
+        transition={{ type: "spring", stiffness: 340, damping: 32 }}
+        style={{
+          position: "fixed", bottom: 0, left: 0, right: 0,
+          background: "#1C1E24",
+          borderRadius: "24px 24px 0 0",
+          zIndex: 801,
+          paddingBottom: "max(28px, env(safe-area-inset-bottom))",
+          maxHeight: "90dvh", overflowY: "auto",
+          boxShadow: "0 -8px 48px rgba(0,0,0,0.5)",
+        }}
+      >
+        {/* Handle */}
+        <div style={{ display: "flex", justifyContent: "center", paddingTop: 12, paddingBottom: 2 }}>
+          <div style={{ width: 36, height: 4, borderRadius: 2, background: "rgba(255,255,255,0.12)" }} />
+        </div>
+
+        {/* Header */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 18px 10px" }}>
+          <p style={{ margin: 0, fontSize: 20, fontWeight: 900, color: "#F0F0F0", letterSpacing: -0.5 }}>Notifications</p>
+          <button onClick={onClose} type="button"
+            style={{ background: "rgba(255,255,255,0.08)", border: "none", borderRadius: "50%", width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", padding: 0 }}>
+            <Icon path={icons.x} size={16} color="rgba(255,255,255,0.65)" />
+          </button>
+        </div>
+
+        {/* Summary banner */}
+        <div style={{ margin: "0 16px 4px", borderRadius: 16, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", padding: "12px 16px", display: "flex", gap: 0 }}>
+          <div style={{ flex: 1, borderRight: "1px solid rgba(255,255,255,0.08)", paddingRight: 10 }}>
+            <p style={{ margin: 0, fontSize: 10, fontWeight: 700, color: "#6B7280", textTransform: "uppercase", letterSpacing: 0.9 }}>Due this month</p>
+            <p style={{ margin: "4px 0 0", fontSize: 17, fontWeight: 900, color: monthDue > 0 ? "#F87171" : "#34D399", letterSpacing: -0.5 }}>
+              {monthDue > 0 ? `$${monthDue.toFixed(2)}` : "All clear"}
+            </p>
+          </div>
+          <div style={{ flex: 1, borderRight: "1px solid rgba(255,255,255,0.08)", padding: "0 10px" }}>
+            <p style={{ margin: 0, fontSize: 10, fontWeight: 700, color: "#6B7280", textTransform: "uppercase", letterSpacing: 0.9 }}>Total owed</p>
+            <p style={{ margin: "4px 0 0", fontSize: 17, fontWeight: 900, color: totalOwed > 0 ? "#FBBF24" : "#34D399", letterSpacing: -0.5 }}>
+              {totalOwed > 0 ? `$${Math.max(0, totalOwed).toFixed(2)}` : "Clear"}
+            </p>
+          </div>
+          <div style={{ flex: 1, paddingLeft: 10 }}>
+            <p style={{ margin: 0, fontSize: 10, fontWeight: 700, color: "#6B7280", textTransform: "uppercase", letterSpacing: 0.9 }}>Pending</p>
+            <p style={{ margin: "4px 0 0", fontSize: 17, fontWeight: 900, color: toConfirm.length > 0 ? "#60A5FA" : "#34D399", letterSpacing: -0.5 }}>
+              {toConfirm.length > 0 ? `$${pendingTotal.toFixed(2)}` : "None"}
+            </p>
+            {toConfirm.length > 0 && (
+              <p style={{ margin: "1px 0 0", fontSize: 11, color: "#9CA3AF" }}>{toConfirm.length} waiting</p>
+            )}
+          </div>
+        </div>
+
+        {/* Empty state */}
+        {!hasAny && (
+          <div style={{ padding: "40px 18px 20px", textAlign: "center" }}>
+            <p style={{ fontSize: 14, fontWeight: 800, color: "#9CA3AF", margin: "0 0 4px" }}>All caught up</p>
+            <p style={{ fontSize: 12, color: "#6B7280", margin: 0 }}>No pending payments or disputes to review.</p>
+          </div>
+        )}
+
+        {/* 1. Payments to confirm */}
+        {toConfirm.filter((p, i) => !dismissed.has(`ec-${p.id || i}`)).length > 0 && (
+          <>
+            <SectionLabel>Confirm Payment</SectionLabel>
+            <AnimatePresence>
+              {toConfirm.filter((p, i) => !dismissed.has(`ec-${p.id || i}`)).map((p, i) => (
+                <NotifRow
+                  key={`ec-${p.id || i}`}
+                  itemKey={`ec-${p.id || i}`}
+                  accentColor="#34D399"
+                  bold={<>Cameron sent <em>${Number(p.amount || 0).toFixed(2)}</em> via {p.method || "—"}</>}
+                  sub={`${formatShortDate(p.date)} · Awaiting your confirmation${p.note ? ` · "${p.note}"` : ""}`}
+                  time={relTime(p.date)}
+                />
+              ))}
+            </AnimatePresence>
+          </>
+        )}
+
+        {/* 2. Disputes to review */}
+        {toReview.filter((p, i) => !dismissed.has(`er-${p.id || i}`)).length > 0 && (
+          <>
+            <SectionLabel>Dispute to Review</SectionLabel>
+            <AnimatePresence>
+              {toReview.filter((p, i) => !dismissed.has(`er-${p.id || i}`)).map((p, i) => (
+                <NotifRow
+                  key={`er-${p.id || i}`}
+                  itemKey={`er-${p.id || i}`}
+                  accentColor="#A78BFA"
+                  bold={<>Cameron disputed <em>"{p.disputeDescription || "a charge"}"</em></>}
+                  sub={`$${Number(p.amount || 0).toFixed(2)} · Needs your accept or decline`}
+                  time={relTime(p.date)}
+                />
+              ))}
+            </AnimatePresence>
+          </>
+        )}
+
+        {/* 3. Cameron overdue */}
+        {camOverdue.filter((e) => !dismissed.has(`eo-${e.id}`)).length > 0 && (
+          <>
+            <SectionLabel>Overdue</SectionLabel>
+            <AnimatePresence>
+              {camOverdue.filter((e) => !dismissed.has(`eo-${e.id}`)).map((e) => (
+                <NotifRow
+                  key={`eo-${e.id}`}
+                  itemKey={`eo-${e.id}`}
+                  accentColor="#F87171"
+                  bold={<>Cameron is overdue on <em>"{e.description}"</em></>}
+                  sub={`$${camAmt(e).toFixed(2)}${e.mandatory ? " · Mandatory" : ""}`}
+                  time={relTime(e.nextDue || e.dueDate)}
+                />
+              ))}
+            </AnimatePresence>
+          </>
+        )}
+
+        {/* 4. Recently confirmed */}
+        {recentConfirmed.filter((p, i) => !dismissed.has(`ecc-${p.id || i}`)).length > 0 && (
+          <>
+            <SectionLabel>Payment Confirmed</SectionLabel>
+            <AnimatePresence>
+              {recentConfirmed.filter((p, i) => !dismissed.has(`ecc-${p.id || i}`)).map((p, i) => (
+                <NotifRow
+                  key={`ecc-${p.id || i}`}
+                  itemKey={`ecc-${p.id || i}`}
+                  accentColor="#60A5FA"
+                  bold={<>You confirmed Cameron's payment</>}
+                  sub={`$${Number(p.amount || 0).toFixed(2)} via ${p.method || "—"} · ${formatShortDate(p.date)}`}
+                  time={relTime(p.date)}
+                />
+              ))}
+            </AnimatePresence>
+          </>
+        )}
+
+        {/* 5. Recently added expenses */}
+        {recentExpenses.filter((e) => !dismissed.has(`eexp-${e.id}`)).length > 0 && (
+          <>
+            <SectionLabel>Recently Added</SectionLabel>
+            <AnimatePresence>
+              {recentExpenses.filter((e) => !dismissed.has(`eexp-${e.id}`)).map((e) => {
+                const ts = e.createdAt?.toDate ? e.createdAt.toDate().toISOString() : (e.date + "T12:00:00");
+                return (
+                  <NotifRow
+                    key={`eexp-${e.id}`}
+                    itemKey={`eexp-${e.id}`}
+                    accentColor="#818CF8"
+                    bold={<>You added <em>"{e.description}"</em></>}
+                    sub={`${e.split === "split" ? "Split 50/50" : "Cam pays"} · $${camAmt(e).toFixed(2)}`}
+                    time={relTime(ts.slice(0, 10))}
+                  />
+                );
+              })}
+            </AnimatePresence>
+          </>
+        )}
+
+        {/* 6. Resolved disputes */}
+        {resolvedDisputes.filter((p, i) => !dismissed.has(`erd-${p.id || i}`)).length > 0 && (
+          <>
+            <SectionLabel>Dispute Resolved</SectionLabel>
+            <AnimatePresence>
+              {resolvedDisputes.filter((p, i) => !dismissed.has(`erd-${p.id || i}`)).map((p, i) => {
+                const accepted = p.disputeStatus === "accepted";
+                return (
+                  <NotifRow
+                    key={`erd-${p.id || i}`}
+                    itemKey={`erd-${p.id || i}`}
+                    accentColor={accepted ? "#34D399" : "#FBBF24"}
+                    bold={accepted
+                      ? <>You accepted Cameron's dispute on <em>"{p.disputeDescription || "charge"}"</em></>
+                      : <>You declined Cameron's dispute on <em>"{p.disputeDescription || "charge"}"</em></>
+                    }
+                    sub={accepted ? "Charge removed" : p.declineReason ? `Your reason: "${p.declineReason}"` : "Charge stands"}
+                    time={relTime(p.date)}
+                  />
+                );
+              })}
+            </AnimatePresence>
+          </>
+        )}
+
+        <div style={{ height: 12 }} />
       </motion.div>
     </>
   );
@@ -4332,7 +4581,6 @@ function UserProfileModal({ user, onClose, onLogout }) {
 
       if (isNative) {
         const { PushNotifications } = await import("@capacitor/push-notifications");
-        const { saveNativeToken } = await import("./data");
 
         setNotifMsg("Requesting permission…");
         const perm = await PushNotifications.requestPermissions();
@@ -4342,36 +4590,10 @@ function UserProfileModal({ user, onClose, onLogout }) {
           return;
         }
 
-        setNotifMsg("Permission granted, registering with APNs…");
-        await PushNotifications.removeAllListeners();
-
-        // Set a timeout so we know if registration never fires
-        const timeout = setTimeout(() => {
-          setNotifStep("error");
-          setNotifMsg("APNs timed out — check Xcode entitlements or try again");
-        }, 15000);
-
-        await PushNotifications.addListener("registration", async (token) => {
-          clearTimeout(timeout);
-          setNotifMsg("Got token, saving to Firestore…");
-          try {
-            await saveNativeToken(user, token.value);
-            setNotifStep("success");
-            setNotifMsg("Done — token saved: " + token.value.slice(0, 20) + "…");
-          } catch (err) {
-            setNotifStep("error");
-            setNotifMsg("Firestore write failed: " + err.message);
-          }
-        });
-
-        await PushNotifications.addListener("registrationError", (err) => {
-          clearTimeout(timeout);
-          setNotifStep("error");
-          setNotifMsg("APNs error: " + JSON.stringify(err));
-        });
-
+        setNotifMsg("Registering — Firebase will save your token…");
         await PushNotifications.register();
-        setNotifMsg("Waiting for APNs token…");
+        setNotifStep("success");
+        setNotifMsg("Done — notifications enabled");
 
       } else {
         // Web / PWA path
@@ -4466,7 +4688,7 @@ function UserProfileModal({ user, onClose, onLogout }) {
               <Icon path={icons.camera} size={14} color="#fff" />
               <span style={{ fontSize: 10, fontWeight: 700, color: "#fff", letterSpacing: 0.2 }}>Edit</span>
             </div>
-            <input ref={fileRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handlePhotoChange} />
+            <input ref={fileRef} type="file" accept="image/*" style={{ position: "absolute", width: 1, height: 1, opacity: 0, overflow: "hidden", zIndex: -1 }} onChange={handlePhotoChange} />
           </label>
 
           <h2 style={{ margin: "14px 0 2px", fontSize: 22, fontWeight: 900, color: "#00314B", letterSpacing: -0.5 }}>
@@ -4583,7 +4805,7 @@ function UserProfileModal({ user, onClose, onLogout }) {
   );
 }
 
-function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, payments, syncingPayments, urgentCount, targetSummaries, onOpenTarget, onAddExpense, onLogPayment, onQuickPay, onConfirm, onResolveDispute, onRejectPayment, onDeletePendingPayment, onDismissRejectedPayment, onNavigate, onLogout, onOpenProfile, onSwitchView, viewingAsCam, onLogPaymentForKey, onDisputeExpense }) {
+function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, payments, syncingPayments, urgentCount, targetSummaries, onOpenTarget, onAddExpense, onLogPayment, onQuickPay, onConfirm, onResolveDispute, onRejectPayment, onDeletePendingPayment, onDismissRejectedPayment, onNavigate, onLogout, onOpenProfile, onSwitchView, viewingAsCam, onLogPaymentForKey, onDisputeExpense, avatarUrl }) {
   const pending = payments.filter((p) => !p.confirmed && !p.rejected);
   // Cam dashboard urgent banner improvement: Step 3
   const urgentList = (expenses || []).filter((e) => getUrgencyLevel(e) !== null);
@@ -4597,7 +4819,6 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
     typeof Notification !== "undefined" ? Notification.permission : "granted"
   );
   const [tokenSaved, setTokenSaved] = useState(() => localStorage.getItem("fcmTokenSaved") === user);
-  const [avatarUrl, setAvatarUrl] = useState(() => localStorage.getItem(`avatar_${user}`) || null);
 
   const sortedByDate = (expenses || [])
     .filter((e) => e.status !== "paid")
@@ -4722,11 +4943,11 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
           <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8 }}>
             <button
               onPointerDown={() => onOpenProfile?.()}
-              style={{ width: 46, height: 46, borderRadius: "50%", border: "2px solid rgba(255,255,255,0.7)", padding: 0, cursor: "pointer", overflow: "hidden", flexShrink: 0, boxShadow: "0 4px 14px rgba(0,49,75,0.22)", background: "transparent" }}
+              style={{ width: avatarUrl ? 62 : 46, height: avatarUrl ? 62 : 46, borderRadius: "50%", border: avatarUrl ? "3px solid rgba(255,255,255,0.9)" : "2px solid rgba(255,255,255,0.7)", padding: 0, cursor: "pointer", overflow: "hidden", flexShrink: 0, boxShadow: avatarUrl ? "0 6px 20px rgba(0,49,75,0.32), 0 0 0 4px rgba(255,255,255,0.18)" : "0 4px 14px rgba(0,49,75,0.22)", background: "transparent", transition: "all 0.25s ease" }}
               aria-label="Profile"
             >
               {avatarUrl ? (
-                <img src={avatarUrl} alt="Profile" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} onError={() => setAvatarUrl(null)} />
+                <img src={avatarUrl} alt="Profile" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
               ) : (
                 <div style={{ width: "100%", height: "100%", background: user === "emma" ? "linear-gradient(135deg, #4E635E 0%, #00314B 100%)" : "linear-gradient(135deg, #E8A0B0 0%, #C0485A 100%)", display: "flex", alignItems: "center", justifyContent: "center" }}>
                   <span style={{ fontSize: 18, fontWeight: 900, color: "#fff", lineHeight: 1 }}>{user === "emma" ? "E" : "C"}</span>
@@ -4759,16 +4980,16 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
               return (
                 <button
                   type="button"
-                  style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center", width: 46, height: 46, borderRadius: "50%", border: "none", background: notifOpen ? "linear-gradient(145deg, #A0253A, #E05C6E)" : "linear-gradient(145deg, #002B42, #1B5C80)", cursor: "pointer", boxShadow: notifOpen ? "0 4px 16px rgba(224,92,110,0.45)" : "0 4px 16px rgba(0,43,66,0.35)" }}
+                  style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center", minWidth: 40, height: 32, borderRadius: 20, border: "none", background: notifOpen ? "#00314B" : "rgba(255,255,255,0.7)", cursor: "pointer", padding: "6px 12px" }}
                   onClick={() => setNotifOpen((o) => !o)}
                   aria-label="Notifications"
                 >
-                  <Icon path={icons.bell} size={22} color="#fff" />
+                  <Icon path={icons.bell} size={18} color={notifOpen ? "#fff" : "#888"} />
                   {badgeCount > 0 && !notifOpen && (
                     <span style={{
                       position: "absolute",
-                      top: -4,
-                      right: -4,
+                      top: -6,
+                      right: -6,
                       minWidth: 18,
                       height: 18,
                       borderRadius: 9,
@@ -4792,33 +5013,54 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
               );
             })()
           ) : (
-            /* Search button — Emma only */
-            <button
-              style={{
-                ...styles.logoutBtn,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 8,
-                padding: "6px 12px",
-                minWidth: 40,
-                height: 32,
-                background: searchOpen ? "#00314B" : "rgba(255,255,255,0.7)",
-                color: searchOpen ? "#fff" : "#888",
-              }}
-              onClick={() => {
-                setSearchOpen((o) => !o);
-                setSearchVal("");
-              }}
-              aria-label={searchOpen ? "Close search" : "Search"}
-              type="button"
-            >
-              {searchOpen ? (
-                <Icon path={icons.x} size={18} color="#fff" />
-              ) : (
-                <Icon path={icons.search} size={18} color="#888" />
-              )}
-            </button>
+            /* Bell + Search — Emma */
+            <>
+              {(() => {
+                const emmaBadge = (payments || []).filter((p) => !p.confirmed && !p.rejected).length
+                  + (payments || []).filter((p) => p.type === "dispute" && !p.confirmed && !p.rejected).length;
+                return (
+                  <button
+                    type="button"
+                    style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center", minWidth: 40, height: 32, borderRadius: 20, border: "none", background: notifOpen ? "#00314B" : "rgba(255,255,255,0.7)", cursor: "pointer", padding: "6px 12px" }}
+                    onClick={() => setNotifOpen((o) => !o)}
+                    aria-label="Notifications"
+                  >
+                    <Icon path={icons.bell} size={18} color={notifOpen ? "#fff" : "#888"} />
+                    {emmaBadge > 0 && !notifOpen && (
+                      <span style={{ position: "absolute", top: -4, right: -4, minWidth: 18, height: 18, borderRadius: 9, background: "#FF3B30", border: "none", fontSize: 10, fontWeight: 800, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", lineHeight: 1, padding: "0 4px", letterSpacing: -0.3 }}>
+                        {emmaBadge > 9 ? "9+" : emmaBadge}
+                      </span>
+                    )}
+                  </button>
+                );
+              })()}
+              <button
+                style={{
+                  ...styles.logoutBtn,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 8,
+                  padding: "6px 12px",
+                  minWidth: 40,
+                  height: 32,
+                  background: searchOpen ? "#00314B" : "rgba(255,255,255,0.7)",
+                  color: searchOpen ? "#fff" : "#888",
+                }}
+                onClick={() => {
+                  setSearchOpen((o) => !o);
+                  setSearchVal("");
+                }}
+                aria-label={searchOpen ? "Close search" : "Search"}
+                type="button"
+              >
+                {searchOpen ? (
+                  <Icon path={icons.x} size={18} color="#fff" />
+                ) : (
+                  <Icon path={icons.search} size={18} color="#888" />
+                )}
+              </button>
+            </>
           )}
           {onSwitchView && (
             <button
@@ -5322,13 +5564,20 @@ function DashboardScreen({ user, balance, totalOwed, totalPaid, expenses, paymen
 
       <div style={{height: 80}} />
 
-      {/* Notifications Panel — Cameron */}
-      {notifOpen && (
+      {/* Notifications Panel */}
+      {notifOpen && user === "cam" && (
         <CamNotificationsPanel
           expenses={expenses}
           payments={payments}
           onClose={() => setNotifOpen(false)}
           onNavigate={onNavigate}
+        />
+      )}
+      {notifOpen && user === "emma" && (
+        <EmmaNotificationsPanel
+          expenses={expenses}
+          payments={payments}
+          onClose={() => setNotifOpen(false)}
         />
       )}
 
@@ -8014,53 +8263,50 @@ function AddExpenseModal({ onSave, onClose, user }) {
   });
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showNotes, setShowNotes] = useState(false);
+  const [showWhen, setShowWhen] = useState(false);
   const receiptInputRef = useRef(null);
 
-  function handleReceiptFile(ev) {
-    const file = ev.target.files?.[0];
-    if (!file) return;
-    const canvas = document.createElement("canvas");
-    const img = new Image();
-    const url = URL.createObjectURL(file);
-    img.onload = () => {
-      const MAX = 800;
-      const scale = Math.min(1, MAX / Math.max(img.width, img.height));
-      canvas.width = Math.round(img.width * scale);
-      canvas.height = Math.round(img.height * scale);
-      canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
-      const dataUrl = canvas.toDataURL("image/jpeg", 0.72);
-      set("receiptUrl", dataUrl);
-      URL.revokeObjectURL(url);
-    };
-    img.src = url;
+  async function handleReceiptFile(ev) {
+    if (ev?.target?.files) {
+      const file = ev.target.files[0];
+      if (!file) return;
+      const canvas = document.createElement("canvas");
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        const MAX = 800;
+        const scale = Math.min(1, MAX / Math.max(img.width, img.height));
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
+        canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+        set("receiptUrl", canvas.toDataURL("image/jpeg", 0.72));
+        URL.revokeObjectURL(url);
+      };
+      img.src = url;
+      return;
+    }
+    try {
+      const { Capacitor } = await import("@capacitor/core");
+      if (Capacitor.isNativePlatform()) {
+        const { Camera, CameraResultType, CameraSource } = await import("@capacitor/camera");
+        const photo = await Camera.getPhoto({ resultType: CameraResultType.DataUrl, source: CameraSource.Prompt, quality: 72, width: 800 });
+        set("receiptUrl", photo.dataUrl);
+        return;
+      }
+    } catch (err) { console.error("Camera error:", err); }
+    receiptInputRef.current?.click();
   }
+
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
-  const previewNextDue =
-    form.recurring && form.recurring !== "none" && form.dueDate
-      ? getNextDueDate(form.dueDate, form.recurring)
-      : "";
+
+  const hasAmount = parseFloat(form.amount) > 0;
+  const hasDescription = form.description.trim().length > 0;
+  const isRecurring = form.recurring && form.recurring !== "none";
+  const previewNextDue = isRecurring && form.dueDate ? getNextDueDate(form.dueDate, form.recurring) : "";
   const isToday = form.date === todayStr;
   const dateDisplay = isToday
     ? `Today · ${new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" })}`
     : new Date(form.date + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-
-  const isRecurring = form.recurring && form.recurring !== "none";
-
-  const groupCard = {
-    borderRadius: 16,
-    border: "1.5px solid #EDE7DC",
-    background: "#FAFBFF",
-    padding: "14px 14px 10px",
-    display: "flex",
-    flexDirection: "column",
-    gap: 10,
-  };
-  const groupLabel = (text, color, badge) => (
-    <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
-      <span style={{ fontSize: 10, fontWeight: 800, color, textTransform: "uppercase", letterSpacing: 1.1 }}>{text}</span>
-      {badge}
-    </div>
-  );
 
   const splitOptions = user === "cam"
     ? [["cam", "I pay", "#E8A0B0"], ["ella", "Emmanuella pays", "#A6B49E"], ["split", "Split 50/50", "#D5BD96"]]
@@ -8071,6 +8317,17 @@ function AddExpenseModal({ onSave, onClose, user }) {
   const sectionLabel = (text, accent = "#ECF39E") => (
     <span style={{ fontSize: 10, fontWeight: 800, color: accent, textTransform: "uppercase", letterSpacing: 1.2 }}>{text}</span>
   );
+
+  function handleSave() {
+    if (!form.description || !form.amount) return;
+    const data = { ...form, amount: parseFloat(form.amount), nextDue: form.dueDate || null };
+    if (!data.dueDate) delete data.dueDate;
+    if (!data.endDate) delete data.endDate;
+    if (!data.note) delete data.note;
+    if (!data.referenceNum) delete data.referenceNum;
+    if (!data.receiptUrl) delete data.receiptUrl;
+    onSave(data);
+  }
 
   return (
     <div style={styles.modalOverlay}>
@@ -8101,7 +8358,7 @@ function AddExpenseModal({ onSave, onClose, user }) {
             ))}
           </div>
 
-          {/* ── Amount Hero ── */}
+          {/* ── Step 1: Amount ── */}
           <div style={{ ...sectionCard, alignItems: "center", padding: "20px 14px" }}>
             {sectionLabel("Amount", "#ECF39E")}
             <div style={{ position: "relative", width: "100%", marginTop: 4 }}>
@@ -8113,227 +8370,308 @@ function AddExpenseModal({ onSave, onClose, user }) {
                 placeholder="0.00"
                 value={form.amount}
                 onChange={(e) => set("amount", e.target.value)}
+                autoFocus
               />
             </div>
           </div>
 
-          {/* ── What ── */}
-          <div style={sectionCard}>
-            {sectionLabel("What")}
-            <input
-              style={{ ...darkInput, fontSize: 15, fontWeight: 700 }}
-              placeholder="Description — e.g. Netflix, Wegmans…"
-              value={form.description}
-              onChange={(e) => set("description", e.target.value)}
-            />
-            <div style={{ display: "flex", gap: 7, overflowX: "auto", WebkitOverflowScrolling: "touch", scrollbarWidth: "none", margin: "0 -14px", padding: "0 14px 2px" }}>
-              {CATEGORIES.map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  style={{
-                    flexShrink: 0, padding: "6px 14px", borderRadius: 999,
-                    background: form.category === c ? "#415A77" : "rgba(255,255,255,0.07)",
-                    color: form.category === c ? "#ECF39E" : "rgba(255,255,255,0.5)",
-                    border: form.category === c ? "1px solid #415A77" : "1px solid rgba(255,255,255,0.1)",
-                    fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap",
-                    boxShadow: form.category === c ? "0 2px 10px rgba(65,90,119,0.5)" : "none",
-                  }}
-                  onClick={() => set("category", c)}
-                >
-                  {c}
-                </button>
-              ))}
-            </div>
-
-            {/* Notes toggle */}
-            <button
-              type="button"
-              onClick={() => setShowNotes(p => !p)}
-              style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12, padding: "10px 13px", cursor: "pointer" }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <div style={{ width: 28, height: 28, borderRadius: 8, background: showNotes ? "#415A77" : "rgba(255,255,255,0.1)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                  <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
-                    <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/>
-                    <line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
-                  </svg>
-                </div>
-                <span style={{ fontSize: 13, fontWeight: 700, color: showNotes ? "#ECF39E" : "rgba(255,255,255,0.4)" }}>{showNotes ? "Hide details" : "Add note, ref # or receipt"}</span>
-              </div>
-              <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke={showNotes ? "#ECF39E" : "rgba(255,255,255,0.3)"} strokeWidth={2.5} strokeLinecap="round" style={{ transform: showNotes ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s", flexShrink: 0 }}>
-                <polyline points="6 9 12 15 18 9"/>
-              </svg>
-            </button>
-
-            {showNotes && (
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {/* ── Step 2: What — appears once amount is entered ── */}
+          <AnimatePresence>
+            {hasAmount && (
+              <motion.div
+                key="what-section"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
+                style={sectionCard}
+              >
+                {sectionLabel("What")}
                 <input
-                  autoFocus
-                  placeholder="Reference # — e.g. TXN-4821…"
-                  value={form.referenceNum}
-                  onChange={(e) => set("referenceNum", e.target.value)}
-                  style={darkInput}
+                  style={{ ...darkInput, fontSize: 15, fontWeight: 700 }}
+                  placeholder="Description — e.g. Netflix, Wegmans…"
+                  value={form.description}
+                  onChange={(e) => set("description", e.target.value)}
                 />
-                <textarea
-                  placeholder="Extra context, links, reminders…"
-                  value={form.note}
-                  onChange={(e) => set("note", e.target.value)}
-                  style={{ ...darkInput, resize: "none", minHeight: 72, lineHeight: 1.5 }}
-                />
-                <input ref={receiptInputRef} type="file" accept="image/*" capture="environment" style={{ display: "none" }} onChange={handleReceiptFile} />
-                {form.receiptUrl ? (
-                  <div style={{ position: "relative", borderRadius: 12, overflow: "hidden", border: "1px solid rgba(255,255,255,0.1)" }}>
-                    <img src={form.receiptUrl} alt="Receipt" style={{ display: "block", width: "100%", maxHeight: 180, objectFit: "cover" }} />
-                    <button type="button" onClick={() => set("receiptUrl", "")} style={{ position: "absolute", top: 6, right: 6, width: 26, height: 26, borderRadius: "50%", background: "rgba(0,0,0,0.6)", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                      <Icon path={icons.x} size={13} color="#fff" />
+                <div style={{ display: "flex", gap: 7, overflowX: "auto", WebkitOverflowScrolling: "touch", scrollbarWidth: "none", margin: "0 -14px", padding: "0 14px 2px" }}>
+                  {CATEGORIES.map((c) => (
+                    <button
+                      key={c}
+                      type="button"
+                      style={{
+                        flexShrink: 0, padding: "6px 14px", borderRadius: 999,
+                        background: form.category === c ? "#415A77" : "rgba(255,255,255,0.07)",
+                        color: form.category === c ? "#ECF39E" : "rgba(255,255,255,0.5)",
+                        border: form.category === c ? "1px solid #415A77" : "1px solid rgba(255,255,255,0.1)",
+                        fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap",
+                        boxShadow: form.category === c ? "0 2px 10px rgba(65,90,119,0.5)" : "none",
+                      }}
+                      onClick={() => set("category", c)}
+                    >
+                      {c}
                     </button>
-                  </div>
-                ) : (
-                  <button type="button" onClick={() => receiptInputRef.current?.click()} style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", borderRadius: 12, border: "1.5px dashed rgba(255,255,255,0.15)", background: "rgba(255,255,255,0.04)", cursor: "pointer", width: "100%", boxSizing: "border-box" }}>
-                    <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.35)" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/>
-                      <circle cx="12" cy="13" r="4"/>
-                    </svg>
-                    <span style={{ fontSize: 12, fontWeight: 700, color: "rgba(255,255,255,0.35)" }}>Attach receipt photo</span>
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* ── Who Pays ── */}
-          <div style={sectionCard}>
-            {sectionLabel("Who Pays", "#FF8FA3")}
-            <div style={{ display: "flex", gap: 8 }}>
-              {splitOptions.map(([val, label, color]) => {
-                const isActive = form.split === val;
-                return (
-                  <button
-                    key={val}
-                    type="button"
-                    onClick={() => set("split", val)}
-                    style={{
-                      flex: 1, padding: "12px 6px", borderRadius: 14,
-                      border: isActive ? `1.5px solid ${color}` : "1.5px solid rgba(255,255,255,0.08)",
-                      background: isActive ? `${color}22` : "rgba(255,255,255,0.05)",
-                      color: isActive ? color : "rgba(255,255,255,0.4)",
-                      fontSize: 12, fontWeight: 800, cursor: "pointer",
-                      boxShadow: isActive ? `0 0 16px ${color}33` : "none",
-                      transition: "all 0.2s ease",
-                    }}
-                  >
-                    {label}
-                  </button>
-                );
-              })}
-            </div>
-            <div>
-              <span style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.35)", textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 6 }}>Charged to</span>
-              <select style={{ ...darkInput, appearance: "none", WebkitAppearance: "none" }} value={form.account} onChange={(e) => set("account", e.target.value)}>
-                {(user === "cam"
-                  ? ["Navy Platinum", "Best Buy Visa", "Debit Card", "Klarna", "Affirm", "Cash", "Zelle"]
-                  : ["Navy Credit Card", "Debit Card", "Affirm", "Klarna"]
-                ).map((a) => (
-                  <option key={a} style={{ background: "#0D1B2A" }}>{a}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          {/* ── When ── */}
-          <div style={sectionCard}>
-            {sectionLabel("When", "#90C4E8")}
-
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                {!isToday && <div style={{ width: 7, height: 7, borderRadius: 999, background: "#E05C6E", flexShrink: 0 }} />}
-                <span style={{ fontSize: 14, fontWeight: 700, color: isToday ? "#ECF39E" : "#E05C6E" }}>{dateDisplay}</span>
-              </div>
-              <button type="button" onClick={() => { if (showDatePicker && !isToday) set("date", todayStr); setShowDatePicker(p => !p); }} style={{ fontSize: 12, fontWeight: 700, color: "rgba(255,255,255,0.4)", background: "none", border: "none", cursor: "pointer", padding: "4px 0" }}>
-                {showDatePicker ? (isToday ? "Done" : "Reset to today") : "Different date"}
-              </button>
-            </div>
-            {showDatePicker && <input style={darkInput} type="date" value={form.date} max={todayStr} onChange={(e) => set("date", e.target.value)} />}
-
-            <div>
-              <span style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.35)", textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 8 }}>Frequency</span>
-              <div style={{ display: "flex", gap: 6 }}>
-                {[["none", "One-time"], ["weekly", "Weekly"], ["biweekly", "Biweekly"], ["monthly", "Monthly"]].map(([val, label]) => {
-                  const isActive = form.recurring === val;
-                  return (
-                    <button key={val} type="button" onClick={() => set("recurring", val)}
-                      style={{ flex: 1, padding: "8px 4px", borderRadius: 10, border: isActive ? "1.5px solid #415A77" : "1.5px solid rgba(255,255,255,0.08)", background: isActive ? "#415A77" : "rgba(255,255,255,0.05)", color: isActive ? "#ECF39E" : "rgba(255,255,255,0.4)", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
-                      {label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {!isRecurring && (
-              <div>
-                <span style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.35)", textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 6 }}>Due date (optional)</span>
-                <input style={darkInput} type="date" value={form.dueDate} onChange={(e) => set("dueDate", e.target.value)} />
-              </div>
-            )}
-
-            {isRecurring && (
-              <div style={{ background: "rgba(255,255,255,0.04)", borderRadius: 12, padding: "12px", display: "flex", flexDirection: "column", gap: 10 }}>
-                <div style={{ display: "flex", gap: 10 }}>
-                  <div style={{ flex: 1 }}>
-                    <span style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.35)", textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 6 }}>Start date</span>
-                    <input style={darkInput} type="date" value={form.dueDate} onChange={(e) => set("dueDate", e.target.value)} />
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <span style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.35)", textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 6 }}>End date</span>
-                    <input style={darkInput} type="date" value={form.endDate} min={form.dueDate || undefined} onChange={(e) => set("endDate", e.target.value)} />
-                  </div>
+                  ))}
                 </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <span style={{ fontSize: 12, color: "rgba(255,255,255,0.35)", fontWeight: 500 }}>Auto-advances to</span>
-                  <span style={{ fontSize: 13, fontWeight: 800, color: previewNextDue ? "#ECF39E" : "rgba(255,255,255,0.2)" }}>
-                    {previewNextDue ? formatHistoryDate(previewNextDue) : "set start date first"}
-                  </span>
-                </div>
-              </div>
+              </motion.div>
             )}
+          </AnimatePresence>
 
-            {/* Mandatory toggle */}
-            <button type="button" onClick={() => set("mandatory", !form.mandatory)}
-              style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 14px", borderRadius: 14, border: `1.5px solid ${form.mandatory ? "#E05C6E" : "rgba(255,255,255,0.08)"}`, background: form.mandatory ? "rgba(224,92,110,0.12)" : "rgba(255,255,255,0.04)", cursor: "pointer", width: "100%", textAlign: "left" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <svg width={16} height={16} viewBox="0 0 24 24" fill={form.mandatory ? "#E05C6E" : "rgba(255,255,255,0.25)"}>
-                  <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/>
-                </svg>
+          {/* ── Step 3: Who Pays — appears once description is filled ── */}
+          <AnimatePresence>
+            {hasAmount && hasDescription && (
+              <motion.div
+                key="who-section"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
+                style={sectionCard}
+              >
+                {sectionLabel("Who Pays", "#FF8FA3")}
+                <div style={{ display: "flex", gap: 8 }}>
+                  {splitOptions.map(([val, label, color]) => {
+                    const isActive = form.split === val;
+                    return (
+                      <button
+                        key={val}
+                        type="button"
+                        onClick={() => set("split", val)}
+                        style={{
+                          flex: 1, padding: "12px 6px", borderRadius: 14,
+                          border: isActive ? `1.5px solid ${color}` : "1.5px solid rgba(255,255,255,0.08)",
+                          background: isActive ? `${color}22` : "rgba(255,255,255,0.05)",
+                          color: isActive ? color : "rgba(255,255,255,0.4)",
+                          fontSize: 12, fontWeight: 800, cursor: "pointer",
+                          boxShadow: isActive ? `0 0 16px ${color}33` : "none",
+                          transition: "all 0.2s ease",
+                        }}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
                 <div>
-                  <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: form.mandatory ? "#E05C6E" : "rgba(255,255,255,0.7)" }}>Mandatory</p>
-                  <p style={{ margin: 0, fontSize: 11, color: "rgba(255,255,255,0.3)" }}>Cannot be late — alerts Cameron earlier</p>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.35)", textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 6 }}>Charged to</span>
+                  <select style={{ ...darkInput, appearance: "none", WebkitAppearance: "none" }} value={form.account} onChange={(e) => set("account", e.target.value)}>
+                    {(user === "cam"
+                      ? ["Navy Platinum", "Best Buy Visa", "Debit Card", "Klarna", "Affirm", "Cash", "Zelle"]
+                      : ["Navy Credit Card", "Debit Card", "Affirm", "Klarna"]
+                    ).map((a) => (
+                      <option key={a} style={{ background: "#0D1B2A" }}>{a}</option>
+                    ))}
+                  </select>
                 </div>
-              </div>
-              <div style={{ width: 36, height: 20, borderRadius: 999, background: form.mandatory ? "#E05C6E" : "rgba(255,255,255,0.15)", position: "relative", transition: "background 0.2s", flexShrink: 0 }}>
-                <div style={{ position: "absolute", top: 2, left: form.mandatory ? 18 : 2, width: 16, height: 16, borderRadius: "50%", background: "#fff", transition: "left 0.2s", boxShadow: "0 1px 3px rgba(0,0,0,0.3)" }} />
-              </div>
-            </button>
-          </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
-          {/* ── Save ── */}
-          <button
-            style={{ width: "100%", padding: "16px", borderRadius: 16, border: "none", background: (!form.description || !form.amount) ? "rgba(255,255,255,0.08)" : "linear-gradient(135deg, #415A77, #0D1B2A)", color: (!form.description || !form.amount) ? "rgba(255,255,255,0.25)" : "#ECF39E", fontSize: 15, fontWeight: 900, cursor: (!form.description || !form.amount) ? "default" : "pointer", letterSpacing: 0.3, boxShadow: (!form.description || !form.amount) ? "none" : "0 4px 20px rgba(65,90,119,0.5)", transition: "all 0.2s" }}
-            onClick={() => {
-              if (!form.description || !form.amount) return;
-              const data = { ...form, amount: parseFloat(form.amount), nextDue: form.dueDate || null };
-              if (!data.dueDate) delete data.dueDate;
-              if (!data.endDate) delete data.endDate;
-              if (!data.note) delete data.note;
-              if (!data.referenceNum) delete data.referenceNum;
-              if (!data.receiptUrl) delete data.receiptUrl;
-              onSave(data);
-            }}
-            type="button"
-          >
-            Save Expense
-          </button>
+          {/* ── Step 4: Extra details — notes + when (optional, tap to expand) ── */}
+          <AnimatePresence>
+            {hasAmount && hasDescription && (
+              <motion.div
+                key="extras-section"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1], delay: 0.06 }}
+                style={{ display: "flex", flexDirection: "column", gap: 8 }}
+              >
+                {/* Notes toggle */}
+                <button
+                  type="button"
+                  onClick={() => setShowNotes(p => !p)}
+                  style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 14, padding: "11px 13px", cursor: "pointer" }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <div style={{ width: 28, height: 28, borderRadius: 8, background: showNotes ? "#415A77" : "rgba(255,255,255,0.1)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                      <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+                        <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/>
+                        <line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
+                      </svg>
+                    </div>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: showNotes ? "#ECF39E" : "rgba(255,255,255,0.4)" }}>{showNotes ? "Hide note & receipt" : "Add note or receipt"}</span>
+                  </div>
+                  <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke={showNotes ? "#ECF39E" : "rgba(255,255,255,0.3)"} strokeWidth={2.5} strokeLinecap="round" style={{ transform: showNotes ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s", flexShrink: 0 }}>
+                    <polyline points="6 9 12 15 18 9"/>
+                  </svg>
+                </button>
+
+                <AnimatePresence>
+                  {showNotes && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: "auto" }}
+                      exit={{ opacity: 0, height: 0 }}
+                      transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
+                      style={{ overflow: "hidden" }}
+                    >
+                      <div style={{ display: "flex", flexDirection: "column", gap: 8, paddingTop: 2 }}>
+                        <input
+                          placeholder="Reference # — e.g. TXN-4821…"
+                          value={form.referenceNum}
+                          onChange={(e) => set("referenceNum", e.target.value)}
+                          style={darkInput}
+                        />
+                        <textarea
+                          placeholder="Extra context, links, reminders…"
+                          value={form.note}
+                          onChange={(e) => set("note", e.target.value)}
+                          style={{ ...darkInput, resize: "none", minHeight: 72, lineHeight: 1.5 }}
+                        />
+                        {form.receiptUrl ? (
+                          <div style={{ position: "relative", borderRadius: 12, overflow: "hidden", border: "1px solid rgba(255,255,255,0.1)" }}>
+                            <img src={form.receiptUrl} alt="Receipt" style={{ display: "block", width: "100%", maxHeight: 180, objectFit: "cover" }} />
+                            <button type="button" onClick={() => set("receiptUrl", "")} style={{ position: "absolute", top: 6, right: 6, width: 26, height: 26, borderRadius: "50%", background: "rgba(0,0,0,0.6)", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                              <Icon path={icons.x} size={13} color="#fff" />
+                            </button>
+                          </div>
+                        ) : (
+                          <button type="button" onClick={handleReceiptFile} style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", borderRadius: 12, border: "1.5px dashed rgba(255,255,255,0.15)", background: "rgba(255,255,255,0.04)", cursor: "pointer", width: "100%", boxSizing: "border-box" }}>
+                            <input ref={receiptInputRef} type="file" accept="image/*" style={{ position: "absolute", width: 1, height: 1, opacity: 0, overflow: "hidden", zIndex: -1 }} onChange={handleReceiptFile} />
+                            <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.35)" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/>
+                              <circle cx="12" cy="13" r="4"/>
+                            </svg>
+                            <span style={{ fontSize: 12, fontWeight: 700, color: "rgba(255,255,255,0.35)" }}>Attach receipt photo</span>
+                          </button>
+                        )}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                {/* When toggle */}
+                <button
+                  type="button"
+                  onClick={() => setShowWhen(p => !p)}
+                  style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 14, padding: "11px 13px", cursor: "pointer" }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <div style={{ width: 28, height: 28, borderRadius: 8, background: showWhen ? "#415A77" : "rgba(255,255,255,0.1)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                      <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+                        <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+                      </svg>
+                    </div>
+                    <div style={{ textAlign: "left" }}>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: showWhen ? "#ECF39E" : "rgba(255,255,255,0.4)", display: "block" }}>{showWhen ? "Hide date & schedule" : "Set date or schedule"}</span>
+                      {!showWhen && (form.dueDate || form.recurring !== "none") && (
+                        <span style={{ fontSize: 11, color: "#90C4E8", fontWeight: 600 }}>
+                          {form.recurring !== "none" ? form.recurring : `due ${form.dueDate}`}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke={showWhen ? "#ECF39E" : "rgba(255,255,255,0.3)"} strokeWidth={2.5} strokeLinecap="round" style={{ transform: showWhen ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s", flexShrink: 0 }}>
+                    <polyline points="6 9 12 15 18 9"/>
+                  </svg>
+                </button>
+
+                <AnimatePresence>
+                  {showWhen && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: "auto" }}
+                      exit={{ opacity: 0, height: 0 }}
+                      transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
+                      style={{ overflow: "hidden" }}
+                    >
+                      <div style={{ ...sectionCard, gap: 12, marginTop: 0 }}>
+                        {sectionLabel("When", "#90C4E8")}
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            {!isToday && <div style={{ width: 7, height: 7, borderRadius: 999, background: "#E05C6E", flexShrink: 0 }} />}
+                            <span style={{ fontSize: 14, fontWeight: 700, color: isToday ? "#ECF39E" : "#E05C6E" }}>{dateDisplay}</span>
+                          </div>
+                          <button type="button" onClick={() => { if (showDatePicker && !isToday) set("date", todayStr); setShowDatePicker(p => !p); }} style={{ fontSize: 12, fontWeight: 700, color: "rgba(255,255,255,0.4)", background: "none", border: "none", cursor: "pointer", padding: "4px 0" }}>
+                            {showDatePicker ? (isToday ? "Done" : "Reset to today") : "Different date"}
+                          </button>
+                        </div>
+                        {showDatePicker && <input style={darkInput} type="date" value={form.date} max={todayStr} onChange={(e) => set("date", e.target.value)} />}
+
+                        <div>
+                          <span style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.35)", textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 8 }}>Frequency</span>
+                          <div style={{ display: "flex", gap: 6 }}>
+                            {[["none", "One-time"], ["weekly", "Weekly"], ["biweekly", "Biweekly"], ["monthly", "Monthly"]].map(([val, label]) => {
+                              const isActive = form.recurring === val;
+                              return (
+                                <button key={val} type="button" onClick={() => set("recurring", val)}
+                                  style={{ flex: 1, padding: "8px 4px", borderRadius: 10, border: isActive ? "1.5px solid #415A77" : "1.5px solid rgba(255,255,255,0.08)", background: isActive ? "#415A77" : "rgba(255,255,255,0.05)", color: isActive ? "#ECF39E" : "rgba(255,255,255,0.4)", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                                  {label}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {!isRecurring && (
+                          <div>
+                            <span style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.35)", textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 6 }}>Due date (optional)</span>
+                            <input style={darkInput} type="date" value={form.dueDate} onChange={(e) => set("dueDate", e.target.value)} />
+                          </div>
+                        )}
+
+                        {isRecurring && (
+                          <div style={{ background: "rgba(255,255,255,0.04)", borderRadius: 12, padding: "12px", display: "flex", flexDirection: "column", gap: 10 }}>
+                            <div style={{ display: "flex", gap: 10 }}>
+                              <div style={{ flex: 1 }}>
+                                <span style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.35)", textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 6 }}>Start date</span>
+                                <input style={darkInput} type="date" value={form.dueDate} onChange={(e) => set("dueDate", e.target.value)} />
+                              </div>
+                              <div style={{ flex: 1 }}>
+                                <span style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.35)", textTransform: "uppercase", letterSpacing: 1, display: "block", marginBottom: 6 }}>End date</span>
+                                <input style={darkInput} type="date" value={form.endDate} min={form.dueDate || undefined} onChange={(e) => set("endDate", e.target.value)} />
+                              </div>
+                            </div>
+                            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                              <span style={{ fontSize: 12, color: "rgba(255,255,255,0.35)", fontWeight: 500 }}>Auto-advances to</span>
+                              <span style={{ fontSize: 13, fontWeight: 800, color: previewNextDue ? "#ECF39E" : "rgba(255,255,255,0.2)" }}>
+                                {previewNextDue ? formatHistoryDate(previewNextDue) : "set start date first"}
+                              </span>
+                            </div>
+                          </div>
+                        )}
+
+                        <button type="button" onClick={() => set("mandatory", !form.mandatory)}
+                          style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 14px", borderRadius: 14, border: `1.5px solid ${form.mandatory ? "#E05C6E" : "rgba(255,255,255,0.08)"}`, background: form.mandatory ? "rgba(224,92,110,0.12)" : "rgba(255,255,255,0.04)", cursor: "pointer", width: "100%", textAlign: "left" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                            <svg width={16} height={16} viewBox="0 0 24 24" fill={form.mandatory ? "#E05C6E" : "rgba(255,255,255,0.25)"}>
+                              <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/>
+                            </svg>
+                            <div>
+                              <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: form.mandatory ? "#E05C6E" : "rgba(255,255,255,0.7)" }}>Mandatory</p>
+                              <p style={{ margin: 0, fontSize: 11, color: "rgba(255,255,255,0.3)" }}>Cannot be late — alerts Cameron earlier</p>
+                            </div>
+                          </div>
+                          <div style={{ width: 36, height: 20, borderRadius: 999, background: form.mandatory ? "#E05C6E" : "rgba(255,255,255,0.15)", position: "relative", transition: "background 0.2s", flexShrink: 0 }}>
+                            <div style={{ position: "absolute", top: 2, left: form.mandatory ? 18 : 2, width: 16, height: 16, borderRadius: "50%", background: "#fff", transition: "left 0.2s", boxShadow: "0 1px 3px rgba(0,0,0,0.3)" }} />
+                          </div>
+                        </button>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* ── Save — appears once amount + description are filled ── */}
+          <AnimatePresence>
+            {hasAmount && hasDescription && (
+              <motion.button
+                key="save-btn"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
+                style={{ width: "100%", padding: "16px", borderRadius: 16, border: "none", background: "linear-gradient(135deg, #415A77, #0D1B2A)", color: "#ECF39E", fontSize: 15, fontWeight: 900, cursor: "pointer", letterSpacing: 0.3, boxShadow: "0 4px 20px rgba(65,90,119,0.5)" }}
+                onClick={handleSave}
+                type="button"
+              >
+                Save Expense
+              </motion.button>
+            )}
+          </AnimatePresence>
 
         </div>
       </div>
@@ -8639,12 +8977,21 @@ function EditExpenseModal({ expense, onSave, onDelete, onClose }) {
 //
 // ★ CHANGE 4: Fixed LogPaymentModal — defaultAppliedToKey → initialAppliedToKey, added set() helper, added selectedTarget
 //
-async function uploadProof(file) {
+async function uploadProof(fileOrDataUrl) {
   const { ref, uploadBytes, getDownloadURL } = await import("firebase/storage");
   const { storage } = await import("./firebase");
-  const path = `paymentProof/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.]/g, "_")}`;
+  let blob, filename;
+  if (typeof fileOrDataUrl === "string") {
+    const res = await fetch(fileOrDataUrl);
+    blob = await res.blob();
+    filename = `proof_${Date.now()}.jpg`;
+  } else {
+    blob = fileOrDataUrl;
+    filename = fileOrDataUrl.name.replace(/[^a-zA-Z0-9.]/g, "_");
+  }
+  const path = `paymentProof/${Date.now()}_${filename}`;
   const storageRef = ref(storage, path);
-  await uploadBytes(storageRef, file);
+  await uploadBytes(storageRef, blob);
   return getDownloadURL(storageRef);
 }
 
@@ -8663,13 +9010,27 @@ function LogPaymentModal({ balance, onSave, onClose, user, targets = [], planSum
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef(null);
 
-  function handleProofPick(e) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setProofFile(file);
-    const reader = new FileReader();
-    reader.onload = ev => setProofPreview(ev.target.result);
-    reader.readAsDataURL(file);
+  async function handleProofPick(e) {
+    if (e?.target?.files) {
+      const file = e.target.files[0];
+      if (!file) return;
+      setProofFile(file);
+      const reader = new FileReader();
+      reader.onload = ev => setProofPreview(ev.target.result);
+      reader.readAsDataURL(file);
+      return;
+    }
+    try {
+      const { Capacitor } = await import("@capacitor/core");
+      if (Capacitor.isNativePlatform()) {
+        const { Camera, CameraResultType, CameraSource } = await import("@capacitor/camera");
+        const photo = await Camera.getPhoto({ resultType: CameraResultType.DataUrl, source: CameraSource.Prompt, quality: 72, width: 800 });
+        setProofPreview(photo.dataUrl);
+        setProofFile(photo.dataUrl);
+        return;
+      }
+    } catch (err) { console.error("Camera error:", err); }
+    fileInputRef.current?.click();
   }
 
   async function handleSave(basePayload) {
@@ -8722,8 +9083,6 @@ function LogPaymentModal({ balance, onSave, onClose, user, targets = [], planSum
               style={{ overflow: "hidden" }}
             >
               <div style={{ paddingTop: 10 }}>
-                <input ref={fileInputRef} type="file" accept="image/*" capture="environment"
-                  style={{ display: "none" }} onChange={handleProofPick} />
                 {proofPreview ? (
                   <div style={{ position: "relative" }}>
                     <img src={proofPreview} alt="proof" style={{ width: "100%", borderRadius: 14, maxHeight: 200, objectFit: "cover", display: "block" }} />
@@ -8733,8 +9092,8 @@ function LogPaymentModal({ balance, onSave, onClose, user, targets = [], planSum
                     </button>
                   </div>
                 ) : (
-                  <button type="button" onClick={() => fileInputRef.current?.click()}
-                    style={{ width: "100%", padding: "20px", borderRadius: 14, border: "2px dashed #C5D5C0", background: "#F5F9F5", display: "flex", flexDirection: "column", alignItems: "center", gap: 8, cursor: "pointer" }}>
+                  <button type="button" onClick={handleProofPick} style={{ width: "100%", padding: "20px", borderRadius: 14, border: "2px dashed #C5D5C0", background: "#F5F9F5", display: "flex", flexDirection: "column", alignItems: "center", gap: 8, cursor: "pointer", boxSizing: "border-box" }}>
+                    <input ref={fileInputRef} type="file" accept="image/*" style={{ position: "absolute", width: 1, height: 1, opacity: 0, overflow: "hidden", zIndex: -1 }} onChange={handleProofPick} />
                     <svg width={28} height={28} viewBox="0 0 24 24" fill="none" stroke="#A6B49E" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
                       <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
                     </svg>

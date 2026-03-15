@@ -9,9 +9,9 @@ export async function initNativePush(userId, onNavigate) {
       return;
     }
 
-    // Add listeners BEFORE register() so the token isn't missed on iOS
+    // Add listeners BEFORE register() so the token isn't missed
     await PushNotifications.addListener("registration", async (token) => {
-      console.log("Native push: token =", token.value);
+      console.log("Native push: APNs token =", token.value.slice(0, 16) + "…");
       await saveNativeToken(userId, token.value);
     });
 
@@ -21,7 +21,7 @@ export async function initNativePush(userId, onNavigate) {
 
     await PushNotifications.register();
 
-    // Notification tapped while app is in foreground or background
+    // Notification tapped while app is open
     await PushNotifications.addListener("pushNotificationActionPerformed", (action) => {
       const screen = action.notification?.data?.screen;
       if (screen && onNavigate) onNavigate(screen);
